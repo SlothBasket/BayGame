@@ -1,0 +1,11 @@
+{
+	"adapter": "NVIDIA GeForce GTX 1660 Ti",
+	"fps": 60.0,
+	"imagery_cache_mib": 0.0,
+	"imagery_cached": 0,
+	"imagery_error": "",
+	"mean_ms": 18.7678076923077,
+	"note": "Five-second stationary capture smoke check, not sustained travel benchmark",
+	"p95_ms": 16.786,
+	"viewport": "(1920.0, 1080.0)"
+}

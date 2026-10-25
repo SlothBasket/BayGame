@@ -15,7 +15,15 @@ func step(dt: float, depth: DepthService):
 	var thrust: float = throttle*settings.acceleration*(settings.reverse_factor if throttle<0 else 1.0)
 	speed += (thrust-settings.linear_drag*speed-settings.quadratic_drag*speed*absf(speed))*dt
 	speed=clampf(speed,-settings.get("max_reverse_mps",5.0),settings.get("max_forward_mps",22.352))
-	var target: float = steer*settings.max_yaw_rate*(speed/(absf(speed)+3.0))
+	# Thrust-assisted low-speed yaw, with a smooth reversal and wider fast turns.
+	var low := 1.0/(1.0+pow(absf(speed)/settings.get("steering_transition_mps",4.0),2))
+	var authority: float = lerpf(settings.max_yaw_rate,settings.get("low_speed_yaw_rate",1.45),low)
+	var thrust_authority := clampf(absf(throttle)*4.0,0,1)
+	var motion_authority := clampf(absf(speed)/2.0,0,1)
+	var direction := 1.0
+	if absf(speed)>.4: direction=signf(speed)
+	elif absf(throttle)>.02: direction=signf(throttle)
+	var target: float = steer*authority*maxf(thrust_authority,motion_authority)*direction
 	yaw = lerpf(yaw,target,1.0-exp(-settings.yaw_response*dt))
 	heading += yaw*dt
 	var distance := speed*dt

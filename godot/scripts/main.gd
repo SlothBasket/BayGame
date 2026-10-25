@@ -46,7 +46,8 @@ func view_alafia():
 	camera.follow=false;camera.anchor=null;camera.geo=GeoPosition.new(63682,37503);camera.span=1500;camera.target_span=1500;camera.index=4
 func apply_visual_mode():
 	depth.permissive_navigation=settings.options.permissive_navigation
-	renderer.chart=int(settings.options.visual_mode)!=0
+	if not settings.options.developer and int(settings.options.visual_mode)==2: settings.options.visual_mode=0
+	renderer.chart=int(settings.options.visual_mode)==1
 func teleport_to(p: GeoPosition) -> bool:
 	if not depth.navigable(p,boat.settings.length_m*.5+.2):
 		hud.tell("Teleport rejected: "+depth.navigation_reason+". If loading, try again shortly.");return false
@@ -60,7 +61,7 @@ func _unhandled_input(e):
 	if e.is_action_pressed("teleport_boat_to_cursor",false,true):
 		teleport_to(camera.world_at(camera.reticle if camera.targeting else get_viewport().get_mouse_position()))
 	if e.is_action_pressed("chart",false,true): renderer.chart=not renderer.chart
-	if e.is_action_pressed("visual_mode",false,true): settings.options.visual_mode=(int(settings.options.visual_mode)+1)%3;apply_visual_mode();hud.persist()
+	if e.is_action_pressed("visual_mode",false,true): settings.options.visual_mode=(int(settings.options.visual_mode)+1)%2;apply_visual_mode();hud.persist()
 	if e.is_action_pressed("debug_overlay",false,true): overlay.visible=not overlay.visible
 	if settings.options.developer:
 		if e.is_action_pressed("chunk_grid",false,true): renderer.debug=not renderer.debug
@@ -82,7 +83,7 @@ func _process(dt):
 	for y in range(-1,2):
 		for x in range(-1,2):
 			store.request(GeoPosition.new(boat.geo.east+x*store.manifest.chunk_m,boat.geo.south+y*store.manifest.chunk_m).key(0,store.manifest.chunk_m))
-	renderer.tick(camera,origin);imagery.tick(camera,origin,int(settings.options.visual_mode)!=2);structures.tick(camera,origin,renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
+	renderer.tick(camera,origin);imagery.tick(camera,origin,settings.options.developer and int(settings.options.visual_mode)==2);structures.tick(camera,origin,renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
 	queue_redraw()
 	if "--capture" in OS.get_cmdline_user_args() and not screenshot_done and Time.get_ticks_msec()>5000:
 		screenshot_done=true
@@ -104,7 +105,7 @@ func _draw():
 		draw_set_transform(Vector2.ZERO)
 	else:
 		draw_circle(pos,4*mpp,Color(1,0.83,0.4),false,mpp)
-	if renderer.chart and camera.span<=2000:
+	if settings.options.soundings and camera.span<=2000:
 		var spacing := maxf(10,pow(10,floor(log(camera.span/5)/log(10))))
 		for y in range(-2,3):
 			for x in range(-3,4):

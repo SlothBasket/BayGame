@@ -69,7 +69,7 @@ Only one exported executable is tracked. Duplicate build data, logs, local engin
 
 ## Controls and implemented gameplay
 
-The compact HUD shows actual boat speed (MPH by default), depth in feet relative to NAVD88 zero, and throttle. Missing depth reads **Unknown**. Chart contours are spaced at **5 ft**. These are datum-relative DEM values, not tide-corrected navigation soundings.
+The compact HUD shows actual boat speed (MPH by default), depth in feet relative to NAVD88 zero, and throttle. Missing depth reads **Unknown**. Chart contours are spaced at **5 ft**. Floating depth numbers default off; enable Local soundings in Gameplay settings if desired. These are datum-relative DEM values, not tide-corrected navigation soundings.
 
 | Default | Action |
 |---|---|
@@ -87,13 +87,13 @@ The compact HUD shows actual boat speed (MPH by default), depth in feet relative
 
 Xbox-style defaults: left stick steers, triggers adjust throttle proportionally, right stick moves the map/targeting reticle, Y toggles targeting, A teleports, B selects neutral, X toggles follow, D-pad zooms. Menu face buttons provide confirm/back. All listed gameplay actions use InputMap. Controls settings support multiple keyboard/mouse/controller bindings, signed axes, deadzones, conflict replacement/swap/cancel, clear and restore defaults. Settings persist under Godot's `user://settings.json`. The on-screen Settings button remains available if menu bindings are removed. Benchmark controls require developer mode.
 
-The boat approaches **50 mph** forward, caps reverse at 5 m/s, retains momentum, and uses movement subdivisions of at most 1 m for shoreline checks. Teleport resets speed, yaw and throttle, preserves zoom, and follows the relocated boat. Land, missing collision data and disallowed water are rejected; retry briefly if a destination is still loading.
+The boat approaches **50 mph** forward, caps reverse at 5 m/s, retains momentum, and uses movement subdivisions of at most 1 m for shoreline checks. Thrust-assisted yaw permits near-pivot low-speed turns and reverse maneuvering, while high-speed turns widen smoothly. Teleport resets speed, yaw and throttle, preserves zoom, and follows the relocated boat. Land, missing collision data and disallowed water are rejected; retry briefly if a destination is still loading.
 
 ## Phase 2 geography and imagery
 
-Choose **Settings → Gameplay → View lower Alafia imagery pilot**. Video settings select Natural Hybrid, Hybrid Chart or Original Chart. The default overview uses simplified geography.
+Choose **Settings → Gameplay → View lower Alafia**. Video settings select **Stylized** or **Chart**. Both use cohesive textured land and stylized water throughout the map. Aerial imagery is available only through the enabled Developer menu as a 30%-opacity fading reference overlay. Older visual settings migrate to Stylized.
 
-- USDA NAIP 2023: 30 georeferenced tiles, 0.5 m exported pixels from 0.3 m Florida source imagery captured January 6/11, 2023. Four imagery resolutions share one indexed WebP pack (~19.3 MiB), covering the Williams Park/lower Alafia pilot. Land masks preserve stylized water. Texture decoding uses workers, one upload per frame and a 96 MiB texture-cache target.
+- Developer reference only — USDA NAIP 2023: 30 georeferenced tiles, 0.5 m exported pixels from 0.3 m Florida source imagery captured January 6/11, 2023. Four imagery resolutions share one indexed WebP pack (~19.3 MiB), covering the Williams Park/lower Alafia pilot. Land masks preserve stylized water. Texture decoding uses workers, one upload per frame and a 96 MiB texture-cache target.
 - USGS NHDPlus HR: polygons and flowlines acquired within **W -82.43, S 27.80, E -82.23, N 27.94**. 471 intersecting/ancestor vector tiles patched; NOAA depth rasters unchanged. Water components, flowlines, width availability and independently unknown fish passage/bathymetry are recorded in `waterways.json`. Flowlines are never given invented widths.
 - Conservative navigation requires known depth and chart coverage. The optional permissive mode also admits mapped estuary-connected water without known depth, subject to land/footprint checks. Unknown depths remain unknown.
 - Three approximate, sourced visual structure records identify Williams Park ramp/dock and a US 41 bridge segment. These are not surveyed collision polygons. Most over-water docks still need individual masking.
@@ -115,3 +115,7 @@ python -m tools.gis.pilot_build imagery
 The base `tools.gis.build` also requires the NOAA DEM described in `docs/SOURCES.md`. A base rebuild replaces patched vectors: rerun `pilot_build hydro` and `pilot_build imagery` afterward. The pilot patch only touches its intersecting regions/ancestors; it does not recompute bathymetry or the whole 9,336-tile map.
 
 The existing EPSG:32617 projection, scalar-double geographic coordinates, floating origin, multiresolution renderer and separate depth queries remain. See `docs/ARCHITECTURE.md` and `docs/SOURCES.md` for the original design, and **docs/PHASE2-STATUS.md** for the current audit. Older validation/benchmark documents describe the earlier prototype, not an automatic performance guarantee for this update.
+
+## Visual/navigation revision
+
+Unknown-depth water uses a soft teal, visual-only fallback blended with available neighboring depth samples. Numeric depth and navigation still use the original unchanged DepthService. Procedural land grain and a decorative vegetation-colored shoreline band are stylistic, not classified marsh/urban habitat data. Structure symbols remain approximate visual records; the bridge record covers only a segment. Geometry LOD edges can still shift as detail changes, but ordinary gameplay no longer streams photo tiles. See `docs/VISUAL-REVISION.md` for focused validation.

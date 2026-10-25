@@ -14,16 +14,21 @@ void fragment() {
                            zs.y>9000.0 && weights.y>0.000001,
                            zs.z>9000.0 && weights.z>0.000001,
                            zs.w>9000.0 && weights.w>0.000001));
-    float z = valid ? dot(zs,weights) : 10000.0;
-    float depth = max(-z,0.0);
+    // Styling uses available neighbors and a soft teal default. This never
+    // enters DepthService, navigation decisions, or numeric soundings.
+    vec4 known = vec4(zs.x<9000.0?1.0:0.0,zs.y<9000.0?1.0:0.0,zs.z<9000.0?1.0:0.0,zs.w<9000.0?1.0:0.0);
+    float coverage = dot(known,weights);
+    vec4 safe_z = min(zs,vec4(0.0));
+    float neighbor_depth = max(-dot(safe_z*known,weights)/max(coverage,0.00001),0.0);
+    float visual_depth = mix(2.0,neighbor_depth,smoothstep(0.0,1.0,coverage));
     vec3 shallow = vec3(0.16,0.48,0.46);
-    vec3 deep = vec3(0.025,0.15,0.24);
-    vec3 color = mix(shallow,deep,clamp(depth/15.0,0.0,1.0));
-    if (z>9000.0) color=vec3(0.075,0.14,0.17);
-    if (chart && z<0.0 && z>-9000.0) {
-        float edge=abs(fract(depth/(5.0/3.280839895)+0.5)-0.5)*(5.0/3.280839895);
-        float width=max(fwidth(depth),0.015);
-        color=mix(vec3(0.35,0.65,0.65),color,smoothstep(0.0,width,edge));
+    vec3 deep = vec3(0.045,0.24,0.33);
+    vec3 color = mix(shallow,deep,clamp(visual_depth/18.0,0.0,1.0));
+    if (chart && valid && neighbor_depth>0.0) {
+        float interval=5.0/3.280839895;
+        float edge=abs(fract(neighbor_depth/interval+0.5)-0.5)*interval;
+        float width=max(fwidth(neighbor_depth),0.025);
+        color=mix(vec3(0.49,0.72,0.69),color,smoothstep(0.0,width,edge));
     }
     COLOR=vec4(color,1.0);
 }

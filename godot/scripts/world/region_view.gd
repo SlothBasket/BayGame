@@ -24,11 +24,14 @@ func setup(tile: Dictionary):
 		var arrays := [];arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX]=verts;arrays[Mesh.ARRAY_INDEX]=PackedInt32Array(tile.indices)
 		var mesh := ArrayMesh.new();mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
-		land=MeshInstance2D.new();land.show_behind_parent=true;land.mesh=mesh;land.modulate=Color(0.28,0.38,0.28);add_child(land)
+		land=MeshInstance2D.new();land.show_behind_parent=true;land.mesh=mesh;add_child(land)
+		var land_mat := ShaderMaterial.new();land_mat.shader=preload("res://shaders/land.gdshader")
+		land_mat.set_shader_parameter("tile_origin",Vector2(tile.x,tile.y));land.material=land_mat
 func refresh(origin: GeoPosition,chart_on: bool,debug_on: bool,pixel_size: float):
 	position=Vector2(data.x-origin.east,data.y-origin.south)
 	chart=chart_on;debug=debug_on;meters_per_pixel=pixel_size
 	water.material.set_shader_parameter("chart",chart)
+	if land!=null: land.material.set_shader_parameter("pixel_size",pixel_size)
 	queue_redraw()
 func _draw():
 	# Draw after children via a separate positive z index would obscure land;
@@ -36,7 +39,10 @@ func _draw():
 	for line in data.shore:
 		var pts := PackedVector2Array()
 		for p in line: pts.append(Vector2(p[0],p[1]))
-		if pts.size()>1: draw_polyline(pts,Color(0.57,0.63,0.42),meters_per_pixel*0.7,true)
+		if pts.size()>1:
+			# Decorative vegetation/shallows edge, not a classified habitat map.
+			draw_polyline(pts,Color(.24,.49,.40,.26),meters_per_pixel*7.0,true)
+			draw_polyline(pts,Color(.66,.72,.51,.85),meters_per_pixel*1.2,true)
 	if chart:
 		for line in data.channels:
 			var pts := PackedVector2Array()

@@ -1,7 +1,7 @@
 class_name GameSettings
 extends RefCounted
 const PATH = "user://settings.json"
-var options := {"speed_unit":0,"visual_mode":0,"deadzone":0.2,"developer":false,"permissive_navigation":false}
+var options := {"speed_unit":0,"visual_mode":0,"visual_revision":2,"soundings":false,"deadzone":0.2,"developer":false,"permissive_navigation":false}
 var actions := {
 "throttle_up":["Boat","Increase throttle"],"throttle_down":["Boat","Decrease throttle"],"steer_left":["Boat","Steer left"],"steer_right":["Boat","Steer right"],"neutral":["Boat","Neutral throttle"],
 "zoom_in":["Camera","Zoom in"],"zoom_out":["Camera","Zoom out"],"pan_map":["Camera","Drag map"],"map_left":["Camera","Map / reticle left"],"map_right":["Camera","Map / reticle right"],"map_up":["Camera","Map / reticle up"],"map_down":["Camera","Map / reticle down"],"follow":["Camera","Toggle follow"],"recenter":["Camera","Recenter boat"],"overview":["Camera","World overview"],
@@ -60,6 +60,9 @@ func restore(path := PATH):
 	var d = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not d is Dictionary or d.get("version",0)!=1: return
 	options.merge(d.get("options",{}),true)
+	if int(d.get("options",{}).get("visual_revision",0))<2:
+		options.visual_mode=0;options.visual_revision=2
+	if not options.developer and int(options.visual_mode)==2: options.visual_mode=0
 	for a in d.get("bindings",{}):
 		if not actions.has(a): continue
 		InputMap.action_erase_events(a)

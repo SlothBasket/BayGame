@@ -6,6 +6,7 @@ var nodes: Dictionary = {}
 var cache: Dictionary = {}
 var pending: Dictionary = {}
 var frame := 0
+var opacity := 0.0
 var bytes := 0
 var upload_ms := 0.0
 var last_error := ""
@@ -27,6 +28,8 @@ func request(key: String):
 	pending[key]={"task":task,"result":result}
 func tick(camera: MapCamera,origin: GeoPosition,enabled: bool):
 	frame+=1;upload_ms=0
+	opacity=move_toward(opacity,.3 if enabled else 0.0,get_process_delta_time()*.3)
+	modulate.a=opacity
 	# At most one GPU upload per frame, with two bounded CPU decode jobs.
 	for key in pending.keys():
 		var job: Dictionary=pending[key]
@@ -36,13 +39,14 @@ func tick(camera: MapCamera,origin: GeoPosition,enabled: bool):
 		if img.is_empty(): last_error="Imagery decode failed: "+key;break
 		var start := Time.get_ticks_usec()
 		var sprite := Sprite2D.new();sprite.centered=false;sprite.texture=ImageTexture.create_from_image(img);sprite.texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
-		sprite.scale=Vector2.ONE*1024/img.get_width();add_child(sprite);sprite.visible=false
+		sprite.scale=Vector2.ONE*1024/img.get_width();add_child(sprite);sprite.visible=false;sprite.modulate.a=0
 		var memory := img.get_width()*img.get_height()*4
 		cache[key]={"sprite":sprite,"used":frame,"bytes":memory};bytes+=memory
 		upload_ms=(Time.get_ticks_usec()-start)/1000.0;break
-	for entry in cache.values(): entry.sprite.visible=false
+	for entry in cache.values():
+		entry.sprite.visible=false;entry.sprite.modulate.a=minf(1,entry.sprite.modulate.a+get_process_delta_time()*2)
 	var wanted := {}
-	if enabled and camera.span<12000:
+	if opacity>0 and camera.span<12000:
 		var mpp: float=camera.span/get_viewport_rect().size.y
 		var lod := clampi(floori(log(maxf(.5,mpp)/.5)/log(2)),0,3)
 		var half := Vector2(get_viewport_rect().size.x/get_viewport_rect().size.y,1)*camera.span*.5
