@@ -1,0 +1,21 @@
+# Source audit — 2026-10-25
+
+## Included real sources
+
+**NOAA Tampa Bay 1/3 arc-second NAVD88 DEM, identifier 5163.** Metadata: https://www.ncei.noaa.gov/access/metadata/landing-page/bin/iso?id=gov.noaa.ngdc.mgg.dem%3A5163 . Verified file from NOAA's THREDDS regional catalog: https://www.ngdc.noaa.gov/thredds/fileServer/regional/tampa_bay_13_navd88_2014.nc . Original horizontal CRS WGS84; vertical NAVD88 meters; approximately 10 m source spacing. Publication 2014-09-11; historical contributing surveys span 1886–2014. Coverage west -83.41, east -82.37, south 27.22, north 28.26. The source is already a gridded/interpolated composite, not direct soundings at every pixel. The builder resamples to a fixed 16 m grid. Download SHA256 and Rasterio-inspected CRS, extent and resolution are in the generated manifest. Do not use these DEMs for real-world navigation.
+
+**NOAA ENC Direct coastal vectors.** Service https://encdirect.noaa.gov/arcgis/rest/services/encdirect/enc_coastal/MapServer . Layers: land 171, rivers 174, lakes 170, coverage 158, fairways 150. The snapshot contains 175 land, 3 river, 2 lake, 5 coverage and 11 fairway features intersecting the requested bounding box. Object-ID batching avoids response limits; original attributes, chart cell DSNM, source dates where supplied, and geometry are preserved in small GeoJSON files. Per-layer metadata records download time, query bounds and SHA256. ENC source attributes may omit dates/accuracy; unknowns are retained, not invented. Coverage is chart coverage, not a guarantee that all creeks are mapped. Coastal chart scale limits close-view detail.
+
+Public service overview: https://www.nauticalcharts.noaa.gov/data/gis-data-and-services.html . ENC land/water geometry establishes shorelines independently of the elevation zero contour. River/lake polygons are subtracted from land; islands and interior rings survive union, clipping and triangulation. ENC fairway edges provide the chart-mode channel overlay. No ENC sounding values were merged into the DEM.
+
+## Investigated, not merged
+
+**NOAA G070 Tampa Bay bathymetric DEM (2017)**: https://www.ncei.noaa.gov/access/metadata/landing-page/bin/iso?id=gov.noaa.ngdc.mgg.dem%3Atampa_bay_G070_2017 . 1/3 arc-second WGS84 grid, **MLLW**, coverage -82.7605092774 to -82.3833796584, 27.4878240666 to 28.0375462734. The live regional catalog lists `regional/tampa_bay_G070_2017.nc`. It is incompatible with the chosen NAVD88 reference without a validated local tidal-datum transformation. It remains excluded; the importer rejects its datum declaration. A constant NAVD88/MLLW offset is not assumed.
+
+**2021 NOAA NGS Southern Tampa Bay topobathymetric DEM**: https://www.fisheries.noaa.gov/inport/item/66914 . Acquired 2021-01-26 through 2021-02-27. Published processing lineage says UTM 17, NAD83(2011); initial LiDAR ellipsoid heights were transformed to **NAVD88 using GEOID18** for the DEM product. Raw LiDAR and delivered DEM must not be confused. Fifty-two 5 km DEM tiles cover southern bay shoreline areas; the bulk listing is approximately 4.7 GB: https://noaa-nos-coastal-lidar-pds.s3.us-east-1.amazonaws.com/dem/NGS_South_TampBay_Topobathy_2021_9481/index.html . Not downloaded/merged in this milestone. It is a plausible compatible vertical source after per-file CRS, units, NoData and metadata verification. Geoid conversion is already in that DEM product, not a conversion performed by this project.
+
+Additional inland coverage should come from authoritative hydrography (USGS/Florida water management datasets) or higher-detail ENC with explicit source precedence. This project does not claim to have acquired or audited those datasets.
+
+## Manual visual reference points
+
+`config/landmarks.json` lists source URLs, longitude/latitude and provenance notes for seven checks. These are geographic reference locations, not precision survey control points. Alafia is an approximate NOAA incident location near the river mouth; Port Tampa uses a documented Ybor Channel sampling site. Historical NOAA tide-station positions are rounded. No vertical values from those stations are used to convert the DEM. The 1–7 shortcuts make the locations repeatably inspectable; complete shoreline comparison against authoritative detailed charts remains a manual acceptance task.

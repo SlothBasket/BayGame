@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+godot/.godot/
+data/sources/*
+!data/sources/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+!data/sources/*.geojson
+!data/sources/*.metadata.json
+!data/sources/*.download.json

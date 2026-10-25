@@ -1,0 +1,212 @@
+{
+  "currentVersion": 10.91,
+  "id": 158,
+  "name": "Coastal.Coverage_area",
+  "type": "Feature Layer",
+  "description": "",
+  "geometryType": "esriGeometryPolygon",
+  "sourceSpatialReference": {
+    "wkid": 4326,
+    "latestWkid": 4326
+  },
+  "copyrightText": "",
+  "parentLayer": {
+    "id": 157,
+    "name": "MetaDataA"
+  },
+  "subLayers": [],
+  "minScale": 0,
+  "maxScale": 0,
+  "drawingInfo": {
+    "renderer": {
+      "type": "simple",
+      "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "outline": {
+          "type": "esriSLS",
+          "style": "esriSLSSolid",
+          "color": [
+            56,
+            168,
+            0,
+            255
+          ],
+          "width": 0.432
+        }
+      },
+      "label": "",
+      "description": ""
+    },
+    "transparency": 0,
+    "labelingInfo": null
+  },
+  "defaultVisibility": true,
+  "extent": {
+    "xmin": -180,
+    "ymin": -80,
+    "xmax": 180,
+    "ymax": 81.60000000000039,
+    "spatialReference": {
+      "wkid": 4326,
+      "latestWkid": 4326
+    }
+  },
+  "hasAttachments": false,
+  "htmlPopupType": "esriServerHTMLPopupTypeAsHTMLText",
+  "displayField": "CATCOV",
+  "typeIdField": null,
+  "subtypeFieldName": null,
+  "subtypeField": null,
+  "defaultSubtypeCode": null,
+  "fields": [
+    {
+      "name": "OBJL",
+      "type": "esriFieldTypeDouble",
+      "alias": "OBJL",
+      "domain": null
+    },
+    {
+      "name": "CATCOV",
+      "type": "esriFieldTypeString",
+      "alias": "CATCOV",
+      "length": 30,
+      "domain": null
+    },
+    {
+      "name": "INFORM",
+      "type": "esriFieldTypeString",
+      "alias": "INFORM",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "SORDAT",
+      "type": "esriFieldTypeString",
+      "alias": "SORDAT",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "SORIND",
+      "type": "esriFieldTypeString",
+      "alias": "SORIND",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "DSNM",
+      "type": "esriFieldTypeString",
+      "alias": "DSNM",
+      "length": 12,
+      "domain": null
+    },
+    {
+      "name": "TITLE",
+      "type": "esriFieldTypeString",
+      "alias": "TITLE",
+      "length": 80,
+      "domain": null
+    },
+    {
+      "name": "SHAPE",
+      "type": "esriFieldTypeGeometry",
+      "alias": "SHAPE",
+      "domain": null
+    },
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "domain": null
+    },
+    {
+      "name": "SHAPE.AREA",
+      "type": "esriFieldTypeDouble",
+      "alias": "SHAPE.AREA",
+      "domain": null
+    },
+    {
+      "name": "SHAPE.LEN",
+      "type": "esriFieldTypeDouble",
+      "alias": "SHAPE.LEN",
+      "domain": null
+    }
+  ],
+  "geometryField": {
+    "name": "SHAPE",
+    "type": "esriFieldTypeGeometry",
+    "alias": "SHAPE"
+  },
+  "indexes": [
+    {
+      "name": "R3392_SDE_ROWID_UK",
+      "fields": "OBJECTID",
+      "isAscending": true,
+      "isUnique": true,
+      "description": ""
+    },
+    {
+      "name": "A3063_IX1",
+      "fields": "SHAPE",
+      "isAscending": true,
+      "isUnique": true,
+      "description": ""
+    }
+  ],
+  "subtypes": [],
+  "relationships": [],
+  "canModifyLayer": false,
+  "canScaleSymbols": false,
+  "hasLabels": false,
+  "capabilities": "Map,Query,Data",
+  "maxRecordCount": 1000,
+  "supportsStatistics": true,
+  "supportsAdvancedQueries": true,
+  "supportedQueryFormats": "JSON, geoJSON",
+  "isDataVersioned": false,
+  "ownershipBasedAccessControlForFeatures": {
+    "allowOthersToQuery": true
+  },
+  "useStandardizedQueries": true,
+  "advancedQueryCapabilities": {
+    "useStandardizedQueries": true,
+    "supportsStatistics": true,
+    "supportsHavingClause": true,
+    "supportsCountDistinct": true,
+    "supportsOrderBy": true,
+    "supportsDistinct": true,
+    "supportsPagination": true,
+    "supportsTrueCurve": true,
+    "supportsReturningQueryExtent": true,
+    "supportsQueryWithDistance": true,
+    "supportsSqlExpression": true
+  },
+  "supportsDatumTransformation": true,
+  "hasGeometryProperties": true,
+  "geometryProperties": {
+    "shapeAreaFieldName": "SHAPE.AREA",
+    "shapeLengthFieldName": "SHAPE.LEN",
+    "units": "esriDecimalDegrees"
+  },
+  "dateFieldsTimeReference": null,
+  "supportsCoordinatesQuantization": true,
+  "url": "https://encdirect.noaa.gov/arcgis/rest/services/encdirect/enc_coastal/MapServer/158",
+  "bbox_wgs84": [
+    -82.9,
+    27.35,
+    -82.15,
+    28.18
+  ],
+  "download_utc": "2026-10-25T07:33:50Z",
+  "sha256": "f9050112a52e759ad79b02ee096506bbbc03641ef9cb8e9ecbabde352b4b3f74",
+  "feature_count": 5,
+  "quality": "charted; compilation-scale dependent",
+  "vertical_datum": "not used for elevation"
+}

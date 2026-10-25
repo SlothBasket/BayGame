@@ -1,0 +1,249 @@
+{
+  "currentVersion": 10.91,
+  "id": 150,
+  "name": "Coastal.Fairway_area",
+  "type": "Feature Layer",
+  "description": "",
+  "geometryType": "esriGeometryPolygon",
+  "sourceSpatialReference": {
+    "wkid": 4326,
+    "latestWkid": 4326
+  },
+  "copyrightText": "",
+  "parentLayer": {
+    "id": 148,
+    "name": "TracksAndRoutesA"
+  },
+  "subLayers": [],
+  "minScale": 0,
+  "maxScale": 0,
+  "drawingInfo": {
+    "renderer": {
+      "type": "simple",
+      "symbol": {
+        "type": "esriSFS",
+        "style": "esriSFSSolid",
+        "color": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "outline": {
+          "type": "esriSLS",
+          "style": "esriSLSSolid",
+          "color": [
+            212,
+            212,
+            212,
+            255
+          ],
+          "width": 1
+        }
+      },
+      "label": "",
+      "description": ""
+    },
+    "transparency": 0,
+    "labelingInfo": null
+  },
+  "defaultVisibility": true,
+  "extent": {
+    "xmin": -177.3771177,
+    "ymin": 8.72835830000076,
+    "xmax": 167.7363434,
+    "ymax": 70.2113883999991,
+    "spatialReference": {
+      "wkid": 4326,
+      "latestWkid": 4326
+    }
+  },
+  "hasAttachments": false,
+  "htmlPopupType": "esriServerHTMLPopupTypeAsHTMLText",
+  "displayField": "OBJNAM",
+  "typeIdField": null,
+  "subtypeFieldName": null,
+  "subtypeField": null,
+  "defaultSubtypeCode": null,
+  "fields": [
+    {
+      "name": "OBJL",
+      "type": "esriFieldTypeDouble",
+      "alias": "OBJL",
+      "domain": null
+    },
+    {
+      "name": "DRVAL1",
+      "type": "esriFieldTypeDouble",
+      "alias": "DRVAL1",
+      "domain": null
+    },
+    {
+      "name": "OBJNAM",
+      "type": "esriFieldTypeString",
+      "alias": "OBJNAM",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "ORIENT",
+      "type": "esriFieldTypeDouble",
+      "alias": "ORIENT",
+      "domain": null
+    },
+    {
+      "name": "QUASOU",
+      "type": "esriFieldTypeString",
+      "alias": "QUASOU",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "SOUACC",
+      "type": "esriFieldTypeDouble",
+      "alias": "SOUACC",
+      "domain": null
+    },
+    {
+      "name": "TRAFIC",
+      "type": "esriFieldTypeDouble",
+      "alias": "TRAFIC",
+      "domain": null
+    },
+    {
+      "name": "VERDAT",
+      "type": "esriFieldTypeDouble",
+      "alias": "VERDAT",
+      "domain": null
+    },
+    {
+      "name": "INFORM",
+      "type": "esriFieldTypeString",
+      "alias": "INFORM",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "SCAMIN",
+      "type": "esriFieldTypeDouble",
+      "alias": "SCAMIN",
+      "domain": null
+    },
+    {
+      "name": "SORDAT",
+      "type": "esriFieldTypeString",
+      "alias": "SORDAT",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "SORIND",
+      "type": "esriFieldTypeString",
+      "alias": "SORIND",
+      "length": 254,
+      "domain": null
+    },
+    {
+      "name": "DSNM",
+      "type": "esriFieldTypeString",
+      "alias": "DSNM",
+      "length": 12,
+      "domain": null
+    },
+    {
+      "name": "SHAPE",
+      "type": "esriFieldTypeGeometry",
+      "alias": "SHAPE",
+      "domain": null
+    },
+    {
+      "name": "OBJECTID",
+      "type": "esriFieldTypeOID",
+      "alias": "OBJECTID",
+      "domain": null
+    },
+    {
+      "name": "SHAPE.AREA",
+      "type": "esriFieldTypeDouble",
+      "alias": "SHAPE.AREA",
+      "domain": null
+    },
+    {
+      "name": "SHAPE.LEN",
+      "type": "esriFieldTypeDouble",
+      "alias": "SHAPE.LEN",
+      "domain": null
+    }
+  ],
+  "geometryField": {
+    "name": "SHAPE",
+    "type": "esriFieldTypeGeometry",
+    "alias": "SHAPE"
+  },
+  "indexes": [
+    {
+      "name": "R3355_SDE_ROWID_UK",
+      "fields": "OBJECTID",
+      "isAscending": true,
+      "isUnique": true,
+      "description": ""
+    },
+    {
+      "name": "A3026_IX1",
+      "fields": "SHAPE",
+      "isAscending": true,
+      "isUnique": true,
+      "description": ""
+    }
+  ],
+  "subtypes": [],
+  "relationships": [],
+  "canModifyLayer": false,
+  "canScaleSymbols": false,
+  "hasLabels": false,
+  "capabilities": "Map,Query,Data",
+  "maxRecordCount": 1000,
+  "supportsStatistics": true,
+  "supportsAdvancedQueries": true,
+  "supportedQueryFormats": "JSON, geoJSON",
+  "isDataVersioned": false,
+  "effectiveMinScale": 2311162.217155,
+  "ownershipBasedAccessControlForFeatures": {
+    "allowOthersToQuery": true
+  },
+  "useStandardizedQueries": true,
+  "advancedQueryCapabilities": {
+    "useStandardizedQueries": true,
+    "supportsStatistics": true,
+    "supportsHavingClause": true,
+    "supportsCountDistinct": true,
+    "supportsOrderBy": true,
+    "supportsDistinct": true,
+    "supportsPagination": true,
+    "supportsTrueCurve": true,
+    "supportsReturningQueryExtent": true,
+    "supportsQueryWithDistance": true,
+    "supportsSqlExpression": true
+  },
+  "supportsDatumTransformation": true,
+  "hasGeometryProperties": true,
+  "geometryProperties": {
+    "shapeAreaFieldName": "SHAPE.AREA",
+    "shapeLengthFieldName": "SHAPE.LEN",
+    "units": "esriDecimalDegrees"
+  },
+  "dateFieldsTimeReference": null,
+  "supportsCoordinatesQuantization": true,
+  "url": "https://encdirect.noaa.gov/arcgis/rest/services/encdirect/enc_coastal/MapServer/150",
+  "bbox_wgs84": [
+    -82.9,
+    27.35,
+    -82.15,
+    28.18
+  ],
+  "download_utc": "2026-10-25T07:33:54Z",
+  "sha256": "853528cbc1ab81854158a14f46f5239a1d33a6b69c1faf6da16090c931ce3298",
+  "feature_count": 11,
+  "quality": "charted; compilation-scale dependent",
+  "vertical_datum": "not used for elevation"
+}

@@ -1,0 +1,58 @@
+{
+  "name": "Tampa Bay",
+  "bbox_wgs84": [
+    -82.9,
+    27.35,
+    -82.15,
+    28.18
+  ],
+  "crs": "EPSG:32617",
+  "origin_projected": [
+    300000.0,
+    3120000.0
+  ],
+  "vertical_datum": "NAVD88",
+  "chunk_m": 1024,
+  "depth_cell_m": 16,
+  "max_lod": 7,
+  "texture_cells": 64,
+  "simplify_m": [
+    0,
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64
+  ],
+  "spawn_wgs84": [
+    -82.6,
+    27.7
+  ],
+  "shoreline_source": "enc_coastal",
+  "depth_sources": [
+    {
+      "id": "NOAA-5163",
+      "path": "data/sources/tampa_bay_13_navd88_2014.nc",
+      "vertical_datum": "NAVD88",
+      "units": "m",
+      "positive": "up",
+      "date": "2014-09-11",
+      "quality": "interpolated composite DEM",
+      "metadata_url": "https://www.ncei.noaa.gov/access/metadata/landing-page/bin/iso?id=gov.noaa.ngdc.mgg.dem%3A5163"
+    }
+  ],
+  "cache_mb": 256,
+  "load_budget_ms": 3.0,
+  "lod_pixel_threshold": 640,
+  "zoom_spans_m": [
+    20,
+    50,
+    150,
+    500,
+    2000,
+    10000,
+    40000
+  ]
+}

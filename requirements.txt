@@ -1,0 +1,8 @@
+numpy==2.2.6
+shapely==2.1.2
+pyproj==3.7.2
+rasterio==1.4.3
+requests==2.32.5
+pytest==8.4.2
+pillow==11.3.0
+mapbox-earcut==1.0.3

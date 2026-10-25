@@ -1,0 +1,15 @@
+{
+  "crs": "EPSG:32617",
+  "vertical_datum": "NAVD88",
+  "corrections": [
+    {
+      "id": "demo-only",
+      "enabled": false,
+      "easting": 342238.7096,
+      "northing": 3064994.6672,
+      "radius_m": 15,
+      "elevation_m": -3.5,
+      "note": "Illustration only, not a measured correction. Enable intentionally for testing."
+    }
+  ]
+}

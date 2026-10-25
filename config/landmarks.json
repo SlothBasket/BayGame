@@ -1,0 +1,51 @@
+[
+  {
+    "name": "Sunshine Skyway Bridge",
+    "longitude": -82.6558,
+    "latitude": 27.6206,
+    "source": "https://tidesandcurrents.noaa.gov/stations/station.jsp?id=129",
+    "note": "NOAA air-gap station 8726371"
+  },
+  {
+    "name": "Port Tampa Bay / Ybor Channel",
+    "longitude": -82.44277777777778,
+    "latitude": 27.953333333333333,
+    "source": "https://repository.library.noaa.gov/view/noaa/2908/noaa_2908_DS1.pdf",
+    "note": "NOAA ORCA 78 Table 1 site 1; channel reference"
+  },
+  {
+    "name": "Alafia River mouth area",
+    "longitude": -82.38766666666666,
+    "latitude": 27.855833333333333,
+    "source": "https://incidentnews.noaa.gov/incident/6572",
+    "note": "Approximate NOAA incident location near mouth/turning basin, not surveyed mouth center"
+  },
+  {
+    "name": "Apollo Beach",
+    "longitude": -82.42666666666666,
+    "latitude": 27.786666666666665,
+    "source": "https://tidesandcurrents.noaa.gov/stationhome.html?id=8726537",
+    "note": "NOAA historical station 8726537"
+  },
+  {
+    "name": "Upper Hillsborough Bay / McKay entrance",
+    "longitude": -82.425,
+    "latitude": 27.913333333333334,
+    "source": "https://tidesandcurrents.noaa.gov/stationhome.html?id=8726667",
+    "note": "NOAA station 8726667"
+  },
+  {
+    "name": "Old Tampa Bay / Safety Harbor",
+    "longitude": -82.685,
+    "latitude": 27.988333333333333,
+    "source": "https://tidesandcurrents.noaa.gov/benchmarks/benchmarks_old/8726738.html",
+    "note": "NOAA historical station 8726738; approximate published position"
+  },
+  {
+    "name": "Egmont Key",
+    "longitude": -82.76,
+    "latitude": 27.6017,
+    "source": "https://tidesandcurrents.noaa.gov/benchmarks/8726347.html",
+    "note": "NOAA station 8726347"
+  }
+]

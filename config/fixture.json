@@ -1,0 +1,47 @@
+{
+  "name": "SYNTHETIC FIXTURE",
+  "bbox_wgs84": [
+    -82.7,
+    27.55,
+    -82.3,
+    27.95
+  ],
+  "crs": "EPSG:32617",
+  "origin_projected": [
+    300000.0,
+    3120000.0
+  ],
+  "vertical_datum": "NAVD88",
+  "chunk_m": 1024,
+  "depth_cell_m": 16,
+  "max_lod": 6,
+  "texture_cells": 64,
+  "simplify_m": [
+    0,
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64
+  ],
+  "spawn_wgs84": [
+    -82.6,
+    27.7
+  ],
+  "shoreline_source": "enc_coastal",
+  "depth_sources": [],
+  "cache_mb": 256,
+  "load_budget_ms": 3.0,
+  "lod_pixel_threshold": 640,
+  "zoom_spans_m": [
+    20,
+    50,
+    150,
+    500,
+    2000,
+    10000,
+    40000
+  ]
+}

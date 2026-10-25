@@ -1,0 +1,7 @@
+*.f32 binary
+*.png binary
+*.gd text eol=lf
+*.gdshader text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf

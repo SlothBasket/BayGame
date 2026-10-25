@@ -1,0 +1,28 @@
+class_name DebugOverlay
+extends CanvasLayer
+var label: Label
+var times: Array[float] = []
+var elapsed := 0.0
+var average := 0.0
+var p95 := 0.0
+func _init():
+	var panel := PanelContainer.new();panel.position=Vector2(18,18)
+	var style := StyleBoxFlat.new();style.bg_color=Color(0.025,0.055,0.07,0.9)
+	style.content_margin_left=16;style.content_margin_right=16;style.content_margin_top=12;style.content_margin_bottom=12
+	panel.add_theme_stylebox_override("panel",style);add_child(panel)
+	label=Label.new();label.add_theme_font_size_override("font_size",16);panel.add_child(label)
+func tick(dt: float,main):
+	times.append(dt*1000)
+	if times.size()>300: times.pop_front()
+	elapsed+=dt
+	if elapsed<0.25: return
+	elapsed=0;average=0
+	for v in times: average+=v
+	average/=times.size()
+	var sorted := times.duplicate();sorted.sort();p95=sorted[mini(sorted.size()-1,floori(sorted.size()*0.95))]
+	var m: Dictionary = main.store.manifest
+	var d: Dictionary = main.depth.get_depth_metadata(main.boat.geo)
+	var reading: String = "unavailable ("+d.reason+")"
+	if d.available: reading="%.2f m below NAVD88 zero" % d.depth
+	label.text="TAMPA BAY  /  GEOGRAPHIC PROTOTYPE\n%s\n\n%.1f FPS  |  mean %.2f ms  |  p95 %.2f ms\nSpan %.1f m  |  %s\nBoat E %.3f  S %.3f m\nCamera E %.3f  S %.3f m\n%.1f kn  |  throttle %.0f%%  |  %s\nDepth: %s\n%s  |  %s\nVisible %d  |  cached %d  |  queued %d\nLOD %d: %d regions (requested %d)\nEstimated geography %.1f MiB\nRead %.2f ms  |  render work %.2f ms\nCache hits %d / misses %d\n\nW/S throttle  A/D steer  Space neutral\nWheel zoom  Right/middle drag pan\nF follow/free  Home boat  O overview\nTab chart  C chunk grid  B benchmark\n1–7 landmark views (see README)\nChart depth is datum-relative; no tides.\n%s" % ["SYNTHETIC FIXTURE" if m.synthetic else m.shoreline,Engine.get_frames_per_second(),average,p95,main.camera.span,"FOLLOW" if main.camera.follow else "FREE",main.boat.geo.east,main.boat.geo.south,main.camera.geo.east,main.camera.geo.south,main.boat.knots(),main.boat.throttle*100,"BLOCKED: land / unknown / loading" if main.boat.blocked else "navigation ready",reading,d.source,d.quality,main.renderer.visible_count,main.store.cache.size(),main.store.pending.size(),main.renderer.active_lod,main.renderer.visible_count,main.renderer.requested_lod,(main.store.bytes_loaded+main.renderer.visual_bytes)/1048576.0,main.store.load_ms,main.renderer.render_build_ms,main.store.hits,main.store.misses,main.store.last_error]
+
