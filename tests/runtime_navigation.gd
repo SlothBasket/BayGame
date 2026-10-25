@@ -1,5 +1,6 @@
 extends SceneTree
 func _initialize():
+	var _settings := GameSettings.new(false)
 	var s:=GeographyStore.new()
 	for x in range(39,43):
 		for y in range(51,55):

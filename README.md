@@ -1,106 +1,117 @@
-# Tampa Bay — Godot geographic navigation prototype
+# BayGame
 
-A runnable Godot 4.5.2 vertical slice using downloaded NOAA Tampa Bay elevation and ENC vector geography. This is a software prototype, not a complete hydrographic survey or a navigation product. Generated assets are included, so the game runs offline without Python.
+An offline Godot 4.5.2 geographic boating prototype for Tampa Bay. One projected meter is one game unit. The active project is an ordinary, unzipped Git checkout.
 
-## Launch
+## Play the current project
 
-**Windows: double-click `BayGame.exe` in the project root.** No Godot installation is needed. Keep the `godot/assets/generated` folder in its existing location beside the executable; it contains the map data. The executable embeds the game code and loads those geographic files offline.
+Double-click **Play BayGame.bat** in this folder. It imports the latest saved resources, then runs `godot/project.godot` directly. It does not launch the exported EXE or extract an archive. Save edits, close the game, and double-click again to run the new version.
 
-For editing or running from source:
+Godot is resolved in this order:
 
-1. Install the standard (non-.NET) **Godot 4.5.2 stable** Windows build from https://godotengine.org/download/archive/4.5.2-stable/ .
-2. Import `godot/project.godot` in Godot and press **F5**, or run:
+1. `Launch.ps1 -Godot 'C:\path\to\Godot.exe'` (explicit override).
+2. The `GODOT_EXE` environment variable.
+3. `godot-path.txt` in this folder: one line containing the full executable path, without arguments.
+4. Godot on PATH, then common Godot installation/download folders.
+
+Use standard **Godot 4.5.2**, with its matching export templates for builds. `godot-path.txt` is machine-specific and ignored by Git. The current checkout is configured to the existing portable Godot installation in the sibling Codex `work/engine` directory. If that engine is moved or removed, update this one-line file. Downloading the project from GitHub does not include Godot.
+
+Useful PowerShell commands from this folder:
 
 ```powershell
-& 'C:/path/to/Godot_v4.5.2-stable_win64_console.exe' --path ./godot
+.\Launch.ps1 -CheckOnly                    # show the resolved engine and project
+.\Launch.ps1 -Editor                       # optional editor launch
+.\Launch.ps1 -GameArguments '--view=alafia' # inspect the imagery pilot
 ```
 
-Run commands from this repository root. The generated directory has `.gdignore`: these JSON/binary files are loaded using FileAccess, not Godot's importer. This avoids importing tens of thousands of data files. The Windows executable reads these ignored geographic files directly from the included folder. Its embedded PCK contains code and shaders. Export templates are build dependencies and are not bundled.
+Launcher/import logs are in `.local/logs/`, excluded from Git.
 
-The initial view is the entire region. Press **Home**, then wheel up to see the 5.2 m boat. Nothing needs to download at runtime.
+## Permanent working folder and updates
 
-| Input | Action |
+The current permanent checkout is:
+
+```text
+C:\Users\Sloth\Documents\Codex\2026-10-25\files-pasted-by-the-user-project\outputs\tampa-bay
+```
+
+The actual Godot project is its `godot` subfolder. Open this repository folder in Codex for future edits. Keep using this directory; no ZIP extraction is involved.
+
+This checkout is not automatically synchronized with any separate BayGame folder you may already have. **A GitHub push does not update another local checkout.** To update this or another clean clone:
+
+```powershell
+cd 'C:\path\to\BayGame'
+git pull --ff-only origin main
+```
+
+Save/commit local work before pulling. To establish a different permanent location, choose a new empty folder, then:
+
+```powershell
+git clone https://github.com/SlothBasket/BayGame.git C:\Games\BayGame
+cd C:\Games\BayGame
+Set-Content godot-path.txt 'C:\path\to\Godot_v4.5.2-stable_win64_console.exe'
+.\Launch.ps1 -CheckOnly
+```
+
+Open **C:\Games\BayGame** in Codex and import **C:\Games\BayGame\godot\project.godot** in Godot if desired. Choose one checkout for ongoing development; changes in the Codex checkout do not appear in the new location until you pull them. Existing older archives are legacy snapshots, not working directories.
+
+## Optional standalone Windows build
+
+**builds/windows/BayGame.exe** is an exported snapshot. It does not incorporate source edits until rebuilt. Prefer **Play BayGame.bat** during development.
+
+```powershell
+.\'Build Windows.ps1'
+# Or supply a matching portable export template explicitly:
+.\'Build Windows.ps1' -ExportTemplate 'C:\path\to\windows_release_x86_64.exe'
+```
+
+The script exports the current code and copies all required runtime geography, imagery and structure files to `builds/windows/godot/assets/generated`. Copy the **entire builds/windows folder** to distribute a portable build; copying only the executable is insufficient. No ZIP is required.
+
+Only one exported executable is tracked. Duplicate build data, logs, local engine configuration and ZIP files are ignored. In a fresh Git checkout, the EXE can also find the canonical `godot/assets/generated` two levels above it; run the build script before distributing the standalone folder. Raw GIS downloads and the Godot engine are not runtime dependencies.
+
+## Controls and implemented gameplay
+
+The compact HUD shows actual boat speed (MPH by default), depth in feet relative to NAVD88 zero, and throttle. Missing depth reads **Unknown**. Chart contours are spaced at **5 ft**. These are datum-relative DEM values, not tide-corrected navigation soundings.
+
+| Default | Action |
 |---|---|
-| W / S | Increase / decrease persistent throttle, including reverse |
-| Space | Neutral throttle; momentum remains |
-| A / D | Gradual speed-dependent steering |
-| Wheel | Smooth zoom between presets down to 20 m vertical span |
-| F / Home | Follow/free / recenter and follow boat |
-| Right or middle drag | Free-camera pan |
-| O | Full-world view |
-| Tab / C | Chart contours, samples, channels / chunk grid |
-| B | Run the 56-second benchmark; it moves boat/camera |
-| 1–7 | Skyway, Port/Ybor, Alafia mouth area, Apollo Beach, upper Hillsborough, Old Tampa, Egmont Key |
+| W / S | Increase / decrease persistent throttle |
+| A / D | Steer |
+| Space | Neutral throttle, retaining momentum |
+| Wheel | Zoom |
+| Right / middle drag | Pan |
+| F / Home / O | Toggle follow / recenter / world overview |
+| T | Teleport to mouse cursor, after collision/coverage validation |
+| R | Toggle controller targeting reticle |
+| Tab / V | Toggle chart / cycle visual mode |
+| Escape or controller Start | Pause/settings |
+| F3 | Toggle developer overlay |
 
-## Geographic build
+Xbox-style defaults: left stick steers, triggers adjust throttle proportionally, right stick moves the map/targeting reticle, Y toggles targeting, A teleports, B selects neutral, X toggles follow, D-pad zooms. Menu face buttons provide confirm/back. All listed gameplay actions use InputMap. Controls settings support multiple keyboard/mouse/controller bindings, signed axes, deadzones, conflict replacement/swap/cancel, clear and restore defaults. Settings persist under Godot's `user://settings.json`. The on-screen Settings button remains available if menu bindings are removed. Benchmark controls require developer mode.
 
-Use Python **3.12**, not the system's Python 3.15, for the pinned GIS wheels. Rasterio includes GDAL 3.9.3 in the tested environment; separate `osgeo` bindings are unnecessary.
+The boat approaches **50 mph** forward, caps reverse at 5 m/s, retains momentum, and uses movement subdivisions of at most 1 m for shoreline checks. Teleport resets speed, yaw and throttle, preserves zoom, and follows the relocated boat. Land, missing collision data and disallowed water are rejected; retry briefly if a destination is still loading.
 
-```powershell
-py -3.12 -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt
-.venv/Scripts/python -m tools.gis.acquire
-.venv/Scripts/python -m tools.gis.acquire --url https://www.ngdc.noaa.gov/thredds/fileServer/regional/tampa_bay_13_navd88_2014.nc --output data/sources/tampa_bay_13_navd88_2014.nc
-.venv/Scripts/python -m tools.gis.build
-.venv/Scripts/python -m pytest -q
-```
+## Phase 2 geography and imagery
 
-The NOAA download is approximately 505 MB. It is present in the working project but deliberately excluded from the portable ZIP and version control. Raw sources and projected caches stay in `data/`, outside runtime assets. The ZIP retains small vector source snapshots and their metadata to reproduce this shoreline; `acquire --force` explicitly refreshes them from NOAA's changing service.
+Choose **Settings → Gameplay → View lower Alafia imagery pilot**. Video settings select Natural Hybrid, Hybrid Chart or Original Chart. The default overview uses simplified geography.
 
-`config/region.json` controls extent, CRS, chunk size, depth spacing, source selection, simplification tolerances, and runtime cache/LOD thresholds. Defaults: **W -82.90, S 27.35, E -82.15, N 28.18**, WGS84; **EPSG:32617**, UTM 17N meters. Fixed origin: easting 300000, northing 3120000. Game x = easting minus origin; game y = origin northing minus northing. Storage bounds are the projected envelope rounded outward to 1,024 m chunks, 76.8 × 94.208 km. A projected meter is one game unit; UTM grid-vs-ground distortion is tested below 0.1% in this region.
+- USDA NAIP 2023: 30 georeferenced tiles, 0.5 m exported pixels from 0.3 m Florida source imagery captured January 6/11, 2023. Four imagery resolutions share one indexed WebP pack (~19.3 MiB), covering the Williams Park/lower Alafia pilot. Land masks preserve stylized water. Texture decoding uses workers, one upload per frame and a 96 MiB texture-cache target.
+- USGS NHDPlus HR: polygons and flowlines acquired within **W -82.43, S 27.80, E -82.23, N 27.94**. 471 intersecting/ancestor vector tiles patched; NOAA depth rasters unchanged. Water components, flowlines, width availability and independently unknown fish passage/bathymetry are recorded in `waterways.json`. Flowlines are never given invented widths.
+- Conservative navigation requires known depth and chart coverage. The optional permissive mode also admits mapped estuary-connected water without known depth, subject to land/footprint checks. Unknown depths remain unknown.
+- Three approximate, sourced visual structure records identify Williams Park ramp/dock and a US 41 bridge segment. These are not surveyed collision polygons. Most over-water docks still need individual masking.
 
-The builder caches each source reprojection by bytes, target grid, and processing version. Tile fingerprints skip unchanged mesh triangulation and asset writes; changed regions regenerate their intersecting tiles and ancestor levels. Global vector union, tile-intersection checks, source hashing, and manifest regeneration still run. It is not a remote distributed GIS build service.
+**Incomplete:** wider Hillsborough/Little Manatee/Manatee/Old Tampa tributary expansion; full upstream/barrier audit; complete hydrological routing and fish-passage model; exhaustive shoreline/structure alignment; sustained imagery-streaming benchmark; physical-controller hardware testing; full Williams Park-to-bay gameplay traversal validation. No barriers were returned by the filtered pilot barrier query, which does not establish that the area is barrier-free. The NOAA DEM has limited eastern coverage. Coastal masks retain source-scale inaccuracies.
 
-For an explicitly separate procedural test world, even when real sources exist:
+## GIS development
 
-```powershell
-.venv/Scripts/python -m tools.gis.build --config config/fixture.json --synthetic
-& 'C:/path/to/godot.exe' --path ./godot -- --synthetic
-```
-
-The fixture writes `godot/assets/synthetic`, displays a synthetic banner, and never replaces real assets.
-
-## Depth and corrections
-
-The included depth surface is **NAVD88 elevation in meters**, positive upward, derived from NOAA's 2014 composite DEM. Displayed depth is `max(0, -elevation)`, relative to NAVD88 zero, **not instantaneous water depth or MLLW chart depth**. The pipeline does not convert between datums. MLLW and unknown/ellipsoidal sources are rejected. See `docs/SOURCES.md` for the candidate source audit.
-
-A fixed-resolution, halo-padded leaf grid supplies simulation queries at every camera zoom. Strict bilinear stencil validity returns `null` when contributing samples are missing; no missing sample becomes zero. Nearest reprojected source masks retain missing-data locations. Coarser visual textures never replace simulation data. NOAA's composite DEM already includes interpolation, so results are labelled interpolated composite values, not individual measured soundings.
-
-`DepthService` provides `get_depth_at`, `get_elevation_at`, `get_depth_metadata`, and `get_depth_profile` using GeoPosition. Queries can initially return unavailable/loading; callers must retry rather than treat loading as water or zero. Metadata includes datum, source contributors, quality, and resolution. Multi-source lists report composite contributors, not per-pixel lineage.
-
-Copy the disabled example in `config/corrections.example.json` to `config/corrections.json`, intentionally enable it, and rebuild to demonstrate a circular depth override. Coordinates are absolute projected easting/northing, elevations NAVD88 meters. Last matching enabled correction wins. Remove it and rebuild to restore original readings. Corrections never alter source files. Numeric chart readouts reflect corrections; the color ramp and derived contours continue showing the original raster.
-
-## Validation and measurements
+Normal gameplay needs no Python or network. To regenerate data, use Python 3.12 and `requirements.txt`; raw downloads/caches remain untracked under `data/`.
 
 ```powershell
-.venv/Scripts/python -m pytest -q
-& 'C:/path/to/godot.exe' --headless --path ./godot --script ../tests/runtime.gd
-& 'C:/path/to/godot.exe' --headless --path ./godot --script ../tests/runtime_navigation.gd
-& 'C:/path/to/godot.exe' --path ./godot --resolution 1920x1080 -- --benchmark
+python -m tools.gis.acquire
+python -m tools.gis.pilot_acquire hydro
+python -m tools.gis.pilot_acquire imagery
+python -m tools.gis.pilot_build hydro
+python -m tools.gis.pilot_build imagery
 ```
 
-Benchmark output defaults to Godot's user data directory. Pass `--report-dir=C:/absolute/report/folder` after `--` to save elsewhere. The directory must exist. `--capture`, optionally with `--view=close` or `--view=chart`, saves a screenshot and exits. `tools/benchmarks/summarize.py` turns benchmark JSON into a report. Actual results and conditions are in `docs/VALIDATION.md`; no benchmark target should be assumed from the architecture.
+The base `tools.gis.build` also requires the NOAA DEM described in `docs/SOURCES.md`. A base rebuild replaces patched vectors: rerun `pilot_build hydro` and `pilot_build imagery` afterward. The pilot patch only touches its intersecting regions/ancestors; it does not recompute bathymetry or the whole 9,336-tile map.
 
-## Modules and delivered files
-
-- `godot/project.godot`, `scenes/main.tscn`, `scripts/main.gd`: runnable app and scenario driver.
-- `scripts/world/geo_position.gd`, `geography_store.gd`: double scalar coordinates, async bounded cache.
-- `scripts/world/geographic_renderer.gd`, `region_view.gd`, `shaders/depth.gdshader`: hierarchical mesh/texture rendering, culling, chart and debug views.
-- `scripts/depth/depth_service.gd`: geographic queries, NoData, correction layers, conservative land/coverage collision.
-- `scripts/camera/map_camera.gd`, `scripts/boat/boat_model.gd`, `scripts/ui/debug_overlay.gd`: camera, vessel and measurements.
-- `tools/gis/{acquire,build,coordinates,depth}.py`: source download, deterministic processing and reference query tools.
-- `config/`: editable region, vessel, landmark, correction and fixture settings.
-- `tests/`: Python geographic/export tests, GDScript runtime checks, and a real-map seam-crossing regression.
-- `godot/assets/generated/manifest.json`: version, bounds, CRS, datum, provenance, checksums, resolutions, parameters and spatial index.
-- `godot/assets/generated/chunks/`: eight mesh/raster LOD levels, with exact leaf collision rings and coverage polygons.
-- `docs/`: source audit, architecture, validation, screenshots, benchmark data and file inventory.
-
-## Known limits and next work
-
-The first source is **coastal-scale ENC**. It captures the bay, islands and mapped river reaches, but it does not establish complete navigability of every creek or upstream tributary in the requested extent. Inland land polygons may fill waterways omitted at that chart scale. Unknown chart coverage blocks movement; this is deliberately conservative. The DEM ends near longitude -82.37, leaving much of the eastern configured region without depth. High zoom enlarges source geometry; it does not create new survey accuracy. Boat collision uses a conservative enclosing disc, so very narrow passages may be blocked.
-
-Next, add higher-detail harbour/approach ENC or authoritative inland hydrography with an explicit coverage-precedence rule; audit the four named rivers and their tributaries. Add newer NAVD88 LiDAR tiles with per-cell lineage. Validate visual alignment at all seven reference locations and inspect transition recordings. Then tune chunk-size/LOD configurations on sustained travel, measure actual GPU allocation, and extend standalone export testing. No fishing, fish AI, tides, waves, wakes, wind, fuel, or hydrodynamics are implemented.
-
-## Rebuild the Windows executable
-
-Install Godot 4.5.2 export templates, set the Windows Desktop preset custom release template to your `windows_release_x86_64.exe` path, then run `godot --headless --path godot --export-release "Windows Desktop" ../BayGame.exe`. The checked-in template path matches the development workspace; adjust it on another machine. Ship the executable together with `godot/assets/generated`.
+The existing EPSG:32617 projection, scalar-double geographic coordinates, floating origin, multiresolution renderer and separate depth queries remain. See `docs/ARCHITECTURE.md` and `docs/SOURCES.md` for the original design, and **docs/PHASE2-STATUS.md** for the current audit. Older validation/benchmark documents describe the earlier prototype, not an automatic performance guarantee for this update.

@@ -3,6 +3,7 @@ extends RefCounted
 var store: GeographyStore
 var corrections: Array = []
 var navigation_reason := ""
+var permissive_navigation := false
 func _init(s: GeographyStore):
 	store = s
 	var c = JSON.parse_string(FileAccess.get_file_as_string(store.root + "corrections.json"))
@@ -76,6 +77,11 @@ func navigable(p: GeoPosition, radius: float = 2.8) -> bool:
 			if tile.is_empty():
 				navigation_reason="collision chunk unavailable";return false
 			var local := Vector2(p.east-tile.x,p.south-tile.y)
+			for line in tile.get("barriers",[]):
+				var points := packed(line)
+				for j in range(points.size()-1):
+					if local.distance_to(Geometry2D.get_closest_point_to_segment(local,points[j],points[j+1]))<=radius:
+						navigation_reason="mapped physical barrier";return false
 			for poly in tile.land:
 				if inside(local,[poly]):
 					navigation_reason="land containment";return false
@@ -89,7 +95,13 @@ func navigable(p: GeoPosition, radius: float = 2.8) -> bool:
 		var a := TAU*i/8.0
 		var q := GeoPosition.new(p.east+(cos(a)*radius if i<8 else 0),p.south+(sin(a)*radius if i<8 else 0))
 		var tile := store.get_chunk(q.key(0,base))
-		if tile.is_empty() or not inside(Vector2(q.east-tile.x,q.south-tile.y),tile.coverage):
+		if tile.is_empty(): navigation_reason="collision chunk unavailable";return false
+		var local := Vector2(q.east-tile.x,q.south-tile.y)
+		var known_water := inside(local,tile.coverage)
+		if permissive_navigation: known_water=known_water or inside(local,tile.get("mapped_water",[]))
+		elif not get_depth_metadata(q).available:
+			navigation_reason="Unknown depth (conservative navigation)";return false
+		if not known_water:
 			navigation_reason="coverage unavailable at %s / %.9f %.9f" % [q.key(0,base),q.east,q.south];return false
 	return true
 

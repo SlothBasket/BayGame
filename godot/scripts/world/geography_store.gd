@@ -17,7 +17,11 @@ func _init():
 	if "--synthetic" in OS.get_cmdline_user_args(): root = "res://assets/synthetic/"
 	# Exported executable reuses the included geographic files beside it.
 	if not FileAccess.file_exists(root + "manifest.json") and not OS.has_feature("editor"):
-		root = OS.get_executable_path().get_base_dir().path_join("godot/assets/generated/")
+		var exe_dir := OS.get_executable_path().get_base_dir()
+		root = exe_dir.path_join("godot/assets/generated/")
+		# Git checkouts reuse canonical assets; portable builds carry their own copy.
+		if not FileAccess.file_exists(root+"manifest.json"):
+			root = exe_dir.path_join("../../godot/assets/generated/")
 	manifest = JSON.parse_string(FileAccess.get_file_as_string(root + "manifest.json"))
 	budget_ms = manifest.parameters.load_budget_ms
 	max_bytes = int(manifest.parameters.cache_mb * 1048576)

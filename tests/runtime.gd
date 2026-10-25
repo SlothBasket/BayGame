@@ -8,6 +8,7 @@ func check(condition: bool, name: String):
 func _initialize():
 	call_deferred("run")
 func run():
+	var _settings := GameSettings.new(false)
 	var store := GeographyStore.new()
 	var depth := DepthService.new(store)
 	var values := PackedFloat32Array();values.resize(67*67);values.fill(-4)

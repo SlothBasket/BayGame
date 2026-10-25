@@ -10,3 +10,10 @@ data/processed/*
 !data/sources/*.geojson
 !data/sources/*.metadata.json
 !data/sources/*.download.json
+
+# Machine configuration and reproducible build data
+godot-path.txt
+.local/
+*.zip
+builds/windows/godot/
+builds/windows/*.pck

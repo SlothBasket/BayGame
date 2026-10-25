@@ -28,22 +28,30 @@ func overview():
 func world_at(screen: Vector2) -> GeoPosition:
 	var offset := (screen-get_viewport_rect().size*0.5)*span/get_viewport_rect().size.y
 	return GeoPosition.new(geo.east+offset.x,geo.south+offset.y)
+var targeting := false
+var reticle := Vector2(960,540)
 func event(e: InputEvent,boat: BoatModel):
-	if e is InputEventMouseButton:
-		if e.button_index in [MOUSE_BUTTON_MIDDLE,MOUSE_BUTTON_RIGHT]: drag=e.pressed;anchor=null
-		if e.pressed and e.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
-			if not follow: cursor=e.position;anchor=world_at(cursor)
-			index=clampi(index+(-1 if e.button_index==MOUSE_BUTTON_WHEEL_UP else 1),0,presets.size()-1)
-			target_span=presets[index]
+	if e.is_action("pan_map",true): drag=e.is_pressed();anchor=null
+	if e.is_action_pressed("zoom_in",false,true) or e.is_action_pressed("zoom_out",false,true):
+		if not follow:
+			cursor=reticle if targeting else get_viewport().get_mouse_position();anchor=world_at(cursor)
+		index=clampi(index+(-1 if e.is_action_pressed("zoom_in",false,true) else 1),0,presets.size()-1)
+		target_span=presets[index]
 	if e is InputEventMouseMotion and drag:
 		follow=false
 		geo.east-=e.relative.x*span/get_viewport_rect().size.y
 		geo.south-=e.relative.y*span/get_viewport_rect().size.y
-	if e is InputEventKey and e.pressed and not e.echo:
-		if e.keycode==KEY_F: follow=not follow;anchor=null
-		if e.keycode==KEY_HOME: follow=true;anchor=null;geo=boat.geo.copy()
-		if e.keycode==KEY_O: overview()
+	if e.is_action_pressed("follow",false,true): follow=not follow;anchor=null
+	if e.is_action_pressed("recenter",false,true): follow=true;anchor=null;geo=boat.geo.copy()
+	if e.is_action_pressed("overview",false,true): overview()
+	if e.is_action_pressed("target_mode",false,true):
+		targeting=not targeting;reticle=get_viewport_rect().size*.5;follow=false;anchor=null
 func tick(dt: float,boat: BoatModel,origin: GeoPosition):
+	var movement := Input.get_vector("map_left","map_right","map_up","map_down")
+	if movement.length()>0:
+		anchor=null;follow=false
+		if targeting: reticle=(reticle+movement*650*dt).clamp(Vector2.ZERO,get_viewport_rect().size)
+		else: geo.east+=movement.x*span*.6*dt;geo.south+=movement.y*span*.6*dt
 	span=exp(lerpf(log(span),log(target_span),1-exp(-dt*14)))
 	if follow: geo=boat.geo.copy()
 	elif anchor!=null:

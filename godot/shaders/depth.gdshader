@@ -21,7 +21,7 @@ void fragment() {
     vec3 color = mix(shallow,deep,clamp(depth/15.0,0.0,1.0));
     if (z>9000.0) color=vec3(0.075,0.14,0.17);
     if (chart && z<0.0 && z>-9000.0) {
-        float edge=abs(fract(depth/2.0+0.5)-0.5)*2.0;
+        float edge=abs(fract(depth/(5.0/3.280839895)+0.5)-0.5)*(5.0/3.280839895);
         float width=max(fwidth(depth),0.015);
         color=mix(vec3(0.35,0.65,0.65),color,smoothstep(0.0,width,edge));
     }

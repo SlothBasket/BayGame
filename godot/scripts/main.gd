@@ -1,4 +1,8 @@
 extends Node2D
+var structures: GeographicStructures
+var imagery: AerialImageryLayer
+var settings: GameSettings
+var hud: GameHud
 var store: GeographyStore
 var depth: DepthService
 var boat: BoatModel
@@ -17,6 +21,7 @@ var wall_dt := 0.0
 var capture_name := "overview.png"
 var report_dir := "user://"
 func _ready():
+	settings=GameSettings.new()
 	previous_frame_usec=Time.get_ticks_usec()
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--report-dir="): report_dir=arg.trim_prefix("--report-dir=")
@@ -24,24 +29,44 @@ func _ready():
 	boat=BoatModel.new(JSON.parse_string(FileAccess.get_file_as_string(store.root+"boat.json")))
 	boat.geo=GeoPosition.new(store.manifest.spawn[0],store.manifest.spawn[1])
 	renderer=GeographicRenderer.new();renderer.show_behind_parent=true;renderer.store=store;add_child(renderer)
+	imagery=AerialImageryLayer.new();imagery.show_behind_parent=true;add_child(imagery);imagery.setup(store.root)
+	structures=GeographicStructures.new();structures.show_behind_parent=true;add_child(structures);structures.setup(store.root)
 	camera=MapCamera.new();add_child(camera);camera.setup(store.manifest)
-	overlay=DebugOverlay.new();add_child(overlay)
+	overlay=DebugOverlay.new();add_child(overlay);overlay.visible=false
+	hud=GameHud.new();add_child(hud);hud.setup(self,settings)
+	apply_visual_mode()
 	bench="--benchmark" in OS.get_cmdline_user_args()
+	if "--view=alafia" in OS.get_cmdline_user_args():
+		view_alafia();capture_name="alafia.png"
 	if "--view=close" in OS.get_cmdline_user_args():
 		camera.geo=boat.geo.copy();camera.span=20;camera.target_span=20;camera.follow=true;capture_name="close-boat.png"
 	if "--view=chart" in OS.get_cmdline_user_args():
 		camera.geo=GeoPosition.new(26360,65500);camera.span=2000;camera.target_span=2000;renderer.chart=true;capture_name="chart.png"
+func view_alafia():
+	camera.follow=false;camera.anchor=null;camera.geo=GeoPosition.new(63682,37503);camera.span=1500;camera.target_span=1500;camera.index=4
+func apply_visual_mode():
+	depth.permissive_navigation=settings.options.permissive_navigation
+	renderer.chart=int(settings.options.visual_mode)!=0
+func teleport_to(p: GeoPosition) -> bool:
+	if not depth.navigable(p,boat.settings.length_m*.5+.2):
+		hud.tell("Teleport rejected: "+depth.navigation_reason+". If loading, try again shortly.");return false
+	boat.geo=p.copy();boat.speed=0;boat.yaw=0;boat.throttle=0;boat.blocked=false
+	camera.follow=true;camera.geo=p.copy();camera.anchor=null
+	hud.tell("Boat relocated.");return true
 func _unhandled_input(e):
+	if e.is_action_pressed("menu",false,true): hud.toggle();return
+	if hud.menu.visible: return
 	camera.event(e,boat)
-	if e is InputEventKey and e.pressed and not e.echo:
-		if e.keycode>=KEY_1 and e.keycode<=KEY_7 and store.manifest.has("landmarks"):
-			var point: Array = store.manifest.landmarks[e.keycode-KEY_1].world
-			camera.geo=GeoPosition.new(point[0],point[1]);camera.follow=false;camera.anchor=null;camera.target_span=2000;camera.index=4
-		if e.keycode==KEY_TAB: renderer.chart=not renderer.chart
-		if e.keycode==KEY_C: renderer.debug=not renderer.debug
-		if e.keycode==KEY_B: bench=true;bench_time=0;bench_rows.clear()
+	if e.is_action_pressed("teleport_boat_to_cursor",false,true):
+		teleport_to(camera.world_at(camera.reticle if camera.targeting else get_viewport().get_mouse_position()))
+	if e.is_action_pressed("chart",false,true): renderer.chart=not renderer.chart
+	if e.is_action_pressed("visual_mode",false,true): settings.options.visual_mode=(int(settings.options.visual_mode)+1)%3;apply_visual_mode();hud.persist()
+	if e.is_action_pressed("debug_overlay",false,true): overlay.visible=not overlay.visible
+	if settings.options.developer:
+		if e.is_action_pressed("chunk_grid",false,true): renderer.debug=not renderer.debug
+		if e.is_action_pressed("benchmark",false,true): bench=true;bench_time=0;bench_rows.clear()
 func _physics_process(dt):
-	if depth!=null and not bench: boat.step(dt,depth)
+	if depth!=null and not bench and not hud.menu.visible: boat.step(dt,depth)
 func _process(dt):
 	var now := Time.get_ticks_usec()
 	wall_dt=(now-previous_frame_usec)/1000000.0 if previous_frame_usec>0 else dt
@@ -51,19 +76,22 @@ func _process(dt):
 	# Shift before float32 scene conversion. Geographic state never shifts.
 	origin.east=floor(camera.geo.east/1024)*1024
 	origin.south=floor(camera.geo.south/1024)*1024
-	camera.tick(dt,boat,origin)
+	camera.tick(0 if hud.menu.visible else dt,boat,origin)
 	depth.get_depth_metadata(boat.geo)
 	# Prefetch simulation neighborhood before renderer requests.
 	for y in range(-1,2):
 		for x in range(-1,2):
 			store.request(GeoPosition.new(boat.geo.east+x*store.manifest.chunk_m,boat.geo.south+y*store.manifest.chunk_m).key(0,store.manifest.chunk_m))
-	renderer.tick(camera,origin);store.evict();overlay.tick(wall_dt,self)
+	renderer.tick(camera,origin);imagery.tick(camera,origin,int(settings.options.visual_mode)!=2);structures.tick(camera,origin,renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
 	queue_redraw()
 	if "--capture" in OS.get_cmdline_user_args() and not screenshot_done and Time.get_ticks_msec()>5000:
 		screenshot_done=true
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(report_dir.path_join(capture_name))
-		print("CAPTURE ",ProjectSettings.globalize_path(report_dir.path_join(capture_name)))
+		var stats := {"fps":Engine.get_frames_per_second(),"mean_ms":overlay.average,"p95_ms":overlay.p95,"imagery_cache_mib":imagery.bytes/1048576.0,"imagery_cached":imagery.cache.size(),"imagery_error":imagery.last_error,"adapter":RenderingServer.get_video_adapter_name(),"viewport":str(get_viewport_rect().size),"note":"Five-second stationary capture smoke check, not sustained travel benchmark"}
+		var report := FileAccess.open(report_dir.path_join("capture-stats.json"),FileAccess.WRITE)
+		report.store_string(JSON.stringify(stats,"\t"))
+		print("CAPTURE ",ProjectSettings.globalize_path(report_dir.path_join(capture_name))," ",JSON.stringify(stats))
 		get_tree().quit()
 func _draw():
 	if boat==null: return
@@ -84,7 +112,7 @@ func _draw():
 				var d := depth.get_depth_metadata(p)
 				if d.available and d.elevation<0:
 					draw_set_transform(p.relative_to(origin),0,Vector2.ONE*mpp)
-					draw_string(ThemeDB.fallback_font,Vector2.ZERO,"%.1f" % d.depth,HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color(0.8,0.88,0.8))
+					draw_string(ThemeDB.fallback_font,Vector2.ZERO,"%.1f ft" % (d.depth*3.280839895),HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color(0.8,0.88,0.8))
 		draw_set_transform(Vector2.ZERO)
 func benchmark_tick(dt: float):
 	bench_time+=dt

@@ -1,0 +1,92 @@
+{
+  "crs": "EPSG:32617",
+  "coordinates": "world east, south from origin [300000,3120000]",
+  "features": [
+    {
+      "id": "williams-park-ramp",
+      "category": "boat_ramp",
+      "name": "Williams Park boat ramp",
+      "position": [
+        63655,
+        37520
+      ],
+      "visual_polygon": [],
+      "collision": [],
+      "source": {
+        "imagery": "USDA NAIP 2023",
+        "tile": "355_3010.tif",
+        "method": "Manual visual identification on georeferenced 0.5 m export; approximate footprint, not surveyed",
+        "horizontal_accuracy": "NAIP source accuracy and manual digitizing uncertainty; not collision geometry",
+        "reference": "https://gis.myfwc.com/boating_guides/tampa_bay/pages/boat_ramps/williams_park/index.html"
+      }
+    },
+    {
+      "id": "williams-park-west-dock",
+      "category": "dock",
+      "name": "Williams Park dock",
+      "position": [
+        63643,
+        37517
+      ],
+      "visual_polygon": [
+        [
+          63630,
+          37519
+        ],
+        [
+          63635,
+          37528
+        ],
+        [
+          63660,
+          37508
+        ],
+        [
+          63658,
+          37505
+        ]
+      ],
+      "collision": [],
+      "source": {
+        "imagery": "USDA NAIP 2023",
+        "tile": "355_3010.tif",
+        "method": "Manual visual identification on georeferenced 0.5 m export; approximate footprint, not surveyed",
+        "horizontal_accuracy": "NAIP source accuracy and manual digitizing uncertainty; not collision geometry"
+      }
+    },
+    {
+      "id": "us41-alafia-bridge-segment",
+      "category": "bridge",
+      "name": "US 41 bridge (visible segment)",
+      "position": [
+        63772,
+        37630
+      ],
+      "visual_polygon": [
+        [
+          63745,
+          37522
+        ],
+        [
+          63769,
+          37518
+        ],
+        [
+          63825,
+          37760
+        ],
+        [
+          63798,
+          37760
+        ]
+      ],
+      "collision": [],
+      "source": {
+        "imagery": "USDA NAIP 2023",
+        "tile": "355_3010.tif",
+        "method": "Manual visual identification on georeferenced 0.5 m export; approximate footprint, not surveyed",
+        "horizontal_accuracy": "NAIP source accuracy and manual digitizing uncertainty; not collision geometry"
+      }
+    }
+  ]
+}
