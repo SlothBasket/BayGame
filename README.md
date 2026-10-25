@@ -4,6 +4,10 @@ A runnable Godot 4.5.2 vertical slice using downloaded NOAA Tampa Bay elevation 
 
 ## Launch
 
+**Windows: double-click `BayGame.exe` in the project root.** No Godot installation is needed. Keep the `godot/assets/generated` folder in its existing location beside the executable; it contains the map data. The executable embeds the game code and loads those geographic files offline.
+
+For editing or running from source:
+
 1. Install the standard (non-.NET) **Godot 4.5.2 stable** Windows build from https://godotengine.org/download/archive/4.5.2-stable/ .
 2. Import `godot/project.godot` in Godot and press **F5**, or run:
 
@@ -11,7 +15,7 @@ A runnable Godot 4.5.2 vertical slice using downloaded NOAA Tampa Bay elevation 
 & 'C:/path/to/Godot_v4.5.2-stable_win64_console.exe' --path ./godot
 ```
 
-Run commands from this repository root. The generated directory has `.gdignore`: these JSON/binary files are loaded using FileAccess, not Godot's importer. This avoids importing tens of thousands of data files. The delivered project is runnable directly; a standalone PCK export must explicitly package these files (the normal editor exporter ignores `.gdignore` directories). No export templates are bundled.
+Run commands from this repository root. The generated directory has `.gdignore`: these JSON/binary files are loaded using FileAccess, not Godot's importer. This avoids importing tens of thousands of data files. The Windows executable reads these ignored geographic files directly from the included folder. Its embedded PCK contains code and shaders. Export templates are build dependencies and are not bundled.
 
 The initial view is the entire region. Press **Home**, then wheel up to see the 5.2 m boat. Nothing needs to download at runtime.
 
@@ -95,4 +99,8 @@ Benchmark output defaults to Godot's user data directory. Pass `--report-dir=C:/
 
 The first source is **coastal-scale ENC**. It captures the bay, islands and mapped river reaches, but it does not establish complete navigability of every creek or upstream tributary in the requested extent. Inland land polygons may fill waterways omitted at that chart scale. Unknown chart coverage blocks movement; this is deliberately conservative. The DEM ends near longitude -82.37, leaving much of the eastern configured region without depth. High zoom enlarges source geometry; it does not create new survey accuracy. Boat collision uses a conservative enclosing disc, so very narrow passages may be blocked.
 
-Next, add higher-detail harbour/approach ENC or authoritative inland hydrography with an explicit coverage-precedence rule; audit the four named rivers and their tributaries. Add newer NAVD88 LiDAR tiles with per-cell lineage. Validate visual alignment at all seven reference locations and inspect transition recordings. Then tune chunk-size/LOD configurations on sustained travel, measure actual GPU allocation, and build a standalone export. No fishing, fish AI, tides, waves, wakes, wind, fuel, or hydrodynamics are implemented.
+Next, add higher-detail harbour/approach ENC or authoritative inland hydrography with an explicit coverage-precedence rule; audit the four named rivers and their tributaries. Add newer NAVD88 LiDAR tiles with per-cell lineage. Validate visual alignment at all seven reference locations and inspect transition recordings. Then tune chunk-size/LOD configurations on sustained travel, measure actual GPU allocation, and extend standalone export testing. No fishing, fish AI, tides, waves, wakes, wind, fuel, or hydrodynamics are implemented.
+
+## Rebuild the Windows executable
+
+Install Godot 4.5.2 export templates, set the Windows Desktop preset custom release template to your `windows_release_x86_64.exe` path, then run `godot --headless --path godot --export-release "Windows Desktop" ../BayGame.exe`. The checked-in template path matches the development workspace; adjust it on another machine. Ship the executable together with `godot/assets/generated`.

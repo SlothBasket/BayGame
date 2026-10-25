@@ -38,6 +38,6 @@ Shader disk caching was unavailable under the filesystem sandbox; Godot logged t
 4. Collision is a conservative disc against chart polygons; it can reject narrow passages. No grounding/draft model or bridge-clearance model exists.
 5. Source composites list contributing rasters but do not yet preserve per-cell survey identity or uncertainty rasters. NOAA composite values are correctly described as interpolated.
 6. Manual corrections update query/numeric readouts; the underlying visual texture/contours retain survey values.
-7. Direct project launch is verified. Standalone PCK/export packaging requires explicit inclusion of the `.gdignore` data directory and is not provided.
+7. Windows export added in a follow-up: `BayGame.exe` embeds code/shaders and reads the included `godot/assets/generated` directory. Graphical launch, real map capture and exit code 0 were verified. It is a folder-based distribution, not a single-file map bundle.
 
 The delivered result is a working, measured geographic vertical slice with these explicit gaps, not a declaration that every long-term milestone acceptance criterion is satisfied.
