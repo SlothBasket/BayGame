@@ -1,0 +1,10 @@
+{
+	"engine_memory_delta_bytes": 10489924,
+	"failures": 0,
+	"fish_count": 100000,
+	"initialization_ms": 119.154,
+	"max_update_ms": 2.85,
+	"mean_update_ms": 1.59371388888889,
+	"note": "360 simulation updates; two connected fixture routes, not full gameplay profiling",
+	"packed_bytes": 4800000
+}

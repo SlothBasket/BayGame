@@ -34,6 +34,19 @@ func _read(key: String) -> Dictionary:
 	var data = JSON.parse_string(FileAccess.get_file_as_string(root + "chunks/" + key + ".json"))
 	if not data is Dictionary: return {"error":key}
 	data["samples"] = FileAccess.get_file_as_bytes(root + "chunks/" + key + ".f32").to_float32_array()
+	var count: int=data.samples.size()
+	var combined: PackedFloat32Array=data.samples.duplicate()
+	var classes := PackedByteArray();classes.resize(count)
+	for i in range(count): classes[i]=0 if is_nan(combined[i]) else 1
+	for layer in ["survey","recon"]:
+		var path: String = root+"chunks/"+key+"."+layer+".f32"
+		if not FileAccess.file_exists(path): continue
+		var extra := FileAccess.get_file_as_bytes(path).to_float32_array()
+		if extra.size()!=count: return {"error":key+" invalid "+layer}
+		for i in range(count):
+			if not is_nan(extra[i]) and (layer=="survey" or is_nan(combined[i])):
+				combined[i]=extra[i];classes[i]=2 if layer=="survey" else 3
+	data["combined"]=combined;data["provenance"]=classes
 	data["read_ms"] = (Time.get_ticks_usec() - begin) / 1000.0
 	return data
 func _install(key: String, data: Dictionary):
@@ -84,3 +97,4 @@ func evict():
 func shutdown():
 	for job in pending.values(): WorkerThreadPool.wait_for_task_completion(job.task)
 	pending.clear()
+

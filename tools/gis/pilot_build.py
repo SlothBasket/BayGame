@@ -84,16 +84,22 @@ def build_imagery():
   for record in meta['tiles']:
    with rasterio.open(src/record['file']) as ds:
     rgb=ds.read([1,2,3]).transpose(1,2,0);x=ds.bounds.left-geo.origin[0];y=geo.origin[1]-ds.bounds.top
-    clip=land.intersection(box(x,y,x+1024,y+1024))
+    clip=box(x,y,x+1024,y+1024).difference(land)
     # Rasterize in world coordinates (south-positive); half-pixel coastal feather.
     mask=rasterize([(mapping(clip),255)],out_shape=(2048,2048),transform=rasterio.Affine(.5,0,x,0,.5,y),fill=0,dtype='uint8') if not clip.is_empty else np.zeros((2048,2048),np.uint8)
-    image=Image.fromarray(rgb,'RGB').convert('RGBA');image.putalpha(Image.fromarray(mask).filter(ImageFilter.GaussianBlur(.5)))
+    bounds=[(t['file'].replace('.tif','').split('_')) for t in meta['tiles']]
+    west=min(int(t[0]) for t in bounds)*1024-geo.origin[0];east=(max(int(t[0]) for t in bounds)+1)*1024-geo.origin[0]
+    north=geo.origin[1]-(max(int(t[1]) for t in bounds)+1)*1024;south=geo.origin[1]-min(int(t[1]) for t in bounds)*1024
+    xx=x+(np.arange(2048)+.5)*.5;yy=y+(np.arange(2048)+.5)*.5
+    feather=np.clip(np.minimum(np.minimum(xx-west,east-xx)[None,:],np.minimum(yy-north,south-yy)[:,None])/200,0,1)
+    feather=feather*feather*(3-2*feather);mask=(mask*feather).astype('uint8')
+    image=Image.fromarray(rgb,'RGB').convert('RGBA');image.putalpha(Image.fromarray(mask))
     for lod in range(4):
      im=image if lod==0 else image.resize((2048>>lod,2048>>lod),Image.Resampling.LANCZOS)
      buf=io.BytesIO();im.save(buf,format='WEBP',quality=85,method=4);data=buf.getvalue();key=record['file'].replace('.tif','')+'_'+str(lod)
      index[key]={'x':x,'y':y,'size':1024,'lod':lod,'pixels':2048>>lod,'offset':pack.tell(),'length':len(data)};pack.write(data)
    print('Packed',record['file'],flush=True)
- write_json(destination/'index.json',{'nodes':index,'source':meta,'pack':'alafia.pack','mask':'NOAA ENC land minus USGS NHD mapped water; 0.25 m feather; no inferred structure collision'})
+ write_json(destination/'index.json',{'nodes':index,'source':meta,'pack':'alafia.pack','mask':'Water only: inverse of NOAA ENC land minus USGS NHD polygons; 200 m smooth outer imagery coverage fade; no photography-derived depths'})
  print('Imagery bytes',(destination/'alafia.pack').stat().st_size)
 if __name__=='__main__':
  import sys

@@ -10,20 +10,22 @@ func _init(s: GeographyStore):
 	assert(c.crs == store.manifest.crs and c.vertical_datum == store.manifest.vertical_datum)
 	corrections = c.corrections
 func get_depth_metadata(p: GeoPosition) -> Dictionary:
-	var result := {"available":false,"elevation":null,"depth":null,"quality":"unavailable","source":"none","datum":store.manifest.vertical_datum,"reason":"outside coverage"}
+	var result := {"available":false,"elevation":null,"depth":null,"classification":"unavailable","quality":"unavailable","source":"none","datum":store.manifest.vertical_datum,"reason":"outside coverage"}
 	var key := p.key(0, store.manifest.chunk_m)
-	if not store.manifest.nodes.has(key): return result
+	if not store.manifest.nodes.has(key): return _correct(p,result)
 	var tile := store.get_chunk(key)
 	if tile.is_empty():
 		result.reason = "loading"
-		return result
+		return _correct(p,result)
 	var n: int = tile.n
 	var fx: float = (p.east - tile.x) / tile.size * n + 1.0
 	var fy: float = (p.south - tile.y) / tile.size * n + 1.0
 	var ix := floori(fx)
 	var iy := floori(fy)
 	var z := 0.0
-	var values: PackedFloat32Array = tile.samples
+	var values: PackedFloat32Array = tile.get("combined",tile.samples)
+	var kind := 1
+	var contributors := 0
 	for dy in range(2):
 		for dx in range(2):
 			var weight: float = (fx-ix if dx else 1.0-fx+ix) * (fy-iy if dy else 1.0-fy+iy)
@@ -33,7 +35,12 @@ func get_depth_metadata(p: GeoPosition) -> Dictionary:
 				result.reason = "NoData"
 				return _correct(p, result)
 			z += weight * value
+			contributors+=1
+			if tile.has("provenance"): kind=maxi(kind,int(tile.provenance[(iy+dy)*(n+3)+ix+dx]))
 	result.merge({"available":true,"elevation":z,"depth":maxf(0.0,-z),"quality":store.manifest.quality,"source":source_label(),"reason":"","resolution_m":store.manifest.depth_cell_m},true)
+	result.classification="procedurally reconstructed" if kind==3 else ("interpolated survey data" if contributors>1 or kind==2 else "source-derived")
+	if kind==2: result.source="USF-Hillsborough-2022 (NOAA at stencil edges)";result.quality="interpolated survey"
+	if kind==3: result.source="river reconstruction v1 (gameplay; survey at stencil edges)";result.quality="estimated riverbed; high uncertainty"
 	return _correct(p,result)
 func _correct(p: GeoPosition, result: Dictionary) -> Dictionary:
 	for c in corrections:
@@ -41,7 +48,7 @@ func _correct(p: GeoPosition, result: Dictionary) -> Dictionary:
 		var e: float = p.east + store.manifest.origin_projected[0]
 		var n: float = store.manifest.origin_projected[1] - p.south
 		if pow(e-c.easting,2)+pow(n-c.northing,2) <= pow(c.radius_m,2):
-			result.merge({"available":true,"elevation":c.elevation_m,"depth":maxf(0,-c.elevation_m),"quality":"manually corrected","source":c.id,"reason":"","note":c.note},true)
+			result.merge({"available":true,"elevation":c.elevation_m,"depth":maxf(0,-c.elevation_m),"classification":"manually corrected","quality":"manually corrected","source":c.id,"reason":"","note":c.note},true)
 	return result
 func get_depth_at(p: GeoPosition):
 	return get_depth_metadata(p).depth
@@ -97,7 +104,7 @@ func navigable(p: GeoPosition, radius: float = 2.8) -> bool:
 		var tile := store.get_chunk(q.key(0,base))
 		if tile.is_empty(): navigation_reason="collision chunk unavailable";return false
 		var local := Vector2(q.east-tile.x,q.south-tile.y)
-		var known_water := inside(local,tile.coverage)
+		var known_water := inside(local,tile.coverage) or inside(local,tile.get("mapped_water",[]))
 		if permissive_navigation: known_water=known_water or inside(local,tile.get("mapped_water",[]))
 		elif not get_depth_metadata(q).available:
 			navigation_reason="Unknown depth (conservative navigation)";return false

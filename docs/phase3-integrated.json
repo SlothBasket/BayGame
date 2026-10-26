@@ -1,0 +1,13 @@
+{
+	"adapter": "NVIDIA GeForce GTX 1660 Ti",
+	"fish_records": 100000,
+	"fish_update_ms": 1.85,
+	"frames": 685,
+	"imagery_mib": 85.5,
+	"max_ms": 49.579,
+	"mean_ms": 17.2658330464716,
+	"note": "12 second Alafia zoom-to-overview with soundings and persistent fish; first 2 seconds excluded from frame statistics",
+	"p95_ms": 17.898,
+	"seconds": 12.0126043333334,
+	"viewport": "(1920, 1061)"
+}

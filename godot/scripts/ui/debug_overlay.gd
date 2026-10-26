@@ -27,6 +27,9 @@ func tick(dt: float,main):
 	label.text="TAMPA BAY  /  GEOGRAPHIC PROTOTYPE\n%s\n\n%.1f FPS  |  mean %.2f ms  |  p95 %.2f ms\nSpan %.1f m  |  %s\nBoat E %.3f  S %.3f m\nCamera E %.3f  S %.3f m\n%.1f kn  |  throttle %.0f%%  |  %s\nDepth: %s\n%s  |  %s\nVisible %d  |  cached %d  |  queued %d\nLOD %d: %d regions (requested %d)\nEstimated geography %.1f MiB\nRead %.2f ms  |  render work %.2f ms\nCache hits %d / misses %d\n\nW/S throttle  A/D steer  Space neutral\nWheel zoom  Right/middle drag pan\nF follow/free  Home boat  O overview\nTab chart  C chunk grid  B benchmark\n1–7 landmark views (see README)\nChart depth is datum-relative; no tides.\n%s" % ["SYNTHETIC FIXTURE" if m.synthetic else m.shoreline,Engine.get_frames_per_second(),average,p95,main.camera.span,"FOLLOW" if main.camera.follow else "FREE",main.boat.geo.east,main.boat.geo.south,main.camera.geo.east,main.camera.geo.south,main.boat.knots(),main.boat.throttle*100,"BLOCKED: land / unknown / loading" if main.boat.blocked else "navigation ready",reading,d.source,d.quality,main.renderer.visible_count,main.store.cache.size(),main.store.pending.size(),main.renderer.active_lod,main.renderer.visible_count,main.renderer.requested_lod,(main.store.bytes_loaded+main.renderer.visual_bytes)/1048576.0,main.store.load_ms,main.renderer.render_build_ms,main.store.hits,main.store.misses,main.store.last_error]
 
 
+	label.text+="\nClassification: "+str(d.get("classification","unavailable"))
 	label.text+="\nNavigation: "+main.depth.navigation_reason
 
 	label.text+="\nImagery: %d cached / %.1f MiB / %.2f ms upload / %s" % [main.imagery.cache.size(),main.imagery.bytes/1048576.0,main.imagery.upload_ms,main.imagery.last_error]
+
+	if main.fish!=null: label.text+="\nFish: %d records / %.2f MiB packed / %.3f ms update" % [main.fish.ids.size(),main.fish.packed_bytes()/1048576.0,main.fish.update_ms]

@@ -7,6 +7,7 @@ var cache: Dictionary = {}
 var pending: Dictionary = {}
 var frame := 0
 var opacity := 0.0
+var target_opacity := 0.85
 var bytes := 0
 var upload_ms := 0.0
 var last_error := ""
@@ -28,7 +29,7 @@ func request(key: String):
 	pending[key]={"task":task,"result":result}
 func tick(camera: MapCamera,origin: GeoPosition,enabled: bool):
 	frame+=1;upload_ms=0
-	opacity=move_toward(opacity,.3 if enabled else 0.0,get_process_delta_time()*.3)
+	opacity=move_toward(opacity,target_opacity*smoothstep(12000.0,8000.0,camera.span) if enabled else 0.0,get_process_delta_time()*.6)
 	modulate.a=opacity
 	# At most one GPU upload per frame, with two bounded CPU decode jobs.
 	for key in pending.keys():
@@ -46,7 +47,7 @@ func tick(camera: MapCamera,origin: GeoPosition,enabled: bool):
 	for entry in cache.values():
 		entry.sprite.visible=false;entry.sprite.modulate.a=minf(1,entry.sprite.modulate.a+get_process_delta_time()*2)
 	var wanted := {}
-	if opacity>0 and camera.span<12000:
+	if opacity>0:
 		var mpp: float=camera.span/get_viewport_rect().size.y
 		var lod := clampi(floori(log(maxf(.5,mpp)/.5)/log(2)),0,3)
 		var half := Vector2(get_viewport_rect().size.x/get_viewport_rect().size.y,1)*camera.span*.5
@@ -60,8 +61,16 @@ func tick(camera: MapCamera,origin: GeoPosition,enabled: bool):
 				if not rect.intersects(visible_rect.grow(1024 if prefetch else 0)): continue
 				if prefetch and bytes+pending.size()*int(n.pixels)*int(n.pixels)*4>=LIMIT_BYTES: continue
 				wanted[key]=true;request(key)
-				if cache.has(key) and not prefetch:
-					cache[key].sprite.position=Vector2(n.x-origin.east,n.y-origin.south);cache[key].sprite.visible=true
+				if not prefetch:
+					var ready: bool=cache.has(key) and cache[key].sprite.modulate.a>=1.0
+					if not ready:
+						for alternate in cache:
+							var old: Dictionary=nodes[alternate]
+							if old.x==n.x and old.y==n.y and alternate!=key:
+								cache[alternate].sprite.position=Vector2(n.x-origin.east,n.y-origin.south);cache[alternate].sprite.visible=true;cache[alternate].sprite.z_index=0
+								cache[alternate].used=frame;break
+					if cache.has(key):
+						cache[key].sprite.position=Vector2(n.x-origin.east,n.y-origin.south);cache[key].sprite.visible=true;cache[key].sprite.z_index=1
 	# Strict memory bound; LRU may evict prefetch before visible imagery.
 	var keys := cache.keys();keys.sort_custom(func(a,b): return cache[a].used<cache[b].used)
 	for key in keys:

@@ -1,4 +1,6 @@
 extends Node2D
+var fish: FishPopulation
+var fish_save_time := 0.0
 var structures: GeographicStructures
 var imagery: AerialImageryLayer
 var settings: GameSettings
@@ -28,13 +30,18 @@ func _ready():
 	store=GeographyStore.new();depth=DepthService.new(store)
 	boat=BoatModel.new(JSON.parse_string(FileAccess.get_file_as_string(store.root+"boat.json")))
 	boat.geo=GeoPosition.new(store.manifest.spawn[0],store.manifest.spawn[1])
-	renderer=GeographicRenderer.new();renderer.show_behind_parent=true;renderer.store=store;add_child(renderer)
-	imagery=AerialImageryLayer.new();imagery.show_behind_parent=true;add_child(imagery);imagery.setup(store.root)
-	structures=GeographicStructures.new();structures.show_behind_parent=true;add_child(structures);structures.setup(store.root)
+	renderer=GeographicRenderer.new();renderer.show_behind_parent=true;renderer.z_index=-1;renderer.store=store;add_child(renderer)
+	imagery=AerialImageryLayer.new();imagery.show_behind_parent=true;imagery.z_index=-4;add_child(imagery);imagery.setup(store.root)
+	structures=GeographicStructures.new();structures.show_behind_parent=true;add_child(structures);structures.setup(store.root);structures.visible=false
+	RenderingServer.set_default_clear_color(Color(.145,.455,.447))
 	camera=MapCamera.new();add_child(camera);camera.setup(store.manifest)
 	overlay=DebugOverlay.new();add_child(overlay);overlay.visible=false
 	hud=GameHud.new();add_child(hud);hud.setup(self,settings)
 	apply_visual_mode()
+	if FileAccess.file_exists(store.root+"fish-habitat.json"):
+		fish=FishPopulation.new();fish.configure(JSON.parse_string(FileAccess.get_file_as_string(store.root+"fish-habitat.json")))
+		var error := fish.load_from("user://fish-population.dat")
+		if error!=OK and error!=ERR_FILE_NOT_FOUND: hud.tell("Fish save incompatible; initialized current habitat population.")
 	bench="--benchmark" in OS.get_cmdline_user_args()
 	if "--view=alafia" in OS.get_cmdline_user_args():
 		view_alafia();capture_name="alafia.png"
@@ -48,6 +55,9 @@ func apply_visual_mode():
 	depth.permissive_navigation=settings.options.permissive_navigation
 	if not settings.options.developer and int(settings.options.visual_mode)==2: settings.options.visual_mode=0
 	renderer.chart=int(settings.options.visual_mode)==1
+	renderer.contours=bool(settings.options.contours)
+	renderer.overlay_opacity=float(settings.options.depth_opacity)
+	imagery.target_opacity=float(settings.options.aerial_opacity)
 func teleport_to(p: GeoPosition) -> bool:
 	if not depth.navigable(p,boat.settings.length_m*.5+.2):
 		hud.tell("Teleport rejected: "+depth.navigation_reason+". If loading, try again shortly.");return false
@@ -60,7 +70,8 @@ func _unhandled_input(e):
 	camera.event(e,boat)
 	if e.is_action_pressed("teleport_boat_to_cursor",false,true):
 		teleport_to(camera.world_at(camera.reticle if camera.targeting else get_viewport().get_mouse_position()))
-	if e.is_action_pressed("chart",false,true): renderer.chart=not renderer.chart
+	if e.is_action_pressed("local_soundings",false,true): settings.options.soundings=not settings.options.soundings;hud.persist()
+	if e.is_action_pressed("chart",false,true): settings.options.visual_mode=0 if renderer.chart else 1;apply_visual_mode();hud.persist()
 	if e.is_action_pressed("visual_mode",false,true): settings.options.visual_mode=(int(settings.options.visual_mode)+1)%2;apply_visual_mode();hud.persist()
 	if e.is_action_pressed("debug_overlay",false,true): overlay.visible=not overlay.visible
 	if settings.options.developer:
@@ -83,7 +94,12 @@ func _process(dt):
 	for y in range(-1,2):
 		for x in range(-1,2):
 			store.request(GeoPosition.new(boat.geo.east+x*store.manifest.chunk_m,boat.geo.south+y*store.manifest.chunk_m).key(0,store.manifest.chunk_m))
-	renderer.tick(camera,origin);imagery.tick(camera,origin,settings.options.developer and int(settings.options.visual_mode)==2);structures.tick(camera,origin,renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
+	renderer.tick(camera,origin);imagery.tick(camera,origin,not renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
+	if fish!=null and not hud.menu.visible:
+		fish.tick(dt,boat.geo,depth);fish_save_time+=dt
+		if fish_save_time>=60:
+			fish_save_time=0
+			if fish.save_to("user://fish-population.dat")!=OK: hud.tell("Fish population could not be saved.")
 	queue_redraw()
 	if "--capture" in OS.get_cmdline_user_args() and not screenshot_done and Time.get_ticks_msec()>5000:
 		screenshot_done=true
@@ -105,16 +121,30 @@ func _draw():
 		draw_set_transform(Vector2.ZERO)
 	else:
 		draw_circle(pos,4*mpp,Color(1,0.83,0.4),false,mpp)
-	if settings.options.soundings and camera.span<=2000:
-		var spacing := maxf(10,pow(10,floor(log(camera.span/5)/log(10))))
-		for y in range(-2,3):
-			for x in range(-3,4):
-				var p := GeoPosition.new(floor(camera.geo.east/spacing)*spacing+x*spacing,floor(camera.geo.south/spacing)*spacing+y*spacing)
+	if settings.options.soundings and camera.span<30000:
+		var spacing := sounding_spacing(mpp)
+		var radius: float=minf(float(settings.options.soundings_radius),camera.span)
+		var half := get_viewport_rect().size*mpp*.5
+		var low := Vector2(maxf(boat.geo.east-radius,camera.geo.east-half.x),maxf(boat.geo.south-radius,camera.geo.south-half.y))
+		var high := Vector2(minf(boat.geo.east+radius,camera.geo.east+half.x),minf(boat.geo.south+radius,camera.geo.south+half.y))
+		for y in range(ceili(low.y/spacing),floori(high.y/spacing)+1):
+			for x in range(ceili(low.x/spacing),floori(high.x/spacing)+1):
+				var p := GeoPosition.new(x*spacing,y*spacing)
+				if pow(p.east-boat.geo.east,2)+pow(p.south-boat.geo.south,2)>radius*radius: continue
 				var d := depth.get_depth_metadata(p)
-				if d.available and d.elevation<0:
+				if d.available and d.depth>0:
 					draw_set_transform(p.relative_to(origin),0,Vector2.ONE*mpp)
-					draw_string(ThemeDB.fallback_font,Vector2.ZERO,"%.1f ft" % (d.depth*3.280839895),HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color(0.8,0.88,0.8))
+					var text := "%.1f ft" % (d.depth*3.280839895)
+					draw_string_outline(ThemeDB.fallback_font,Vector2.ZERO,text,HORIZONTAL_ALIGNMENT_LEFT,-1,16,4,Color(.02,.06,.07,.9))
+					draw_string(ThemeDB.fallback_font,Vector2.ZERO,text,HORIZONTAL_ALIGNMENT_LEFT,-1,16,Color(.9,.95,.91))
 		draw_set_transform(Vector2.ZERO)
+func sounding_spacing(mpp: float) -> float:
+	var target := maxf(10,mpp*150)
+	var unit := pow(10,floor(log(target)/log(10)))
+	for factor in [1.0,2.0,5.0,10.0]:
+		if unit*factor>=target: return unit*factor
+	return unit*10
+
 func benchmark_tick(dt: float):
 	bench_time+=dt
 	bench_phase=mini(6,int(bench_time/8))
@@ -143,4 +173,6 @@ func benchmark_tick(dt: float):
 		bench=false
 		if "--benchmark" in OS.get_cmdline_user_args(): get_tree().quit()
 func _exit_tree():
+	if fish!=null and fish.save_to("user://fish-population.dat")!=OK: push_warning("Fish population save failed: "+OS.get_user_data_dir())
 	if store!=null: store.shutdown()
+

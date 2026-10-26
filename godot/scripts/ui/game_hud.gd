@@ -34,7 +34,7 @@ func tick(dt: float):
 	var units := ["MPH","kn","km/h"]
 	var factors := [2.236936292,1.94384449,3.6]
 	var unit := clampi(int(settings.options.speed_unit),0,2)
-	readout.text="%.1f %s   |   %s\nThrottle %d%%" % [absf(main.boat.speed)*factors[unit],units[unit],("Depth: %.1f ft · NAVD88" % (d.depth*3.280839895)) if d.available else "Depth: Unknown",roundi(main.boat.throttle*100)]
+	readout.text="%.1f %s   |   %s\nThrottle %d%%" % [absf(main.boat.speed)*factors[unit],units[unit],("Depth: %.1f ft" % (d.depth*3.280839895)) if d.available else "Depth: Unknown",roundi(main.boat.throttle*100)]
 	message_time-=dt
 	if message_time<=0: notice.text=""
 	target_reticle.visible=main.camera.targeting and not menu.visible
@@ -59,12 +59,19 @@ func back(): button("Back",home)
 func video():
 	clear();title("Video / Display")
 	var modes := OptionButton.new()
-	for name in ["Stylized","Chart"]: modes.add_item(name)
+	for name in ["Water imagery","Chart"]: modes.add_item(name)
 	modes.select(int(settings.options.visual_mode) if int(settings.options.visual_mode)<2 else -1);body.add_child(modes)
 	if int(settings.options.visual_mode)==2: modes.text="Reference (developer)"
 	modes.item_selected.connect(func(i): settings.options.visual_mode=i;main.apply_visual_mode();persist())
+	button("Depth contours: "+str(settings.options.contours),func(): settings.options.contours=not settings.options.contours;main.apply_visual_mode();persist();video())
+	slider("Aerial opacity","aerial_opacity",0,1,.05)
+	slider("Bathymetric shading opacity","depth_opacity",0,1,.05)
 	button("Toggle fullscreen",func(): DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if DisplayServer.window_get_mode()==DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN))
 	back()
+func slider(label: String,key: String,low: float,high: float,step: float):
+	title(label)
+	var control := HSlider.new();control.min_value=low;control.max_value=high;control.step=step;control.value=float(settings.options[key]);body.add_child(control)
+	control.value_changed.connect(func(value): settings.options[key]=value;main.apply_visual_mode();persist())
 func gameplay():
 	clear();title("Gameplay")
 	var unit := OptionButton.new()
@@ -74,6 +81,7 @@ func gameplay():
 	title("Depths: feet below NAVD88 zero; no tide correction.\nChart contours: 5 ft. Unknown depths remain unknown.")
 	button("View lower Alafia",func(): main.view_alafia();toggle())
 	button("Local soundings: "+str(settings.options.soundings),func(): settings.options.soundings=not settings.options.soundings;persist();gameplay())
+	slider("Local soundings radius (meters)","soundings_radius",500,10000,500)
 	button("Allow mapped water with unknown depth: "+str(settings.options.permissive_navigation),func(): settings.options.permissive_navigation=not settings.options.permissive_navigation;main.apply_visual_mode();persist();gameplay())
 	back()
 func developer():
@@ -81,7 +89,7 @@ func developer():
 	button("Enable developer controls: "+str(settings.options.developer),func(): settings.options.developer=not settings.options.developer;main.apply_visual_mode();persist();developer())
 	button("Show / hide diagnostic overlay",func(): main.overlay.visible=not main.overlay.visible)
 	if settings.options.developer:
-		button("Reference overlay (faded aerial imagery)",func(): settings.options.visual_mode=2;main.apply_visual_mode();persist();toggle())
+		button("Depth provenance: blue source / gold reconstructed / pink unavailable",func(): main.renderer.provenance_view=not main.renderer.provenance_view;toggle())
 		button("Run 56-second benchmark",func(): main.bench=true;main.bench_time=0;main.bench_rows.clear();toggle())
 	back()
 func controls():

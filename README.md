@@ -2,6 +2,12 @@
 
 An offline Godot 4.5.2 geographic boating prototype for Tampa Bay. One projected meter is one game unit. The active project is an ordinary, unzipped Git checkout.
 
+## Phase 3: water, depths and fish foundation
+
+Water imagery mode now uses the existing Alafia photography over water, solid green land, and adjustable bathymetric shading. **Settings → Video / Display** controls both opacities and contours. Press **L** (controller Back) for local depth soundings; adjust their radius in Gameplay. Chart mode remains available. All player depth readings use feet.
+
+The newer Hillsborough survey, bounded river reconstruction, connected-water filtering and persistent 100,000-fish foundation are described in [Phase 3 status](docs/PHASE3-STATUS.md), including genuine coverage gaps. This is a partial upstream expansion: aerial coverage is still the Alafia pilot, some tributary acquisition is incomplete, and upstream water levels/complete river bathymetry are not finished. Developer settings include a depth-provenance color view. Fish state saves in Godot's user data folder as `fish-population.dat`; it is independent of camera position and zoom.
+
 ## Play the current project
 
 Double-click **Play BayGame.bat** in this folder. It imports the latest saved resources, then runs `godot/project.godot` directly. It does not launch the exported EXE or extract an archive. Save edits, close the game, and double-click again to run the new version.
@@ -82,6 +88,7 @@ The compact HUD shows actual boat speed (MPH by default), depth in feet relative
 | T | Teleport to mouse cursor, after collision/coverage validation |
 | R | Toggle controller targeting reticle |
 | Tab / V | Toggle chart / cycle visual mode |
+| L or controller Back | Toggle local depth soundings |
 | Escape or controller Start | Pause/settings |
 | F3 | Toggle developer overlay |
 
@@ -89,33 +96,16 @@ Xbox-style defaults: left stick steers, triggers adjust throttle proportionally,
 
 The boat approaches **50 mph** forward, caps reverse at 5 m/s, retains momentum, and uses movement subdivisions of at most 1 m for shoreline checks. Thrust-assisted yaw permits near-pivot low-speed turns and reverse maneuvering, while high-speed turns widen smoothly. Teleport resets speed, yaw and throttle, preserves zoom, and follows the relocated boat. Land, missing collision data and disallowed water are rejected; retry briefly if a destination is still loading.
 
-## Phase 2 geography and imagery
+## Geographic data and limits
 
-Choose **Settings → Gameplay → View lower Alafia**. Video settings select **Stylized** or **Chart**. Both use cohesive textured land and stylized water throughout the map. Aerial imagery is available only through the enabled Developer menu as a 30%-opacity fading reference overlay. Older visual settings migrate to Stylized.
+Choose **Settings → Gameplay → View lower Alafia** to inspect the imagery pilot. Thirty georeferenced USDA NAIP 2023 tiles reuse the existing downloads, now masked to water in a four-resolution WebP pack (~5.7 MiB). Decoding uses workers, one GPU upload per frame and a 96 MiB cache target. Other areas use a consistent water-color fallback. Source shoreline inaccuracies remain visible along some photographed banks.
 
-- Developer reference only — USDA NAIP 2023: 30 georeferenced tiles, 0.5 m exported pixels from 0.3 m Florida source imagery captured January 6/11, 2023. Four imagery resolutions share one indexed WebP pack (~19.3 MiB), covering the Williams Park/lower Alafia pilot. Land masks preserve stylized water. Texture decoding uses workers, one upload per frame and a 96 MiB texture-cache target.
-- USGS NHDPlus HR: polygons and flowlines acquired within **W -82.43, S 27.80, E -82.23, N 27.94**. 471 intersecting/ancestor vector tiles patched; NOAA depth rasters unchanged. Water components, flowlines, width availability and independently unknown fish passage/bathymetry are recorded in `waterways.json`. Flowlines are never given invented widths.
-- Conservative navigation requires known depth and chart coverage. The optional permissive mode also admits mapped estuary-connected water without known depth, subject to land/footprint checks. Unknown depths remain unknown.
-- Three approximate, sourced visual structure records identify Williams Park ramp/dock and a US 41 bridge segment. These are not surveyed collision polygons. Most over-water docks still need individual masking.
+NOAA-5163 remains the baseline NAVD88 composite. Separate USF Hillsborough survey rasters take priority where supplied; deterministic reconstruction fills a small set of supported lower-river gaps. `river-surveys.json`, `reconstruction.json` and `water-network.json` under `godot/assets/generated` record source references, parameters, connectivity and remaining gaps. Original NOAA depth files remain unchanged. The older `waterways.json` is retained as historical pilot data; the Phase 3 network is authoritative for this revision.
 
-**Incomplete:** wider Hillsborough/Little Manatee/Manatee/Old Tampa tributary expansion; full upstream/barrier audit; complete hydrological routing and fish-passage model; exhaustive shoreline/structure alignment; sustained imagery-streaming benchmark; physical-controller hardware testing; full Williams Park-to-bay gameplay traversal validation. No barriers were returned by the filtered pilot barrier query, which does not establish that the area is barrier-free. The NOAA DEM has limited eastern coverage. Coastal masks retain source-scale inaccuracies.
+Conservative boat navigation requires known game depth plus chart or connected mapped-water coverage and collision clearance. Permissive navigation admits mapped water with unavailable depth, still subject to shoreline and barrier checks. No advanced draft grounding, tide model or upstream water-surface model is implemented. Separate structure graphics are disabled; the source records remain preserved.
 
 ## GIS development
 
-Normal gameplay needs no Python or network. To regenerate data, use Python 3.12 and `requirements.txt`; raw downloads/caches remain untracked under `data/`.
+Normal gameplay needs no Python or network. Rebuild instructions are in [Phase 3 status](docs/PHASE3-STATUS.md). Use Python 3.12 with `requirements.txt`; raw input downloads and caches remain ignored under `data/`. Reuse existing imagery downloads. A base geography rebuild replaces patched vectors, so rerun the Phase 3 pipeline afterward. Do not run the historical Phase 2 hydro patch over a completed Phase 3 build.
 
-```powershell
-python -m tools.gis.acquire
-python -m tools.gis.pilot_acquire hydro
-python -m tools.gis.pilot_acquire imagery
-python -m tools.gis.pilot_build hydro
-python -m tools.gis.pilot_build imagery
-```
-
-The base `tools.gis.build` also requires the NOAA DEM described in `docs/SOURCES.md`. A base rebuild replaces patched vectors: rerun `pilot_build hydro` and `pilot_build imagery` afterward. The pilot patch only touches its intersecting regions/ancestors; it does not recompute bathymetry or the whole 9,336-tile map.
-
-The existing EPSG:32617 projection, scalar-double geographic coordinates, floating origin, multiresolution renderer and separate depth queries remain. See `docs/ARCHITECTURE.md` and `docs/SOURCES.md` for the original design, and **docs/PHASE2-STATUS.md** for the current audit. Older validation/benchmark documents describe the earlier prototype, not an automatic performance guarantee for this update.
-
-## Visual/navigation revision
-
-Unknown-depth water uses a soft teal, visual-only fallback blended with available neighboring depth samples. Numeric depth and navigation still use the original unchanged DepthService. Procedural land grain and a decorative vegetation-colored shoreline band are stylistic, not classified marsh/urban habitat data. Structure symbols remain approximate visual records; the bridge record covers only a segment. Geometry LOD edges can still shift as detail changes, but ordinary gameplay no longer streams photo tiles. See `docs/VISUAL-REVISION.md` for focused validation.
+EPSG:32617, scalar-double geographic positions, floating origin and geographic LOD rendering remain unchanged. `docs/ARCHITECTURE.md` and `docs/SOURCES.md` describe the original foundation. Phase 2 and visual-revision reports are historical; [Phase 3 status](docs/PHASE3-STATUS.md) records the current implementation and limitations.

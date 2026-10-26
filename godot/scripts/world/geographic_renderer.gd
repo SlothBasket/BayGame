@@ -8,6 +8,9 @@ var requested_lod := 7
 var render_build_ms := 0.0
 var visual_bytes := 0
 var chart := false
+var overlay_opacity := 0.55
+var provenance_view := false
+var contours := false
 var debug := false
 func keys_for(level: int,camera: MapCamera) -> Array:
 	var size: float = store.manifest.chunk_m*pow(2,level)
@@ -44,6 +47,9 @@ func tick(camera: MapCamera,origin: GeoPosition):
 	for key in views:
 		views[key].visible=key in selected
 	for key in selected:
+		views[key].provenance_view=provenance_view
+		views[key].contours=contours
+		views[key].overlay_opacity=overlay_opacity
 		views[key].refresh(origin,chart,debug,mpp)
 	visible_count=selected.size()
 	# Bound visual cache separately from data cache; keep parent overview resident.
