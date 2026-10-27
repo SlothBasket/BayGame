@@ -23,6 +23,7 @@ var ecology: FishEcology
 var pending_ecology: Dictionary = {}
 var restored_rng_state := 0
 var fresh_population := true
+var food_web: FishFoodWeb
 var movement: FishMovement
 var observed_fish := -1
 var migration_backup_needed := false
@@ -310,6 +311,12 @@ func setup_movement(root: String) -> bool:
 	return movement.setup(self,root,ecology.pending_movement)
 
 func dispose():
+	if food_web!=null: food_web.p=null;food_web.eco=null
+	food_web=null
 	if movement!=null: movement.p=null;movement.eco=null
 	if ecology!=null: ecology.population=null
 	movement=null;ecology=null
+
+func setup_food_web(root: String) -> bool:
+	food_web=FishFoodWeb.new()
+	return food_web.setup(self,root,ecology.pending_food_web)

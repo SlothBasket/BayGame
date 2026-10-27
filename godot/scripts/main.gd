@@ -49,6 +49,7 @@ func _ready():
 		fish_save_allowed=(error==OK or error==ERR_FILE_NOT_FOUND)
 		if not fish.setup_ecology(ecosystem_config,JSON.parse_string(FileAccess.get_file_as_string(store.root+"bay-habitats.json"))): fish_save_allowed=false
 		if not fish.setup_movement(store.root): fish_save_allowed=false
+		elif not fish.setup_food_web(store.root): fish_save_allowed=false
 		if not fish_save_allowed: hud.tell("Fish save incompatible; saving disabled to preserve your original population.")
 	fish_overlay=FishDebugOverlay.new();add_child(fish_overlay);fish_overlay.setup(self)
 	bench="--benchmark" in OS.get_cmdline_user_args()

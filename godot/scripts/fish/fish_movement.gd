@@ -57,7 +57,7 @@ func habitat(i: int,zone: int,component: int,salt: int) -> int:
 	for id in choices:
 		var n: Dictionary=nav.nodes[id];var value := feature_score(i,id)
 		value+=float(posmod(int(id)*97+salt*7919,1000))*.001
-		value+=float(p.food[int(n.zone)])*p.hunger[i]-float(eco.pressure[int(n.zone)])*4
+		value+=(p.food_web.productivity(int(n.zone)) if p.food_web!=null else float(p.food[int(n.zone)]))*p.hunger[i]-float(eco.pressure[int(n.zone)])*4
 		if float(n.depth_m)+eco.tide_level_m<maxf(.2,p.size_cm[i]*.003): continue
 		if n.zone!=zone: value-=1
 		if value>score: score=value;best=id
@@ -73,7 +73,7 @@ func choose(i: int):
 	if anchor<0: p.decision_at[i]=p.elapsed+30;return
 	var component: int=nav.nodes[anchor].component;var goal: int=preferred_feed[i] if eco.routine_goal(i)==eco.feeding[i] else preferred_rest[i]
 	var candidate := habitat(i,p.region[i],component,int(p.ids[i])+int(p.elapsed/30))
-	if candidate>=0 and (p.rng.randf()<.25 or eco.pressure[p.region[i]]>.35): goal=candidate
+	if candidate>=0 and (p.rng.randf()<.25 or eco.pressure[p.region[i]]>.35 or (p.food_web!=null and p.food_web.productivity(int(nav.nodes[goal].zone))<.2)): goal=candidate
 	# Schoolmates follow broad habitat goals, with their own offsets and routes.
 	if eco.school[i]>=0 and eco.pressure[p.region[i]]<.3:
 		for member in eco.schools.get(eco.school[i],[]):
@@ -88,6 +88,9 @@ func choose(i: int):
 	if not nav.nodes.has(goal) or nav.nodes[goal].component!=component: goal=anchor
 	var radius := 12.0 if eco.profile(i).style in ["ambush","bottom_ambush"] else 45.0
 	var target := nav.offset(goal,int(p.ids[i])+int(p.elapsed),radius)
+	if p.food_web!=null and p.food_web.ready: target=p.food_web.feature_destination(goal,"feeding" if eco.routine_goal(i)==eco.feeding[i] else "resting",int(p.ids[i])+int(p.elapsed))
+	var area_goal := nav.nearest(target)
+	if area_goal>=0: goal=area_goal
 	if p.hunger[i]>.4 and eco.profile(i).style in ["chase","hunt","travel"]:
 		var nearest := 1200.0*1200.0
 		for index in eco.forage_zones.get(int(p.region[i]),[]):

@@ -3,6 +3,7 @@ extends RefCounted
 # Persistent individual routines over the existing water graph. No render dependencies.
 var population
 var pending_movement: Dictionary = {}
+var pending_food_web: Dictionary = {}
 var config: Dictionary = {}
 var habitats: Array = []
 var home := PackedInt32Array()
@@ -161,9 +162,10 @@ func on_arrival(i: int):
 func is_alive(i: int) -> bool:
 	return alive[i]==1
 func serialize() -> Dictionary:
-	return {"movement":population.movement.serialize() if population.movement!=null and population.movement.ready else {},"food_web_version":1,"forage":forage,"predators":predators,"pressure":pressure,"forage_cursor":forage_cursor,"predator_clock":predator_clock,"forage_consumed":forage_consumed,"game_fish_consumed":game_fish_consumed,"predator_meals":predator_meals,"jumps":jumps,"predator_ratio":predator_ratio,"home":home,"feeding":feeding,"resting":resting,"phase":phase,"boldness":boldness,"school":school,"alive":alive,"spot":spot,"returning":returning,"tide_level_m":tide_level_m,"current":current,"returns":returns}
+	return {"food_web":population.food_web.serialize() if population.food_web!=null and population.food_web.ready else {},"movement":population.movement.serialize() if population.movement!=null and population.movement.ready else {},"food_web_version":1,"forage":forage,"predators":predators,"pressure":pressure,"forage_cursor":forage_cursor,"predator_clock":predator_clock,"forage_consumed":forage_consumed,"game_fish_consumed":game_fish_consumed,"predator_meals":predator_meals,"jumps":jumps,"predator_ratio":predator_ratio,"home":home,"feeding":feeding,"resting":resting,"phase":phase,"boldness":boldness,"school":school,"alive":alive,"spot":spot,"returning":returning,"tide_level_m":tide_level_m,"current":current,"returns":returns}
 func restore(d: Dictionary) -> bool:
 	pending_movement=d.get("movement",{})
+	pending_food_web=d.get("food_web",{})
 	var count: int=population.ids.size()
 	for key in ["home","feeding","resting","phase","boldness","school","alive","spot","returning"]:
 		if not d.has(key) or d[key].size()!=count: return false
@@ -205,7 +207,8 @@ func initialize_food_web():
 func rebuild_forage_index():
 	forage_zones.clear()
 	for z in range(population.zones.size()): forage_zones[z]=[]
-	for index in range(forage.size()): forage_zones[int(forage[index].zone)].append(index)
+	for index in range(forage.size()):
+		if forage[index].get("active",true): forage_zones[int(forage[index].zone)].append(index)
 func set_predator_ratio(value: float):
 	predator_ratio=clampf(value,0,.03)
 	var target := roundi(population.ids.size()*predator_ratio);var p=population
@@ -226,6 +229,7 @@ func set_predator_ratio(value: float):
 				p.movement.plan_record(predators[-1],true)
 func tick(dt: float,player: GeoPosition):
 	var p=population;near_zones.clear()
+	if p.food_web!=null and p.food_web.ready: p.food_web.tick(dt)
 	var cell := Vector2i(roundi(player.east/750),roundi(player.south/750))
 	for y in range(-1,2):
 		for x in range(-1,2):
@@ -258,6 +262,7 @@ func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 		var offset := delta.normalized()*travel;a.x+=offset.x;a.y+=offset.y
 	return true
 func update_forage(index: int,dt: float):
+	if population.food_web!=null and population.food_web.ready: population.food_web.update_bait(index,dt);return
 	var a: Dictionary=forage[index];var p=population;var z: int=a.zone
 	if a.quantity<=0: a.quantity=0 # Empty pods persist; slow recruitment refills them.
 	a.quantity=minf(a.capacity,a.quantity+dt*.003*p.food[z])
