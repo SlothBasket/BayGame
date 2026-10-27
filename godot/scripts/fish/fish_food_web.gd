@@ -118,6 +118,39 @@ func productivity(zone: int) -> float:
 func initialize_bait(a: Dictionary):
 	for key in {"active":true,"hunger":.3,"fear":0.0,"split_after":0.0,"merge_after":0.0,"parent_id":-1,"merged_into":-1,"activity":"searching","last_event":"","flee_from":Vector2.ZERO,"turn_at":0.0}:
 		if not a.has(key): a[key]={"active":true,"hunger":.3,"fear":0.0,"split_after":0.0,"merge_after":0.0,"parent_id":-1,"merged_into":-1,"activity":"searching","last_event":"","flee_from":Vector2.ZERO,"turn_at":0.0}[key]
+func member_offset(a: Dictionary,seed_value: int,radius: float) -> Vector2:
+	if a.get("individual",false): return Vector2.ZERO
+	var angle := float(posmod(seed_value,6283))*.001
+	var cohesion: float=a.get("cohesion",1.0);var stretch: float=a.get("stretch",1.0)
+	var heading: Vector2=a.get("heading",Vector2.RIGHT)
+	return Vector2(cos(angle)*stretch,sin(angle)/sqrt(stretch))*radius*(.3+.6*float(posmod(seed_value,997))/997.0)/maxf(.5,cohesion) if heading.length_squared()<.01 else Vector2(cos(angle)*stretch,sin(angle)/sqrt(stretch)).rotated(heading.angle())*radius*(.3+.6*float(posmod(seed_value,997))/997.0)/maxf(.5,cohesion)
+func formation(index: int,dt: float):
+	var a: Dictionary=eco.forage[index];var at := Vector2(a.x,a.y)
+	a.cohesion=move_toward(float(a.get("cohesion",1)),.45 if a.fear>.3 else 1.0,dt*.12)
+	a.stretch=lerpf(float(a.get("stretch",1)),1.0+a.fear*1.5+absf(sin(p.elapsed*.03+a.id))*.35, minf(1,dt*.3))
+	if p.elapsed<float(a.get("formation_at",0)): return
+	a.formation_at=p.elapsed+2
+	var aligned := Vector2.ZERO;var separation := Vector2.ZERO;var neighbors := 0;var buddy := -1
+	for other_index in eco.forage_zones[int(a.zone)]:
+		if other_index==index: continue
+		var other: Dictionary=eco.forage[other_index]
+		if not other.active or other.kind!=a.kind: continue
+		var delta := at-Vector2(other.x,other.y);var distance := delta.length()
+		if distance>25: continue
+		aligned+=Vector2(other.get("heading",Vector2.ZERO));neighbors+=1
+		if distance<4 and distance>.01: separation+=delta.normalized()*(4-distance)*.15
+		if not other.get("individual",false) and distance<8: buddy=other_index
+		if neighbors>=6: break
+	if neighbors>0 and a.fear<.3: a.heading=Vector2(a.get("heading",Vector2.ZERO)).lerp(aligned.normalized(),.25).normalized()
+	if a.get("individual",false) and buddy>=0 and a.fear<.1 and a.hunger<.6:
+		if p.elapsed>=float(a.get("leave_school_at",0)):
+			a.school_id=-1;a.leave_school_at=p.elapsed+90;a.next=p.elapsed
+		elif p.elapsed<float(a.leave_school_at)-30:
+			a.school_id=eco.forage[buddy].id;a.activity="loosely accompanying school"
+			var goal := Vector2(eco.forage[buddy].x,eco.forage[buddy].y)+Vector2.from_angle(float(a.id))*2
+			if nav.clear(at,goal): a.natural_path=PackedVector2Array([at,goal]);a.path_cursor=1;a.destination=a.zone
+	var shifted := at+separation.limit_length(.6)
+	if nav.clear(at,shifted): a.x=shifted.x;a.y=shifted.y
 func tick(dt: float):
 	clock+=dt;recruitment_clock+=dt
 	if recruitment_clock>=float(eco.config.get("bait_recruitment_seconds",300)):
@@ -148,6 +181,7 @@ func plan_bait(a: Dictionary):
 			for value in zone_areas[int(z)]:
 				var index := int(value);var habitat: Dictionary=areas[index]
 				var v: float=float(nutrients[index])+p.rng.randf()*.5-eco.pressure[int(z)]*3
+				if habitat.id==a.get("preferred_area","") and nutrients[index]>.3: v+=.7
 				if "shelter" in habitat.roles and a.kind in [0,2,3,4,5]: v+=.8
 				if a.kind>=6 and habitat.kind=="grass_flat_candidate": v+=1.0
 				var candidate := sample(index,int(a.id)+int(p.elapsed),int(nav.nodes[anchor].component));var id: int=nav.nearest(candidate)
@@ -181,12 +215,13 @@ func update_bait(index: int,dt: float):
 	if p.elapsed>=float(a.next) or (a.fear>.3 and p.elapsed>=a.turn_at):
 		plan_bait(a);a.next=p.elapsed+p.rng.randf_range(30,100)
 	var velocity := (1.8 if a.kind>=6 else 1.0) if a.fear>.3 else (.45 if a.kind>=6 else (.05 if a.kind in [4,5] else .3))
+	formation(index,dt)
 	p.movement.move_record(a,dt,velocity)
 	if a.zone!=z: eco.forage_zones[z].erase(index);eco.forage_zones[int(a.zone)].append(index)
-	if a.fear>.6 and a.quantity>=24 and p.elapsed>=a.split_after and eco.forage.size()<int(eco.config.get("bait_record_limit",24000)):
-		var split_quantity := floorf(a.quantity*.5)
+	if not a.get("individual",false) and a.quantity>=4 and (a.fear>.6 or p.rng.randf()<dt*.0002) and p.elapsed>=a.split_after and eco.forage.size()<int(eco.config.get("bait_record_limit",24000)):
+		var split_quantity := floorf(a.quantity*.4) if a.fear>.6 else 1.0
 		a.quantity-=split_quantity;a.capacity=maxf(a.quantity,a.capacity-split_quantity);a.split_after=p.elapsed+300;a.merge_after=p.elapsed+80
-		var child: Dictionary=a.duplicate(true);child.quantity=split_quantity;child.capacity=split_quantity;child.id=eco.forage.size()+1;child.parent_id=a.id;child.last=p.elapsed;child.next=p.elapsed;child.turn_at=p.elapsed;child.erase("natural_path")
+		var child: Dictionary=a.duplicate(true);child.individual=split_quantity==1;child.quantity=split_quantity;child.capacity=split_quantity;child.id=eco.forage.size()+1;child.parent_id=a.id;child.last=p.elapsed;child.next=p.elapsed;child.turn_at=p.elapsed;child.heading=Vector2.from_angle(float(child.id));child.erase("natural_path")
 		eco.forage_zones[int(a.zone)].append(eco.forage.size());eco.forage.append(child)
 		if p.hunting!=null: p.hunting.index_entity(0,eco.forage.size()-1)
 		events.append({"time":p.elapsed,"kind":"split","id":a.id,"other":child.id,"position":Vector2(a.x,a.y)})

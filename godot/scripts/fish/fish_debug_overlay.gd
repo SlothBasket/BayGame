@@ -203,7 +203,7 @@ func refresh():
 		if advanced: text+="\n"+eco.describe(i)+"\nNavigation target: "+str(p.movement.targets[i])
 	elif entity==Entity.BAIT:
 		var a: Dictionary=eco.forage[entity_index];heading.text="%s school #%d" % [eco.FORAGE_NAMES[int(a.kind)],a.id]
-		text+="Approximately %.0f prey · %.1f in\n%s\nHunger %.0f%% · danger %.0f%%\nTarget habitat: %s\n\nRecent: %s\n" % [a.quantity,a.size_cm/2.54,a.get("activity","moving"),a.get("hunger",0)*100,a.get("fear",0)*100,a.get("preferred_area","searching"),a.get("last_event","")]
+		text+="%.0f prey · %.1f in\n%s\nHunger %.0f%% · danger %.0f%%\nTarget habitat: %s\n\nRecent: %s\n" % [a.quantity,a.size_cm/2.54,a.get("activity","moving"),a.get("hunger",0)*100,a.get("fear",0)*100,a.get("preferred_area","searching"),a.get("last_event","")]
 		if not a.get("active",true): text+="Merged into school #%d; original identity retained.\n" % a.merged_into
 		if advanced: text+="\nParent #%d · capacity %.0f\nDestination region %s" % [a.get("parent_id",-1),a.capacity,str(a.destination)]
 	elif entity==Entity.PREDATOR:
@@ -292,8 +292,15 @@ func _draw():
 			if not a.get("active",true) or a.quantity<1: continue
 			var pos: Vector2=observed_position(1,index)
 			if not view_bounds.has_point(pos): continue
-			draw_circle(pos-origin,p.hunting.school_radius(index),Color(.5,.85,1,.35),false,mpp)
-			pos-=origin;var color: Color=BAIT_COLORS[int(a.kind)];var radius: float=clampf(4+sqrt(a.quantity)*.6,4,15)*mpp
+			if not a.get("individual",false):
+				var footprint := PackedVector2Array()
+				for n in range(17): footprint.append(pos-origin+p.food_web.member_offset(a,int(n*6283/16),p.hunting.school_radius(index)))
+				draw_polyline(footprint,Color(.5,.85,1,.35),mpp,true)
+				if main.camera.span<1200:
+					for n in range(mini(8,int(a.quantity))):
+						var member: Vector2=p.food_web.member_offset(a,int(a.id)*137+n*613,p.hunting.school_radius(index))
+						if p.movement.nav.clear(Vector2(a.x,a.y),Vector2(a.x,a.y)+member): draw_circle(pos-origin+member,1.5*mpp,BAIT_COLORS[int(a.kind)])
+			pos-=origin;var color: Color=BAIT_COLORS[int(a.kind)];var radius: float=(2.5 if a.get("individual",false) else clampf(4+sqrt(a.quantity)*.6,4,15))*mpp
 			if a.kind in [4,5]: draw_rect(Rect2(pos-Vector2.ONE*radius,Vector2.ONE*radius*2),color,false,mpp)
 			else: draw_circle(pos,radius,color,false,1.5*mpp)
 			if a.get("fear",0)>.2: draw_circle(pos,radius*(1+a.fear*.8),Color(1,.4,.5,.6),false,mpp)

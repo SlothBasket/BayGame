@@ -98,14 +98,6 @@ func choose(i: int):
 	if p.food_web!=null and p.food_web.ready: target=p.food_web.feature_destination(goal,"feeding" if eco.routine_goal(i)==eco.feeding[i] else "resting",int(p.ids[i])+int(p.elapsed))
 	var area_goal := nav.nearest(target)
 	if area_goal>=0: goal=area_goal
-	if p.hunger[i]>.4 and eco.profile(i).style in ["chase","hunt","travel"]:
-		var nearest := 1200.0*1200.0
-		for index in eco.forage_zones.get(int(p.region[i]),[]):
-			var prey: Dictionary=eco.forage[index]
-			if prey.quantity<=0 or not eco.edible(i,prey): continue
-			var pos := Vector2(prey.x,prey.y);var distance := at.distance_squared_to(pos);var candidate_id := nav.nearest(pos)
-			if distance<nearest and candidate_id>=0 and nav.nodes[candidate_id].component==component:
-				nearest=distance;goal=candidate_id;target=pos
 	var path := nav.route(at,target,goal,"shoreline_edge" in eco.profile(i).habitats or "mangrove_edge_candidate" in eco.profile(i).habitats)
 	if path.is_empty(): p.decision_at[i]=p.elapsed+30;return
 	targets[i]=goal;routes[i]=path;cursors[i]=1;p.destination[i]=int(nav.nodes[goal].zone)
@@ -177,17 +169,6 @@ func plan_record(a: Dictionary,predator: bool):
 			elif a.kind>=6: v+=1 if n.depth_m<3 else 0
 			if v>score: score=v;goal=id
 	var target := nav.offset(goal,int(a.id)+int(p.elapsed),35)
-	if predator and a.kind!=2:
-		var nearest := INF
-		for z in [int(a.zone)]+p.zones[int(a.zone)].neighbors:
-			for fish in p.buckets[int(z)]:
-				if p.size_cm[fish]>=a.size_cm*.55: continue
-				var prey := Vector2(p.east[fish],p.south[fish]);var distance := at.distance_squared_to(prey)
-				if distance<nearest:
-					var intercept: Vector2=prey+headings[fish]*p.speed[fish]*20
-					var candidate := nav.nearest(intercept)
-					if candidate>=0 and nav.nodes[candidate].component==nav.nodes[anchor].component:
-						nearest=distance;goal=candidate;target=intercept if nav.clear(nav.point(goal),intercept) else nav.point(goal)
 	var path := nav.route(at,target,goal)
 	if path.is_empty(): a.destination=-1;return
 	a.natural_path=path;a.path_cursor=1;a.heading=Vector2.ZERO;a.destination=nav.nodes[goal].zone;a.goal_feature=goal;a.replan_at=p.elapsed+30

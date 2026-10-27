@@ -90,7 +90,7 @@ func prey_position(actor: int,kind: int,index: int,data: Dictionary) -> Vector2:
 	var member: int=int(state(actor).get("member",0))
 	var seed_value := (actor+10001)*7919+int(a.id)*137+member*613
 	var angle := float(posmod(seed_value,6283))*.001
-	var offset := Vector2.from_angle(angle)*school_radius(index)*(.25+.65*float(posmod(seed_value,997))/997.0)
+	var offset: Vector2=web.member_offset(a,seed_value,school_radius(index))
 	return at+offset if nav.clear(at,at+offset) else at
 func attack_cooldown(r: Dictionary) -> float:
 	return float(r.get("attack_cooldown_seconds",3.0))
@@ -109,7 +109,7 @@ func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 		var senses: float=1.3 if r.sense in ["electroreception / scent","echolocation"] else 1.0
 		var detection: float=radius*senses*(1.0-float(data.cover)*.5)*(1.1 if data.speed>.4 else .9)
 		if distance>detection or not nav.clear(at,target): continue
-		var score: float=hunger(actor)*2+float(data.size)/maxf(1,length_cm(actor))-distance/maxf(1,detection)-float(data.cover)
+		var score: float=(.5 if candidate.x==0 and eco.forage[candidate.y].get("individual",false) else 0.0)+hunger(actor)*2+float(data.size)/maxf(1,length_cm(actor))-distance/maxf(1,detection)-float(data.cover)
 		if candidate.x==2 and r.style in ["bottom","structure","bottom_shark"]: score+=1
 		if r.style=="chase" and actor>=0 and eco.school[actor]>=0:
 			for member in eco.schools.get(eco.school[actor],[]):
@@ -119,7 +119,7 @@ func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 				if other.kind==3 and other.pod==eco.predators[-actor-1].pod and other.has("hunt") and other.hunt.kind==candidate.x and other.hunt.target==candidate.y: score+=.7;break
 		if score>best: best=score;selected_kind=candidate.x;selected_id=candidate.y
 	if selected_kind<0: s.search_failures+=1;return false
-	s.kind=selected_kind;s.target=selected_id;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
+	s.traffic_position=prey(selected_kind,selected_id).position;s.traffic_seen=p.elapsed;s.kind=selected_kind;s.target=selected_id;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
 	event(actor,s,"detected "+prey(selected_kind,selected_id).label);return true
 func event(actor: int,s: Dictionary,text: String):
 	s.last_event=text
@@ -162,23 +162,19 @@ func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
 		var feature: int=nav.nearest(at)
 		if actor>=0:
 			# Inspect multiple positions within stable preferred areas before relocating.
-			feature=p.movement.preferred_feed[actor]
-			if s.search_failures>=6:
+			if s.search_failures>=12: feature=p.movement.preferred_feed[actor]
+			if s.search_failures>=18:
 				var anchor: int=nav.nearest(at)
 				if anchor>=0:
 					var alternative: int=p.movement.habitat(actor,zone(actor),int(nav.nodes[anchor].component),actor+int(p.elapsed/30))
 					if alternative>=0: feature=alternative
 		if feature<0: s.activity="searching for reachable habitat";return
 		var goal: Vector2=web.feature_destination(feature,"feeding",actor+int(p.elapsed/15))
-		# Mobile hunters inspect nearby forage concentrations using the shared spatial index.
-		if r.style in ["chase","travel","shark","dolphin"]:
-			var best := INF
-			for code in spatial.query(at,120):
-				var kind := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
-				var data := prey(kind,index)
-				if not suitable(actor,kind,index,data,r): continue
-				var distance: float=at.distance_squared_to(data.position)
-				if distance<best and nav.clear(at,data.position): best=distance;goal=data.position
+		# Only locations witnessed during actual detection become learned traffic sites.
+		if waiting and p.elapsed-float(s.get("traffic_seen",-1000))<180 and s.search_failures<12:
+			var learned: int=nav.nearest(s.traffic_position)
+			if learned>=0 and nav.nodes[learned].component==nav.nodes[feature].component:
+				goal=nav.offset(learned,actor+int(p.elapsed/30),12)
 		if actor>=0 and eco.school[actor]>=0 and r.style=="chase":
 			for member in eco.schools.get(eco.school[actor],[]):
 				if member!=actor and eco.alive[member]==1 and states[member].has("search_goal"):
