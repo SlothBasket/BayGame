@@ -2,13 +2,13 @@
 
 An offline Godot 4.5.2 geographic boating prototype for Tampa Bay. One projected meter is one game unit. The active project is an ordinary, unzipped Git checkout.
 
-## Bay imagery and persistent ecosystem
+## Fish ecosystem
 
-The bay now has offline water imagery at **4 m along shorelines / 8 m offshore**, with the finer Alafia pilot retained and older Sentinel imagery filling NAIP gaps (source detail approximately 10 m). Combined imagery packs total **13.97 MiB**. Land stays muted green; Video / Display controls imagery opacity, bathymetric shading and contours. **L** toggles local depth soundings.
+New populations default to **8,000 game fish**, seven configurable species, **1,380 connected zones** and **4,140 smaller habitat spots**. Fish retain IDs, home ranges, preferred feeding/resting areas, routines and school membership. Persistent forage, sharks and dolphin pods add feeding, predation and temporary displacement. Existing three-species saves retain their original fish and receive 100 of each missing species (a 10,000-fish save becomes 10,400).
 
-**10,000 persistent fish** inhabit **1,380 connected geographic zones**. Species, individual depth preferences, hunger and replenishing food influence probabilistic movement. Press **F4** for the fish map: click a zone/fish, inspect its identity and destination, replenish zone food, and use 1×/10×/60× time to watch movement. Selection survives leaving the area; the Center button finds the selected fish again. The save is `user://bay-fish-population.dat`.
+Press **F4** for the ecosystem map. Click fish, forage rings or predator triangles; enter a fish ID to find it again. Cycle map views for habitat, schools, prey and predator pressure. The scrolling panel includes food replenishment, temporary predator scares, tide and predator-density controls, and **1× / 10× / 60× / 300×** simulation. Select a fish and use **Observe selected fish feeding / return cycle** to accelerate its routine; use Center to find it again later.
 
-See [ecosystem status and measured performance](docs/BAY-ECOSYSTEM.md). The accelerated debug/zoom stress test averaged about 53 FPS, so a locked 60 FPS in that case remains unfinished. The prior river work is preserved and paused; [Phase 3 status](docs/PHASE3-STATUS.md) is historical context.
+See [current ecosystem scope](docs/ECOSYSTEM-NEXT.md). Habitat vegetation/substrate labels are inferred candidates, not surveyed maps. The latest behavior pass is **not gameplay-tested or benchmarked**; earlier [performance results](docs/BAY-ECOSYSTEM.md) describe the previous implementation. Bay imagery and paused river work are unchanged.
 
 ## Play the current project
 

@@ -188,7 +188,7 @@ func update_fish(i: int,dt: float):
 		var travel := speed[i]*dt
 		if ecology!=null:
 			var flow := ecology.current.dot(Vector2(dx,dy).normalized())
-			travel=maxf(.05,speed[i]+flow)*dt
+			travel=maxf(.05,speed[i]*(1.7 if behavior[i]==5 else 1.0)+flow)*dt
 		if travel>=distance:
 			buckets[z].erase(i);zone_counts[z]-=1;zone_species_counts[z][species[i]]-=1;region[i]=destination[i];buckets[region[i]].append(i);zone_counts[region[i]]+=1;zone_species_counts[region[i]][species[i]]+=1;east[i]=target.x;south[i]=target.y;destination[i]=-1;behavior[i]=3;decision_at[i]=elapsed;migrations+=1
 			if ecology!=null: ecology.on_arrival(i)
@@ -269,7 +269,7 @@ func setup_ecology(settings: Dictionary,habitat_data: Dictionary) -> bool:
 			for n in range(100):
 				var z := rng.randi_range(0,zones.size()-1);var i := ids.size()
 				ids.append(i+1);east.append(zones[z].x);south.append(zones[z].y);region.append(z);last_update.append(elapsed)
-				species.append(kind);size_cm.append(rng.randf_range(25,95));preferred_depth.append(3);hunger.append(.5);behavior.append(0);destination.append(-1);decision_at.append(elapsed+rng.randf()*60);speed.append(.5)
+				species.append(kind);size_cm.append(rng.randf_range(settings.species[kind].size_min_cm,settings.species[kind].size_max_cm));preferred_depth.append(settings.species[kind].depth_m);hunger.append(.5);behavior.append(0);destination.append(-1);decision_at.append(elapsed+rng.randf()*60);speed.append(.5)
 				buckets[z].append(i);zone_counts[z]+=1;zone_species_counts[z][kind]+=1
 	if fresh_population:
 		for i in range(ids.size()):

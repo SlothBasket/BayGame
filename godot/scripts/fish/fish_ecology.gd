@@ -119,6 +119,9 @@ func destination_score(i: int,z: int) -> float:
 			if alive[leader]==1 and leader!=i:
 				var target: int=p.destination[leader] if p.destination[leader]>=0 else p.region[leader]
 				if z==target: score+=1.8
+	var style: String=profile(i).style
+	if z==p.region[i] and style in ["ambush","bottom_ambush","graze"] and prey_available(i,z)>5: score+=1.3
+	if z!=p.region[i] and style in ["chase","travel"]: score+=.8
 	return score+minf(1.5,prey_available(i,z)*.02)*p.hunger[i]
 func choose_state(i: int):
 	var p=population;var z: int=p.region[i]
@@ -146,6 +149,10 @@ func move_local(i: int,dt: float) -> bool:
 	return true
 func on_decision(i: int):
 	choose_state(i)
+	var intervals: Dictionary={"ambush":Vector2(150,360),"bottom_ambush":Vector2(240,600),"chase":Vector2(15,50),"travel":Vector2(30,70),"graze":Vector2(90,240)}
+	var interval: Vector2=intervals.get(profile(i).style,Vector2(45,150))
+	if population.behavior[i]==5: interval=Vector2(5,15)
+	population.decision_at[i]=population.elapsed+population.rng.randf_range(interval.x,interval.y)
 func on_arrival(i: int):
 	if population.region[i]==routine_goal(i): returns+=1
 func is_alive(i: int) -> bool:
