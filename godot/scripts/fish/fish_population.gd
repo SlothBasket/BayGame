@@ -21,6 +21,8 @@ var near_region := -1
 const SPECIES := ["Redfish","Speckled trout","Snook","Sheepshead","Tarpon","Jack crevalle","Flounder"]
 var ecology: FishEcology
 var pending_ecology: Dictionary = {}
+var restored_rng_state := 0
+var fresh_population := true
 var zones: Array = []
 var zone_counts := PackedInt32Array()
 var zone_species_counts: Array = []
@@ -177,7 +179,9 @@ func update_fish(i: int,dt: float):
 	if ecology!=null and not ecology.is_alive(i): return
 	hunger[i]=minf(1,hunger[i]+dt*.0006*(size_cm[i]/60.0))
 	var z := region[i]
-	if ecology!=null and ecology.move_local(i,dt): return
+	if ecology!=null:
+		ecology.interact(i,dt)
+		if ecology.move_local(i,dt): return
 	if destination[i]>=0:
 		var target: Dictionary=zones[destination[i]]
 		var dx: float=float(target.x)-east[i];var dy: float=float(target.y)-south[i];var distance := sqrt(dx*dx+dy*dy)
@@ -198,6 +202,7 @@ func update_fish(i: int,dt: float):
 func tick_ecosystem(dt: float,player: GeoPosition):
 	if ids.is_empty(): return
 	var begin := Time.get_ticks_usec();var sim_dt := dt*time_scale;elapsed+=sim_dt;zone_clock+=sim_dt
+	if ecology!=null: ecology.tick(sim_dt,player)
 	if zone_clock>=2:
 		for z in range(zones.size()): food[z]=move_toward(food[z],float(zones[z].food_capacity),zone_clock*.0002)
 		zone_clock=0
@@ -222,7 +227,10 @@ func tick_ecosystem(dt: float,player: GeoPosition):
 func inspect_fish(i: int) -> Dictionary:
 	return {"id":ids[i],"species":SPECIES[species[i]],"size_cm":size_cm[i],"preferred_depth_m":preferred_depth[i],"hunger":hunger[i],"east":east[i],"south":south[i],"zone":zones[region[i]].id,"destination":zones[destination[i]].id if destination[i]>=0 else "staying","state":["resting","traveling","feeding","searching","hunting","fleeing","consumed"][behavior[i]]}
 func boost_food(z: int):
-	if z>=0 and z<food.size(): food[z]=1.0
+	if z>=0 and z<food.size():
+		food[z]=1.0
+		if ecology!=null:
+			for index in ecology.forage_zones.get(z,[]): ecology.forage[index].quantity=ecology.forage[index].capacity
 func save_ecosystem(path: String) -> Error:
 	var d := {"version":3 if ecology!=null else 2,"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: d[key]=get(key)
@@ -246,6 +254,7 @@ func load_ecosystem(path: String) -> Error:
 		if d.destination[i]>=0 and not d.destination[i] in zones[d.region[i]].neighbors: return ERR_INVALID_DATA
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: set(key,d[key])
 	pending_ecology=d.get("ecology",{})
+	restored_rng_state=d.rng_state;fresh_population=false
 	elapsed=d.elapsed;zone_clock=d.zone_clock;rng.state=d.rng_state;cursor=int(d.cursor)%count;migrations=d.migrations;decisions=d.decisions
 	buckets.clear()
 	for z in range(zones.size()): buckets[z]=[];zone_counts[z]=0;zone_species_counts[z]=PackedInt32Array([0,0,0,0,0,0,0])
@@ -262,8 +271,19 @@ func setup_ecology(settings: Dictionary,habitat_data: Dictionary) -> bool:
 				ids.append(i+1);east.append(zones[z].x);south.append(zones[z].y);region.append(z);last_update.append(elapsed)
 				species.append(kind);size_cm.append(rng.randf_range(25,95));preferred_depth.append(3);hunger.append(.5);behavior.append(0);destination.append(-1);decision_at.append(elapsed+rng.randf()*60);speed.append(.5)
 				buckets[z].append(i);zone_counts[z]+=1;zone_species_counts[z][kind]+=1
+	if fresh_population:
+		for i in range(ids.size()):
+			var profile: Dictionary=settings.species[species[i]]
+			size_cm[i]=rng.randf_range(profile.size_min_cm,profile.size_max_cm)
+			preferred_depth[i]=float(profile.depth_m)*rng.randf_range(.6,1.5)
 	ecology=FishEcology.new();ecology.setup(self,settings,habitat_data)
-	if not pending_ecology.is_empty(): return ecology.restore(pending_ecology)
+	if not pending_ecology.is_empty():
+		if not ecology.restore(pending_ecology): return false
+		for i in range(ids.size()):
+			if ecology.alive[i]==0:
+				buckets[region[i]].erase(i);zone_counts[region[i]]-=1;zone_species_counts[region[i]][species[i]]-=1
+		rng.state=restored_rng_state
+		return true
 	for i in range(ids.size()):
 		var profile: Dictionary=settings.species[species[i]]
 		# Preserve existing size and depth preferences on migration; calibrate speeds per species.
