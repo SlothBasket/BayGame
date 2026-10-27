@@ -7,7 +7,7 @@ var actions := {
 "zoom_in":["Camera","Zoom in"],"zoom_out":["Camera","Zoom out"],"pan_map":["Camera","Drag map"],"map_left":["Camera","Map / reticle left"],"map_right":["Camera","Map / reticle right"],"map_up":["Camera","Map / reticle up"],"map_down":["Camera","Map / reticle down"],"follow":["Camera","Toggle follow"],"recenter":["Camera","Recenter boat"],"overview":["Camera","World overview"],
 "teleport_boat_to_cursor":["Navigation","Teleport to cursor / reticle"],"target_mode":["Navigation","Controller targeting mode"],"chart":["Navigation","Toggle chart"],"visual_mode":["Navigation","Switch visual mode"],
 "local_soundings":["Navigation","Toggle local depth soundings"],"menu":["Interface","Open / close menu"],"ui_accept":["Interface","Confirm"],"ui_cancel":["Interface","Back / cancel"],
-"debug_overlay":["Developer","Developer overlay"],"chunk_grid":["Developer","Chunk grid"],"benchmark":["Developer","Run benchmark"]}
+"fish_debug":["Developer","Toggle fish ecosystem map"],"debug_overlay":["Developer","Developer overlay"],"chunk_grid":["Developer","Chunk grid"],"benchmark":["Developer","Run benchmark"]}
 func _init(load_saved := true):
 	defaults()
 	if load_saved: restore()
@@ -17,7 +17,7 @@ func defaults():
 	for a in actions:
 		if not InputMap.has_action(a): InputMap.add_action(a,0.2)
 		InputMap.action_erase_events(a)
-	var keys := {"local_soundings":KEY_L,"throttle_up":KEY_W,"throttle_down":KEY_S,"steer_left":KEY_A,"steer_right":KEY_D,"neutral":KEY_SPACE,"follow":KEY_F,"recenter":KEY_HOME,"overview":KEY_O,"teleport_boat_to_cursor":KEY_T,"target_mode":KEY_R,"chart":KEY_TAB,"visual_mode":KEY_V,"menu":KEY_ESCAPE,"ui_accept":KEY_ENTER,"ui_cancel":KEY_BACKSPACE,"debug_overlay":KEY_F3,"chunk_grid":KEY_C,"benchmark":KEY_B}
+	var keys := {"fish_debug":KEY_F4,"local_soundings":KEY_L,"throttle_up":KEY_W,"throttle_down":KEY_S,"steer_left":KEY_A,"steer_right":KEY_D,"neutral":KEY_SPACE,"follow":KEY_F,"recenter":KEY_HOME,"overview":KEY_O,"teleport_boat_to_cursor":KEY_T,"target_mode":KEY_R,"chart":KEY_TAB,"visual_mode":KEY_V,"menu":KEY_ESCAPE,"ui_accept":KEY_ENTER,"ui_cancel":KEY_BACKSPACE,"debug_overlay":KEY_F3,"chunk_grid":KEY_C,"benchmark":KEY_B}
 	for a in keys: bind(a,"key",keys[a])
 	bind("zoom_in","mouse",MOUSE_BUTTON_WHEEL_UP);bind("zoom_out","mouse",MOUSE_BUTTON_WHEEL_DOWN)
 	bind("pan_map","mouse",MOUSE_BUTTON_RIGHT);bind("pan_map","mouse",MOUSE_BUTTON_MIDDLE)

@@ -2,11 +2,13 @@
 
 An offline Godot 4.5.2 geographic boating prototype for Tampa Bay. One projected meter is one game unit. The active project is an ordinary, unzipped Git checkout.
 
-## Phase 3: water, depths and fish foundation
+## Bay imagery and persistent ecosystem
 
-Water imagery mode now uses the existing Alafia photography over water, solid green land, and adjustable bathymetric shading. **Settings → Video / Display** controls both opacities and contours. Press **L** (controller Back) for local depth soundings; adjust their radius in Gameplay. Chart mode remains available. All player depth readings use feet.
+The bay now has offline water imagery at **4 m along shorelines / 8 m offshore**, with the finer Alafia pilot retained and older Sentinel imagery filling NAIP gaps (source detail approximately 10 m). Combined imagery packs total **13.97 MiB**. Land stays muted green; Video / Display controls imagery opacity, bathymetric shading and contours. **L** toggles local depth soundings.
 
-The newer Hillsborough survey, bounded river reconstruction, connected-water filtering and persistent 100,000-fish foundation are described in [Phase 3 status](docs/PHASE3-STATUS.md), including genuine coverage gaps. This is a partial upstream expansion: aerial coverage is still the Alafia pilot, some tributary acquisition is incomplete, and upstream water levels/complete river bathymetry are not finished. Developer settings include a depth-provenance color view. Fish state saves in Godot's user data folder as `fish-population.dat`; it is independent of camera position and zoom.
+**10,000 persistent fish** inhabit **1,380 connected geographic zones**. Species, individual depth preferences, hunger and replenishing food influence probabilistic movement. Press **F4** for the fish map: click a zone/fish, inspect its identity and destination, replenish zone food, and use 1×/10×/60× time to watch movement. Selection survives leaving the area; the Center button finds the selected fish again. The save is `user://bay-fish-population.dat`.
+
+See [ecosystem status and measured performance](docs/BAY-ECOSYSTEM.md). The accelerated debug/zoom stress test averaged about 53 FPS, so a locked 60 FPS in that case remains unfinished. The prior river work is preserved and paused; [Phase 3 status](docs/PHASE3-STATUS.md) is historical context.
 
 ## Play the current project
 
@@ -91,6 +93,7 @@ The compact HUD shows actual boat speed (MPH by default), depth in feet relative
 | L or controller Back | Toggle local depth soundings |
 | Escape or controller Start | Pause/settings |
 | F3 | Toggle developer overlay |
+| F4 | Toggle fish ecosystem map |
 
 Xbox-style defaults: left stick steers, triggers adjust throttle proportionally, right stick moves the map/targeting reticle, Y toggles targeting, A teleports, B selects neutral, X toggles follow, D-pad zooms. Menu face buttons provide confirm/back. All listed gameplay actions use InputMap. Controls settings support multiple keyboard/mouse/controller bindings, signed axes, deadzones, conflict replacement/swap/cancel, clear and restore defaults. Settings persist under Godot's `user://settings.json`. The on-screen Settings button remains available if menu bindings are removed. Benchmark controls require developer mode.
 
@@ -98,7 +101,7 @@ The boat approaches **50 mph** forward, caps reverse at 5 m/s, retains momentum,
 
 ## Geographic data and limits
 
-Choose **Settings → Gameplay → View lower Alafia** to inspect the imagery pilot. Thirty georeferenced USDA NAIP 2023 tiles reuse the existing downloads, now masked to water in a four-resolution WebP pack (~5.7 MiB). Decoding uses workers, one GPU upload per frame and a 96 MiB cache target. Other areas use a consistent water-color fallback. Source shoreline inaccuracies remain visible along some photographed banks.
+Choose **Settings → Gameplay → View lower Alafia** to inspect the imagery pilot. The existing 30-tile Alafia pilot is retained above the new 152-tile full-bay pack. Decoding uses workers, one GPU upload per frame and a 96 MiB cache target. Areas outside the bay imagery footprint use a consistent water-color fallback. Source shoreline inaccuracies remain visible along some photographed banks.
 
 NOAA-5163 remains the baseline NAVD88 composite. Separate USF Hillsborough survey rasters take priority where supplied; deterministic reconstruction fills a small set of supported lower-river gaps. `river-surveys.json`, `reconstruction.json` and `water-network.json` under `godot/assets/generated` record source references, parameters, connectivity and remaining gaps. Original NOAA depth files remain unchanged. The older `waterways.json` is retained as historical pilot data; the Phase 3 network is authoritative for this revision.
 
@@ -106,6 +109,6 @@ Conservative boat navigation requires known game depth plus chart or connected m
 
 ## GIS development
 
-Normal gameplay needs no Python or network. Rebuild instructions are in [Phase 3 status](docs/PHASE3-STATUS.md). Use Python 3.12 with `requirements.txt`; raw input downloads and caches remain ignored under `data/`. Reuse existing imagery downloads. A base geography rebuild replaces patched vectors, so rerun the Phase 3 pipeline afterward. Do not run the historical Phase 2 hydro patch over a completed Phase 3 build.
+Normal gameplay needs no Python or network. Bay imagery and population-zone rebuild instructions are in [ecosystem status](docs/BAY-ECOSYSTEM.md); river development is paused. Use Python 3.12 with `requirements.txt`; raw input downloads and caches remain ignored under `data/`. Reuse existing imagery downloads. A base geography rebuild replaces patched vectors, so rerun the Phase 3 pipeline afterward. Do not run the historical Phase 2 hydro patch over a completed Phase 3 build.
 
-EPSG:32617, scalar-double geographic positions, floating origin and geographic LOD rendering remain unchanged. `docs/ARCHITECTURE.md` and `docs/SOURCES.md` describe the original foundation. Phase 2 and visual-revision reports are historical; [Phase 3 status](docs/PHASE3-STATUS.md) records the current implementation and limitations.
+EPSG:32617, scalar-double geographic positions, floating origin and geographic LOD rendering remain unchanged. `docs/ARCHITECTURE.md` and `docs/SOURCES.md` describe the original foundation. Phase 2 and visual-revision reports are historical; [ecosystem status](docs/BAY-ECOSYSTEM.md) records the current implementation and limitations.

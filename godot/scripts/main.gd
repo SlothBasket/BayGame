@@ -1,6 +1,8 @@
 extends Node2D
+var fish_overlay: FishDebugOverlay
 var fish: FishPopulation
 var fish_save_time := 0.0
+var fish_save_path := "user://bay-fish-population.dat"
 var structures: GeographicStructures
 var imagery: AerialImageryLayer
 var settings: GameSettings
@@ -31,17 +33,19 @@ func _ready():
 	boat=BoatModel.new(JSON.parse_string(FileAccess.get_file_as_string(store.root+"boat.json")))
 	boat.geo=GeoPosition.new(store.manifest.spawn[0],store.manifest.spawn[1])
 	renderer=GeographicRenderer.new();renderer.show_behind_parent=true;renderer.z_index=-1;renderer.store=store;add_child(renderer)
-	imagery=AerialImageryLayer.new();imagery.show_behind_parent=true;imagery.z_index=-4;add_child(imagery);imagery.setup(store.root)
+	imagery=AerialImageryLayer.new();imagery.show_behind_parent=true;imagery.z_index=-8;add_child(imagery);imagery.setup(store.root)
 	structures=GeographicStructures.new();structures.show_behind_parent=true;add_child(structures);structures.setup(store.root);structures.visible=false
 	RenderingServer.set_default_clear_color(Color(.145,.455,.447))
 	camera=MapCamera.new();add_child(camera);camera.setup(store.manifest)
 	overlay=DebugOverlay.new();add_child(overlay);overlay.visible=false
 	hud=GameHud.new();add_child(hud);hud.setup(self,settings)
 	apply_visual_mode()
-	if FileAccess.file_exists(store.root+"fish-habitat.json"):
-		fish=FishPopulation.new();fish.configure(JSON.parse_string(FileAccess.get_file_as_string(store.root+"fish-habitat.json")))
-		var error := fish.load_from("user://fish-population.dat")
+	if FileAccess.file_exists(store.root+"bay-population-zones.json"):
+		fish=FishPopulation.new();fish.configure(JSON.parse_string(FileAccess.get_file_as_string(store.root+"bay-population-zones.json")))
+		var error := fish.load_from(fish_save_path)
+		if "--fish-smoke" in OS.get_cmdline_user_args(): print("FISH_LOAD ",error," COUNT ",fish.ids.size()," PATH ",OS.get_user_data_dir())
 		if error!=OK and error!=ERR_FILE_NOT_FOUND: hud.tell("Fish save incompatible; initialized current habitat population.")
+	fish_overlay=FishDebugOverlay.new();add_child(fish_overlay);fish_overlay.setup(self)
 	bench="--benchmark" in OS.get_cmdline_user_args()
 	if "--view=alafia" in OS.get_cmdline_user_args():
 		view_alafia();capture_name="alafia.png"
@@ -67,6 +71,9 @@ func teleport_to(p: GeoPosition) -> bool:
 func _unhandled_input(e):
 	if e.is_action_pressed("menu",false,true): hud.toggle();return
 	if hud.menu.visible: return
+	if e.is_action_pressed("fish_debug",false,true): fish_overlay.toggle();return
+	if fish_overlay.enabled and e is InputEventMouseButton and e.button_index==MOUSE_BUTTON_LEFT and e.pressed:
+		fish_overlay.select_at(camera.world_at(e.position),camera.span/get_viewport_rect().size.y);return
 	camera.event(e,boat)
 	if e.is_action_pressed("teleport_boat_to_cursor",false,true):
 		teleport_to(camera.world_at(camera.reticle if camera.targeting else get_viewport().get_mouse_position()))
@@ -99,7 +106,8 @@ func _process(dt):
 		fish.tick(dt,boat.geo,depth);fish_save_time+=dt
 		if fish_save_time>=60:
 			fish_save_time=0
-			if fish.save_to("user://fish-population.dat")!=OK: hud.tell("Fish population could not be saved.")
+			if fish.save_to(fish_save_path)!=OK: hud.tell("Fish population could not be saved.")
+	if fish_overlay!=null: fish_overlay.tick(dt)
 	queue_redraw()
 	if "--capture" in OS.get_cmdline_user_args() and not screenshot_done and Time.get_ticks_msec()>5000:
 		screenshot_done=true
@@ -173,6 +181,6 @@ func benchmark_tick(dt: float):
 		bench=false
 		if "--benchmark" in OS.get_cmdline_user_args(): get_tree().quit()
 func _exit_tree():
-	if fish!=null and fish.save_to("user://fish-population.dat")!=OK: push_warning("Fish population save failed: "+OS.get_user_data_dir())
+	if fish!=null and fish.save_to(fish_save_path)!=OK: push_warning("Fish population save failed: "+OS.get_user_data_dir())
 	if store!=null: store.shutdown()
 

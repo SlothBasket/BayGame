@@ -1,0 +1,19 @@
+{
+	"adapter": "NVIDIA GeForce GTX 1660 Ti",
+	"decisions": 16486,
+	"fish_count": 10000,
+	"imagery_cache_mib": 64.484375,
+	"max_frame_ms": 57.353,
+	"mean_behavior_update_ms": 0.783467166979363,
+	"mean_frame_ms": 18.8164183864916,
+	"migrations": 177,
+	"note": "Single 12-second 10k-fish test: 60x simulation, fish debug overlay active, overview-to-close zoom. First 2 seconds excluded. Storage allocation measured separately from behavior updates.",
+	"p95_behavior_update_ms": 1.445,
+	"p95_frame_ms": 31.591,
+	"packed_record_bytes": 665520,
+	"simulated_seconds": 719.04478,
+	"storage_engine_delta_bytes": 4949404,
+	"storage_initialization_ms": 86.581,
+	"viewport": "(1280, 720)",
+	"zones": 1380
+}

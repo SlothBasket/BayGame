@@ -21,6 +21,8 @@ func setup(game, config: GameSettings):
 	var button := Button.new();button.text="Settings";button.pressed.connect(toggle);hud.add_child(button)
 	notice=Label.new();notice.position=Vector2(24,94);notice.add_theme_font_size_override("font_size",18);add_child(notice)
 	target_reticle=Label.new();target_reticle.text="+";target_reticle.add_theme_font_size_override("font_size",32);target_reticle.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(target_reticle)
+	var credit := Label.new();credit.position=Vector2(24,1045);credit.add_theme_font_size_override("font_size",12);credit.add_theme_color_override("font_outline_color",Color(.02,.04,.05));credit.add_theme_constant_override("outline_size",4)
+	credit.text="Imagery: USDA NAIP · Sentinel-2 cloudless — s2maps.eu by EOX IT Services GmbH (modified Copernicus Sentinel data 2016 & 2017) · CC BY 4.0";credit.mouse_filter=Control.MOUSE_FILTER_IGNORE;add_child(credit)
 	menu=PanelContainer.new();menu.position=Vector2(240,120);menu.size=Vector2(1440,820);add_child(menu);menu.hide()
 	var margin := MarginContainer.new();for side in ["left","top","right","bottom"]: margin.add_theme_constant_override("margin_"+side,24)
 	menu.add_child(margin)
@@ -87,6 +89,7 @@ func gameplay():
 func developer():
 	clear();title("Developer")
 	button("Enable developer controls: "+str(settings.options.developer),func(): settings.options.developer=not settings.options.developer;main.apply_visual_mode();persist();developer())
+	button("Fish ecosystem map (F4)",func(): main.fish_overlay.toggle();toggle())
 	button("Show / hide diagnostic overlay",func(): main.overlay.visible=not main.overlay.visible)
 	if settings.options.developer:
 		button("Depth provenance: blue source / gold reconstructed / pink unavailable",func(): main.renderer.provenance_view=not main.renderer.provenance_view;toggle())
