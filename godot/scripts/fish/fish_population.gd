@@ -203,9 +203,6 @@ func update_fish(i: int,dt: float):
 		else:
 			east[i]+=dx/distance*travel;south[i]+=dy/distance*travel
 		return
-	if behavior[i]==2 and ecology==null:
-		var eaten := minf(hunger[i],food[z]*dt*.012)
-		hunger[i]-=eaten;food[z]=maxf(0,food[z]-eaten*.008)
 	if elapsed>=decision_at[i]: choose_destination(i)
 func tick_ecosystem(dt: float,player: GeoPosition):
 	if ids.is_empty(): return

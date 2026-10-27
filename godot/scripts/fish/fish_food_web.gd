@@ -15,6 +15,7 @@ var threats: Dictionary = {}
 var split_count := 0
 var merge_count := 0
 var ready := false
+var observed_bait := -1
 func setup(population,root: String,saved: Dictionary) -> bool:
 	p=population;eco=p.ecology;nav=p.movement.nav
 	var data=JSON.parse_string(FileAccess.get_file_as_string(root+"habitat-areas.json"))

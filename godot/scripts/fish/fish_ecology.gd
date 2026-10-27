@@ -237,6 +237,15 @@ func tick(dt: float,player: GeoPosition):
 		for x in range(-1,2):
 			var z: int=p.spatial.get(cell+Vector2i(x,y),-1)
 			if z>=0: near_zones[z]=true
+	if p.food_web!=null and p.food_web.ready:
+		var nearby: Dictionary={}
+		for z in near_zones:
+			for index in forage_zones.get(z,[]): nearby[index]=true
+		if p.food_web.observed_bait>=0: nearby[p.food_web.observed_bait]=true
+		for index in nearby:
+			if index>=forage.size(): continue
+			var age: float=p.elapsed-forage[index].last
+			if age>=.1: update_forage(index,age);forage[index].last=p.elapsed
 	pressure_clock+=dt
 	if pressure_clock>=2:
 		for z in range(pressure.size()): pressure[z]*=exp(-pressure_clock/120.0)
@@ -287,7 +296,7 @@ func update_forage(index: int,dt: float):
 		var value: float=p.food[candidate]-pressure[candidate]*3+p.rng.randf_range(-.8,.8)
 		if value>score: score=value;best=candidate
 	if best!=z: a.destination=best
-	if p.movement!=null and p.movement.ready: p.movement.plan_record(a,a.has("hunger"))
+	if p.movement!=null and p.movement.ready: p.movement.plan_record(a,a.has("pod"))
 func prey_available(i: int,z: int) -> float:
 	var total := 0.0
 	for index in forage_zones.get(z,[]):

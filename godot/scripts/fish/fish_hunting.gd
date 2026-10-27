@@ -150,7 +150,7 @@ func step(actor: int,dt: float) -> bool:
 		if p.elapsed>=s.until:
 			set_hunger(actor,hunger(actor)-s.meal)
 			if actor>=0:
-				p.size_cm[actor]=minf(float(eco.profile(actor).size_max_cm),p.size_cm[actor]+minf(.02,s.prey_cm*.002))
+				p.size_cm[actor]=maxf(p.size_cm[actor],minf(float(eco.profile(actor).size_max_cm),p.size_cm[actor]+minf(.02,s.prey_cm*.002)))
 			s.stage=Stage.RECOVER;s.until=p.elapsed+float(r.recovery_seconds);s.activity="fed; digesting";event(actor,s,"consumed captured prey")
 		return true
 	if s.stage==Stage.MISS:

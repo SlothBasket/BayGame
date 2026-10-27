@@ -33,10 +33,7 @@ func persist():
 	if settings.save()!=OK: tell("Settings could not be saved.")
 func tick(dt: float):
 	var d: Dictionary = main.depth.get_depth_metadata(main.boat.geo)
-	var units := ["MPH","kn","km/h"]
-	var factors := [2.236936292,1.94384449,3.6]
-	var unit := clampi(int(settings.options.speed_unit),0,2)
-	readout.text="%.1f %s   |   %s\nThrottle %d%%" % [absf(main.boat.speed)*factors[unit],units[unit],("Depth: %.1f ft" % (d.depth*3.280839895)) if d.available else "Depth: Unknown",roundi(main.boat.throttle*100)]
+	readout.text="%.1f MPH   |   %s\nThrottle %d%%" % [absf(main.boat.speed)*2.236936292,("Depth: %.1f ft" % (d.depth*3.280839895)) if d.available else "Depth: Unknown",roundi(main.boat.throttle*100)]
 	message_time-=dt
 	if message_time<=0: notice.text=""
 	target_reticle.visible=main.camera.targeting and not menu.visible
@@ -70,20 +67,17 @@ func video():
 	slider("Bathymetric shading opacity","depth_opacity",0,1,.05)
 	button("Toggle fullscreen",func(): DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if DisplayServer.window_get_mode()==DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN))
 	back()
-func slider(label: String,key: String,low: float,high: float,step: float):
+func slider(label: String,key: String,low: float,high: float,step: float,display_scale := 1.0):
 	title(label)
-	var control := HSlider.new();control.min_value=low;control.max_value=high;control.step=step;control.value=float(settings.options[key]);body.add_child(control)
-	control.value_changed.connect(func(value): settings.options[key]=value;main.apply_visual_mode();persist())
+	var control := HSlider.new();control.min_value=low;control.max_value=high;control.step=step;control.value=float(settings.options[key])*display_scale;body.add_child(control)
+	control.value_changed.connect(func(value): settings.options[key]=value/display_scale;main.apply_visual_mode();persist())
 func gameplay():
 	clear();title("Gameplay")
-	var unit := OptionButton.new()
-	for name in ["MPH","Knots","km/h"]: unit.add_item(name)
-	unit.select(int(settings.options.speed_unit));body.add_child(unit)
-	unit.item_selected.connect(func(i): settings.options.speed_unit=i;persist())
+	title("Speed: MPH · lengths/depths: inches/feet")
 	title("Depths: feet below NAVD88 zero; no tide correction.\nChart contours: 5 ft. Unknown depths remain unknown.")
 	button("View lower Alafia",func(): main.view_alafia();toggle())
 	button("Local soundings: "+str(settings.options.soundings),func(): settings.options.soundings=not settings.options.soundings;persist();gameplay())
-	slider("Local soundings radius (meters)","soundings_radius",500,10000,500)
+	slider("Local soundings radius (feet)","soundings_radius",1500,33000,500,3.280839895)
 	button("Allow mapped water with unknown depth: "+str(settings.options.permissive_navigation),func(): settings.options.permissive_navigation=not settings.options.permissive_navigation;main.apply_visual_mode();persist();gameplay())
 	back()
 func developer():

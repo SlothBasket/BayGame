@@ -185,9 +185,9 @@ func plan_record(a: Dictionary,predator: bool):
 func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 	if not a.has("natural_path") or int(a.get("path_cursor",0))>=a.natural_path.size():
 		if a.destination<0: return false
-		plan_record(a,a.has("hunger"))
+		plan_record(a,a.has("pod"))
 	if not a.has("natural_path"): return false
-	if a.has("hunger") and a.hunger>.35 and p.elapsed>=float(a.get("replan_at",0)): plan_record(a,true)
+	if a.has("pod") and a.hunger>.35 and p.elapsed>=float(a.get("replan_at",0)): plan_record(a,true)
 	var result := advance(Vector2(a.x,a.y),a.natural_path,int(a.path_cursor),velocity*dt,int(a.id)+50000,a.get("heading",Vector2.ZERO),eco.near_zones.has(int(a.zone)))
 	a.x=result.position.x;a.y=result.position.y;a.path_cursor=result.cursor;a.heading=result.heading
 	var anchor := nav.nearest(result.position)
