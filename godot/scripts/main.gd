@@ -23,10 +23,13 @@ var previous_bench_phase := -1
 var screenshot_done := false
 var previous_frame_usec := 0
 var wall_dt := 0.0
+var visual_clock := 0.0
+var normal_max_fps := 0
+var was_fast_forward := false
 var capture_name := "overview.png"
 var report_dir := "user://"
 func _ready():
-	settings=GameSettings.new()
+	settings=GameSettings.new();normal_max_fps=Engine.max_fps
 	previous_frame_usec=Time.get_ticks_usec()
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--report-dir="): report_dir=arg.trim_prefix("--report-dir=")
@@ -91,25 +94,33 @@ func _process(dt):
 	var now := Time.get_ticks_usec()
 	wall_dt=(now-previous_frame_usec)/1000000.0 if previous_frame_usec>0 else dt
 	previous_frame_usec=now
-	store.begin_frame()
-	if bench: benchmark_tick(dt)
-	# Shift before float32 scene conversion. Geographic state never shifts.
-	origin.east=floor(camera.geo.east/1024)*1024
-	origin.south=floor(camera.geo.south/1024)*1024
-	camera.tick(0 if hud.menu.visible else dt,boat,origin)
-	depth.get_depth_metadata(boat.geo)
-	# Prefetch simulation neighborhood before renderer requests.
-	for y in range(-1,2):
-		for x in range(-1,2):
-			store.request(GeoPosition.new(boat.geo.east+x*store.manifest.chunk_m,boat.geo.south+y*store.manifest.chunk_m).key(0,store.manifest.chunk_m))
-	renderer.tick(camera,origin);imagery.tick(camera,origin,not renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
+	var accelerated: bool=fish!=null and fish.fast_forward
+	if accelerated!=was_fast_forward:
+		Engine.max_fps=20 if accelerated else normal_max_fps;was_fast_forward=accelerated
+		if not accelerated and fish.startup_ready: fish.presentation.snapshot(fish)
+	visual_clock+=wall_dt
+	var visual_due := not accelerated or visual_clock>=.2
+	if visual_due:
+		var visual_dt := visual_clock;visual_clock=0
+		store.begin_frame()
+		if bench: benchmark_tick(dt)
+		# Shift before float32 scene conversion. Geographic state never shifts.
+		origin.east=floor(camera.geo.east/1024)*1024
+		origin.south=floor(camera.geo.south/1024)*1024
+		camera.tick(0 if hud.menu.visible else visual_dt,boat,origin)
+		depth.get_depth_metadata(boat.geo)
+		# Prefetch simulation neighborhood before renderer requests.
+		for y in range(-1,2):
+			for x in range(-1,2):
+				store.request(GeoPosition.new(boat.geo.east+x*store.manifest.chunk_m,boat.geo.south+y*store.manifest.chunk_m).key(0,store.manifest.chunk_m))
+		renderer.tick(camera,origin);imagery.tick(camera,origin,not renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(visual_dt)
 	if fish!=null and fish.startup_ready and not hud.menu.visible:
-		fish.tick(dt,boat.geo,depth);fish_save_time+=dt
+		fish.tick(wall_dt,boat.geo,depth);fish_save_time+=wall_dt
 		if fish_save_time>=60 and fish_save_allowed:
 			fish_save_time=0
 			if fish.save_to(fish_save_path)!=OK: hud.tell("Fish population could not be saved.")
-	if fish_overlay!=null: fish_overlay.tick(dt)
-	queue_redraw()
+	if fish_overlay!=null: fish_overlay.tick(wall_dt)
+	if visual_due: queue_redraw()
 	if "--capture" in OS.get_cmdline_user_args() and not screenshot_done and Time.get_ticks_msec()>5000:
 		screenshot_done=true
 		await RenderingServer.frame_post_draw

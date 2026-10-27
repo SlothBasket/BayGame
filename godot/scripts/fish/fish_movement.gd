@@ -153,6 +153,8 @@ func tick_fish(i: int,dt: float):
 			if d.length()>0 and d.length()<spacing: separation+=d.normalized()*(spacing-d.length())*.15
 		if separation.length()>0 and nav.clear(next,next+separation): next+=separation.limit_length(2)
 	p.east[i]=next.x;p.south[i]=next.y;cursors[i]=result.cursor;headings[i]=result.heading
+	if p.hunting!=null and p.hunting.ready:
+		p.hunting.states[i].energy=maxf(0,p.hunting.states[i].energy-at.distance_to(next)*.0002)
 	if next.distance_squared_to(at)<.0001 and cursors[i]<routes[i].size():
 		routes[i]=PackedVector2Array();cursors[i]=0;p.destination[i]=-1;p.decision_at[i]=p.elapsed+1;return
 	var anchor := nav.nearest(next)

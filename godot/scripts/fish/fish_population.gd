@@ -63,6 +63,22 @@ var sim_cursor := 0
 var step_forage_count := 0
 var completed_steps := 0
 var simulation_budget_us := 5000
+var fast_forward := false
+var fast_forward_budget_us := 40000
+var max_throughput := false
+var ahead_active := false
+func simulate_ahead(hours: float):
+	if hours<=0 or not startup_ready: return
+	time_debt+=hours*3600;fast_forward=true;ahead_active=true;max_throughput=false;time_scale=1
+func pause_simulation():
+	time_scale=0;max_throughput=false
+func completed_time() -> float:
+	return elapsed-(WORLD_STEP if sim_phase>=0 else 0.0)
+func requested_speed() -> String:
+	if time_scale<=0 and not max_throughput: return "Paused"
+	if ahead_active: return "Simulate Ahead"
+	if fast_forward and max_throughput: return "Max Throughput"
+	return "%.0f× requested" % time_scale
 var presentation := FishPresentation.new()
 var hunting: FishHunting
 var food_web: FishFoodWeb
@@ -247,13 +263,19 @@ func update_fish(i: int,dt: float):
 		return
 	if elapsed>=decision_at[i]: choose_destination(i)
 func tick_ecosystem(dt: float,_player: GeoPosition):
-	presentation.tick(dt)
-	if ids.is_empty() or time_scale<=0: return
-	var begin := Time.get_ticks_usec();time_debt+=dt*time_scale
+	if not fast_forward: presentation.tick(dt)
+	if ids.is_empty() or (time_scale<=0 and not (fast_forward and max_throughput)): update_ms=0;return
+	var begin := Time.get_ticks_usec()
+	if not ahead_active and not (fast_forward and max_throughput): time_debt+=dt*time_scale
+	var budget: int=clampi(fast_forward_budget_us if fast_forward else simulation_budget_us,1000,100000)
 	# Deterministic phases and a persistent cursor: frame budgets change throughput, not outcomes.
-	while Time.get_ticks_usec()-begin<simulation_budget_us:
+	while Time.get_ticks_usec()-begin<budget:
 		if sim_phase<0:
-			if time_debt+0.0000001<WORLD_STEP: break
+			if time_debt+0.0000001<WORLD_STEP:
+				if fast_forward and max_throughput and not ahead_active: time_debt+=WORLD_STEP
+				else:
+					if ahead_active: ahead_active=false;pause_simulation()
+					break
 			time_debt=maxf(0,time_debt-WORLD_STEP);elapsed+=WORLD_STEP;zone_clock+=WORLD_STEP
 			if ecology!=null: ecology.tick(WORLD_STEP,null)
 			if zone_clock>=2:
@@ -276,7 +298,9 @@ func tick_ecosystem(dt: float,_player: GeoPosition):
 			if age<=WORLD_STEP+.000001: sim_cursor+=1
 		else:
 			if sim_cursor>=ecology.predators.size():
-				sim_phase=-1;sim_cursor=0;completed_steps+=1;presentation.snapshot(self);continue
+				sim_phase=-1;sim_cursor=0;completed_steps+=1
+				if not fast_forward: presentation.snapshot(self)
+				continue
 			var a: Dictionary=ecology.predators[sim_cursor];var age: float=maxf(0,elapsed-float(a.last));var step := minf(WORLD_STEP,age)
 			if step>0 and a.active: ecology.update_predator(a,step)
 			a.last=minf(elapsed,float(a.last)+step)
@@ -286,7 +310,7 @@ func displayed(kind: int,index: int) -> Vector2:
 	var at := Vector2(east[index],south[index]) if kind==0 else Vector2.ZERO
 	if kind>0:
 		var a: Dictionary=ecology.forage[index] if kind==1 else ecology.predators[index];at=Vector2(a.x,a.y)
-	return presentation.position(kind,index,at)
+	return at if fast_forward else presentation.position(kind,index,at)
 func inspect_fish(i: int) -> Dictionary:
 	return {"id":ids[i],"species":SPECIES[species[i]],"size_cm":size_cm[i],"preferred_depth_m":preferred_depth[i],"hunger":hunger[i],"east":east[i],"south":south[i],"zone":zones[region[i]].id,"destination":zones[destination[i]].id if destination[i]>=0 else "staying","state":["resting","traveling","feeding","searching","hunting","fleeing","consumed"][behavior[i]]}
 func boost_food(z: int):
@@ -304,7 +328,7 @@ func save_ecosystem(path: String) -> Error:
 		migration_backup_needed=false
 	var d := {"version":6 if hunting!=null and hunting.ready else (4 if movement!=null and movement.ready else (3 if ecology!=null else 2)),"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: d[key]=get(key)
-	d["scheduler"]={"debt":time_debt,"phase":sim_phase,"cursor":sim_cursor,"forage_count":step_forage_count,"completed_steps":completed_steps}
+	d["scheduler"]={"debt":time_debt,"phase":sim_phase,"cursor":sim_cursor,"forage_count":step_forage_count,"completed_steps":completed_steps,"ahead_active":ahead_active}
 	if ecology!=null: d["ecology"]=ecology.serialize()
 	var f := FileAccess.open(path+".tmp",FileAccess.WRITE)
 	if f==null: return FileAccess.get_open_error()
@@ -326,6 +350,8 @@ func load_ecosystem(path: String) -> Error:
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: set(key,d[key])
 	pending_ecology=d.get("ecology",{})
 	var schedule: Dictionary=d.get("scheduler",{})
+	ahead_active=bool(schedule.get("ahead_active",false))
+	if ahead_active: fast_forward=true;time_scale=0 # Resume a saved operation explicitly; retain all queued work.
 	time_debt=float(schedule.get("debt",0));sim_phase=int(schedule.get("phase",-1));sim_cursor=int(schedule.get("cursor",0));step_forage_count=int(schedule.get("forage_count",0));completed_steps=int(schedule.get("completed_steps",0))
 	if sim_phase < -1 or sim_phase>2 or sim_cursor<0 or time_debt<0: return ERR_INVALID_DATA
 	restored_rng_state=d.rng_state;fresh_population=false
