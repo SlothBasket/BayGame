@@ -145,6 +145,7 @@ func tick_fish(i: int,dt: float):
 			if d.length()>0 and d.length()<spacing: separation+=d.normalized()*(spacing-d.length())*.15
 		if separation.length()>0 and nav.clear(next,next+separation): next+=separation.limit_length(2)
 	p.east[i]=next.x;p.south[i]=next.y;cursors[i]=result.cursor;headings[i]=result.heading
+	if p.water_column!=null: p.water_column.constrain_actor(i,next)
 	if p.hunting!=null and p.hunting.ready:
 		p.hunting.states[i].energy=maxf(0,p.hunting.states[i].energy-at.distance_to(next)*.0002)
 	if next.distance_squared_to(at)<.0001 and cursors[i]<routes[i].size():
@@ -182,6 +183,7 @@ func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 	a.x=result.position.x;a.y=result.position.y;a.path_cursor=result.cursor;a.heading=result.heading
 	var anchor := nav.nearest(result.position)
 	if anchor>=0: a.zone=nav.nodes[anchor].zone
+	if a.has("pod") and p.water_column!=null: p.water_column.constrain_actor(-int(a.id),result.position)
 	if a.path_cursor>=a.natural_path.size(): a.destination=-1;a.erase("natural_path")
 	return true
 func serialize() -> Dictionary:

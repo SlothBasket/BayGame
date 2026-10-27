@@ -115,4 +115,4 @@ Normal gameplay needs no Python or network. Bay imagery and population-zone rebu
 
 EPSG:32617, scalar-double geographic positions, floating origin and geographic LOD rendering remain unchanged. `docs/ARCHITECTURE.md` and `docs/SOURCES.md` describe the original foundation. Phase 2 and visual-revision reports are historical; [ecosystem status](docs/BAY-ECOSYSTEM.md) records the current implementation and limitations.
 
-Development sessions start with a fresh, weighted-size fish population. Fish identities persist within the session. Automatic ecosystem loading and saving are disabled; old save files are left untouched. Fish Lab speeds: **Pause | 1× | 5× | 10×**. Advanced shows achieved speed and backlog; a CPU-limit notice appears when processing falls behind.
+Development sessions start with a fresh, weighted-size fish population. Fish identities persist within the session. Automatic ecosystem loading and saving are disabled; old save files are left untouched. Fish Lab speeds: **Pause | 1× | 5× | 10× | 20×**. Advanced shows achieved speed and backlog; a CPU-limit notice appears when processing falls behind.

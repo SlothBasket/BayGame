@@ -2,6 +2,26 @@ class_name FishDebugOverlay
 extends Node2D
 # Observation-only UI. Selection, follow and rendering never schedule simulation work.
 enum Entity { NONE, FISH, BAIT, PREDATOR, AREA }
+class ColumnIndicator extends Control:
+	var bed_m := 1.0
+	var animal_m := 0.0
+	var prey_m := -1.0
+	var holding_m := 0.0
+	var target_m := 0.0
+	func _draw():
+		var scale := 78.0/maxf(.05,bed_m)
+		draw_rect(Rect2(12,12,64,78),Color(.08,.24,.34))
+		draw_line(Vector2(12,12),Vector2(76,12),Color(.5,.8,1),2)
+		draw_line(Vector2(12,90),Vector2(76,90),Color(.7,.6,.35),2)
+		draw_line(Vector2(12,12+holding_m*scale),Vector2(76,12+holding_m*scale),Color(.4,1,.5),1)
+		draw_circle(Vector2(32,12+clampf(animal_m,0,bed_m)*scale),4,Color.WHITE)
+		draw_circle(Vector2(52,12+clampf(target_m,0,bed_m)*scale),3,Color(1,.8,.25),false,1)
+		if prey_m>=0: draw_circle(Vector2(65,12+clampf(prey_m,0,bed_m)*scale),4,Color(1,.4,.3))
+		draw_string(ThemeDB.fallback_font,Vector2(90,23),"Surface",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color(.5,.8,1))
+		draw_string(ThemeDB.fallback_font,Vector2(90,44),"White: selected   Red: prey",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color.WHITE)
+		draw_string(ThemeDB.fallback_font,Vector2(90,65),"Green: holding   Gold: target",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color.WHITE)
+		draw_string(ThemeDB.fallback_font,Vector2(90,89),"Bottom %.1f ft" % (bed_m/.3048),HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color(.7,.6,.35))
+var column_indicator: ColumnIndicator
 var main
 var enabled := false
 var entity := Entity.NONE
@@ -37,7 +57,7 @@ var visible_areas: Array[int] = []
 var view_bounds := Rect2()
 var trail := PackedVector2Array()
 var event_seen: Dictionary = {}
-const SPEEDS := [0.0,1.0,5.0,10.0]
+const SPEEDS := [0.0,1.0,5.0,10.0,20.0]
 const HUNT_RANK := {5:10,6:9,8:8,3:7,2:6,1:4}
 const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25)]
 const BAIT_COLORS := [Color(.8,1,.9),Color(.35,.7,1),Color(1,.7,.4),Color(1,.9,.25),Color(1,.5,.7),Color(.8,.5,.3),Color(.55,1,.6),Color(.25,.8,.45)]
@@ -97,6 +117,7 @@ func setup(game):
 	panel=PanelContainer.new();panel.position=Vector2(16,210);panel.custom_minimum_size=Vector2(390,660);panel.size=Vector2(390,660);panel.add_theme_stylebox_override("panel",style());canvas.add_child(panel)
 	var column := VBoxContainer.new();column.add_theme_constant_override("separation",10);panel.add_child(column)
 	heading=Label.new();heading.add_theme_font_size_override("font_size",22);heading.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;heading.custom_minimum_size.x=365;column.add_child(heading)
+	column_indicator=ColumnIndicator.new();column_indicator.custom_minimum_size=Vector2(360,102);column.add_child(column_indicator);column_indicator.hide()
 	var actions := HBoxContainer.new();column.add_child(actions)
 	follow_toggle=toggle_button(actions,"Follow Selected",false,func(v): following=v)
 	button(actions,"Center",center_selected)
@@ -191,20 +212,21 @@ func refresh():
 	var speed_index := SPEEDS.find(p.time_scale)
 	for i in range(speed_buttons.size()): speed_buttons[i].set_pressed_no_signal(i==speed_index)
 	if entity==Entity.NONE:
+		column_indicator.hide()
 		heading.text="Explore the ecosystem";info.text="Click a fish, bait school, predator or habitat.\n\nOne entity is inspected at a time. Empty clicks clear selection unless locked.\n\nFollowing and zooming never change simulation behavior.";return
 	var at := selected_position();var text := "Location E %.2f / S %.2f mi\n" % [at.x/1609.344,at.y/1609.344]
 	if entity==Entity.FISH:
 		var i := entity_index;heading.text="%s #%d" % [p.SPECIES[p.species[i]],p.ids[i]]
-		text+="%.1f in · hunger %.0f%% (100 = starving)\nPreferred depth %.1f ft\n" % [p.size_cm[i]/2.54,p.hunger[i]*100,p.preferred_depth[i]/.3048]
+		text+="%.1f in · hunger %.0f%% (100 = starving)\nPreferred habitat bottom %.1f ft\n" % [p.size_cm[i]/2.54,p.hunger[i]*100,p.preferred_depth[i]/.3048]
 		if eco.alive[i]==0: text+="Consumed — identity retained\n"
 		else: text+=hunt_text(i)
 		text+="\nSize cohort: "+p.size_cohort(i)+"\n"
 		text+="\nPreferred areas\nRest: %s\nFeed: %s\nSchool: %s\n" % [web.area_for_feature(p.movement.preferred_rest[i],"resting"),web.area_for_feature(p.movement.preferred_feed[i],"feeding"),str(eco.school[i]) if eco.school[i]>=0 else "solo"]
 		if advanced: text+="\n"+eco.describe(i)+"\nNavigation target: "+str(p.movement.targets[i])
 	elif entity==Entity.BAIT:
-		var a: Dictionary=eco.forage[entity_index];heading.text="%s school #%d" % [eco.FORAGE_NAMES[int(a.kind)],a.id]
+		var a: Dictionary=eco.forage[entity_index];heading.text="%s %s #%d" % [eco.FORAGE_NAMES[int(a.kind)],"individual" if a.get("individual",false) else "school",a.id]
 		text+="%.0f prey · %.1f in\n%s\nHunger %.0f%% · danger %.0f%%\nTarget habitat: %s\n\nRecent: %s\n" % [a.quantity,a.size_cm/2.54,a.get("activity","moving"),a.get("hunger",0)*100,a.get("fear",0)*100,a.get("preferred_area","searching"),a.get("last_event","")]
-		if not a.get("active",true): text+="Merged into school #%d; original identity retained.\n" % a.merged_into
+		if not a.get("active",true): text+=("Consumed; this individual will not respawn.\n" if a.activity=="consumed" else "Merged into school #%d; identity retained.\n" % a.merged_into)
 		if advanced: text+="\nParent #%d · capacity %.0f\nDestination region %s" % [a.get("parent_id",-1),a.capacity,str(a.destination)]
 	elif entity==Entity.PREDATOR:
 		var a: Dictionary=eco.predators[entity_index];heading.text="%s #%d" % [eco.PREDATOR_NAMES[int(a.kind)],a.id]
@@ -217,13 +239,33 @@ func refresh():
 			if b.area==a.id: stock+=b.quantity
 		text="%s\n\nFunctions: %s\nExtent %.0f × %.0f ft\nBottom prey %.0f / %.0f capacity\nNutrients %.0f%%; replenishes gradually\n" % ["Inferred habitat" if a.inferred else "Mapped evidence; inferred opportunity boundary",", ".join(a.roles),(a.bounds[2]-a.bounds[0])/.3048,(a.bounds[3]-a.bounds[1])/.3048,stock,a.bottom_capacity,web.nutrients[entity_index]*100]
 		if advanced: text+="\nEvidence: "+", ".join(a.evidence)+"\n"+a.id
+	text+=depth_text()
 	info.text=text
+func depth_text() -> String:
+	var p=main.fish;var water=p.water_column
+	if water==null or not entity in [Entity.FISH,Entity.BAIT,Entity.PREDATOR]: column_indicator.hide();return ""
+	var depth := 0.0;var hold := 0.0;var target_depth := 0.0;var bed := 0.0;var prey_depth := -1.0
+	if entity==Entity.FISH:
+		depth=water.current[entity_index];hold=water.holding[entity_index];target_depth=water.target[entity_index];bed=water.bottom[entity_index]
+	else:
+		var a: Dictionary=p.ecology.forage[entity_index] if entity==Entity.BAIT else p.ecology.predators[entity_index]
+		depth=a.swim_depth;hold=a.holding_depth;target_depth=a.target_depth;bed=a.bottom_depth
+	var text := "\nWater column\nCurrent %.1f ft below surface\nPreferred holding %.1f ft · target %.1f ft\nBottom %.1f ft · height above bottom %.1f ft\n" % [depth/.3048,hold/.3048,target_depth/.3048,bed/.3048,maxf(0,bed-depth)/.3048]
+	if entity in [Entity.FISH,Entity.PREDATOR]:
+		var actor := entity_index if entity==Entity.FISH else -entity_index-1;var state: Dictionary=p.hunting.state(actor)
+		var prey: Dictionary=p.hunting.prey(int(state.kind),int(state.target))
+		if not prey.is_empty() and state.stage in [1,2,3,4,5]:
+			prey_depth=water.prey_depth(actor,int(state.kind),int(state.target),prey)
+			text+="Prey %.1f ft · vertical gap %.1f ft\n" % [prey_depth/.3048,absf(depth-prey_depth)/.3048]
+	elif entity==Entity.BAIT: text+="School vertical spread ±%.1f ft\n" % (float(p.ecology.forage[entity_index].vertical_spread)/.3048)
+	column_indicator.bed_m=bed;column_indicator.animal_m=depth;column_indicator.holding_m=hold;column_indicator.target_m=target_depth;column_indicator.prey_m=prey_depth;column_indicator.show();column_indicator.queue_redraw()
+	return text
 func hunt_text(actor: int) -> String:
 	if not available(): return "Hunting unavailable"
 	var p=main.fish;var h=p.hunting;var s: Dictionary=h.state(actor);var target: Dictionary=h.prey(int(s.kind),int(s.target))
 	var text := "%s\n%s\nEnergy %.0f%% (100 = rested) · captures %d / misses %d\n" % [h.LABELS[int(s.stage)],s.activity,s.energy*100,s.captures,s.misses]
 	if s.stage in [6,8]: text+="Meal captured at physical contact; school may move away.\n"
-	elif not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,h.position(actor).distance_to(h.prey_position(actor,int(s.kind),int(s.target),target))/.9144]
+	elif not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),target)/.9144]
 	else: text+="Prey: searching\n"
 	text+="\nRecent: "+str(s.last_event)+"\n"
 	if advanced:

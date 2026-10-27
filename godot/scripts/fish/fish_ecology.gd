@@ -296,6 +296,7 @@ func consume_fish(i: int):
 	p.buckets[z].erase(i);p.zone_counts[z]-=1;p.zone_species_counts[z][p.species[i]]-=1;game_fish_consumed+=1
 func update_predator(a: Dictionary,dt: float):
 	var p=population;var z: int=a.zone;a.hunger=minf(1,a.hunger+dt*.000035)
+	if p.water_column!=null: p.water_column.update_actor(-int(a.id),dt)
 	pressure[z]=minf(1,pressure[z]+dt*.035)
 	for neighbor in p.zones[z].neighbors: pressure[neighbor]=minf(1,pressure[neighbor]+dt*.006)
 	if p.hunting!=null and p.hunting.ready and p.hunting.step(-int(a.id),dt): return

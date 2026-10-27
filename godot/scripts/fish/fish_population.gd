@@ -67,6 +67,7 @@ func pause_simulation():
 func completed_time() -> float:
 	return elapsed-(WORLD_STEP if sim_phase>=0 else 0.0)
 var presentation := FishPresentation.new()
+var water_column
 var hunting: FishHunting
 var food_web: FishFoodWeb
 var movement: FishMovement
@@ -230,6 +231,7 @@ func update_fish(i: int,dt: float):
 	hunger[i]=minf(1,hunger[i]+dt*.00006*clampf(60.0/maxf(20,size_cm[i]),.5,1.5)*(1.25 if species[i] in [4,5] else 1.0))
 	var z := region[i]
 	if ecology!=null:
+		if water_column!=null: water_column.update_actor(i,dt)
 		ecology.interact(i,dt)
 		if hunting!=null and hunting.ready and hunting.step(i,dt): return
 		if movement!=null and movement.ready:
@@ -313,6 +315,7 @@ func save_ecosystem(path: String) -> Error:
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: d[key]=get(key)
 	d["scheduler"]={"debt":time_debt,"phase":sim_phase,"cursor":sim_cursor,"forage_count":step_forage_count,"completed_steps":completed_steps}
 	if ecology!=null: d["ecology"]=ecology.serialize()
+	if water_column!=null: d["water_column"]=water_column.serialize()
 	var f := FileAccess.open(path+".tmp",FileAccess.WRITE)
 	if f==null: return FileAccess.get_open_error()
 	f.store_var(d);f.close();return DirAccess.rename_absolute(path+".tmp",path)
@@ -372,6 +375,7 @@ func setup_movement(root: String) -> bool:
 	return movement.setup(self,root,ecology.pending_movement)
 
 func dispose():
+	if water_column!=null: water_column.p=null;water_column=null
 	if hunting!=null: hunting.p=null;hunting.eco=null;hunting.web=null
 	hunting=null
 	if food_web!=null: food_web.p=null;food_web.eco=null
@@ -385,6 +389,8 @@ func setup_food_web(root: String) -> bool:
 	if not food_web.setup(self,root,ecology.pending_food_web): return false
 	hunting=FishHunting.new()
 	var valid := hunting.setup(self,root,ecology.pending_hunting)
+	if valid:
+		water_column=preload("res://scripts/fish/fish_water_column.gd").new();water_column.setup(self)
 	presentation.snapshot(self)
 	return valid
 

@@ -105,7 +105,7 @@ func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 		var candidate := Vector2i(int(code)/FishSpatialIndex.STRIDE,int(code)%FishSpatialIndex.STRIDE)
 		var data := prey(candidate.x,candidate.y)
 		if not suitable(actor,candidate.x,candidate.y,data,r): continue
-		var target := prey_position(actor,candidate.x,candidate.y,data);var distance := at.distance_to(target)
+		var target := prey_position(actor,candidate.x,candidate.y,data);var distance: float=p.water_column.distance_to_prey(actor,candidate.x,candidate.y,data)
 		var senses: float=1.3 if r.sense in ["electroreception / scent","echolocation"] else 1.0
 		var detection: float=radius*senses*(1.0-float(data.cover)*.5)*(1.1 if data.speed>.4 else .9)
 		if distance>detection or not nav.clear(at,target): continue
@@ -138,6 +138,7 @@ func set_position(actor: int,at: Vector2,heading: Vector2):
 	else:
 		var a: Dictionary=eco.predators[-actor-1];a.x=at.x;a.y=at.y;a.heading=heading
 		if anchor>=0: a.zone=int(nav.nodes[anchor].zone)
+	if p.water_column!=null: p.water_column.constrain_actor(actor,at)
 func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionary,fast: bool):
 	var at := position(actor);var limit: float=float(r.burst_mph if fast else r.cruise_mph)*.44704*(.7+.3*minf(1.5,length_cm(actor)/70.0))
 	s.velocity=move_toward(float(s.velocity),limit,dt*2.0)
@@ -229,18 +230,18 @@ func step(actor: int,dt: float) -> bool:
 		search_habitat(actor,s,r,dt);return true
 	var data := prey(int(s.kind),int(s.target))
 	if data.is_empty(): abandon(actor,s,"prey escaped; resuming search");return true
-	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance := at.distance_to(target)
+	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance: float=p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)
 	var reach: float=maxf(.35,minf(2.5,float(r.strike_ft)*.3048+length_cm(actor)*.003))
 	if s.stage==Stage.STRIKE:
 		if p.elapsed<s.until: return true
 		# No region-based exception: both near and distant captures require physical contact.
-		if distance<=reach and nav.clear(at,target):
+		if distance<=reach and p.water_column.separation(actor,int(s.kind),int(s.target),data)<=reach and nav.clear(at,target):
 			var chance: float=clampf(float(r.capture_chance)+s.energy*.08-float(data.speed)*.08,.1,.95)
 			if p.rng.randf()<chance:
 				if s.kind==0: web.consume_bait(int(s.target))
 				elif s.kind==1: eco.consume_fish(s.target)
 				else: web.bottom[s.target].quantity-=1;eco.forage_consumed+=1
-				s.capture_position=target;s.capture_time=p.elapsed;s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE
+				s.capture_depth=p.water_column.prey_depth(actor,int(s.kind),int(s.target),data);s.capture_position=target;s.capture_time=p.elapsed;s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE
 				if actor<0: eco.predator_meals+=1
 				scare(actor,s);event(actor,s,"capture: "+data.label);return true
 		s.misses+=1;s.energy=maxf(0,s.energy-.08);set_hunger(actor,hunger(actor)+.02);s.stage=Stage.MISS;s.until=p.elapsed+attack_cooldown(r)
@@ -275,7 +276,7 @@ func step(actor: int,dt: float) -> bool:
 	if not nav.clear(target,intercept): intercept=target
 	move_hunter(actor,s,intercept,dt,r,fast)
 	if fast: web.threaten(actor,position(actor),20 if actor>=0 else 65)
-	if position(actor).distance_to(target)<=reach:
+	if p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)<=reach:
 		s.energy=maxf(0,s.energy-.025);s.stage=Stage.STRIKE;s.until=p.elapsed+.25;s.activity="rapid surface strike" if actor>=0 and p.species[actor]==2 and p.size_cm[actor]<45 else "strike"
 		event(actor,s,s.activity)
 	return true

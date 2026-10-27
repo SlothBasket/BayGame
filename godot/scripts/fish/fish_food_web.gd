@@ -66,6 +66,7 @@ func spawn_bait(area: int) -> bool:
 	var individual: bool=kind in [0,2,3,4,5] and p.rng.randf()<float(eco.config.get("bait_solitary_fraction",.55))
 	var quantity := 1 if individual else (p.rng.randi_range(70,240) if kind in [1,6,7] else p.rng.randi_range(4,18))
 	var a := {"id":eco.forage.size()+1,"kind":kind,"individual":individual,"zone":int(nav.nodes[node].zone),"destination":-1,"x":at.x,"y":at.y,"quantity":float(quantity),"capacity":float(quantity),"size_cm":eco.FORAGE_SIZES[kind]*p.rng.randf_range(.65,1.15),"last":p.elapsed,"next":p.elapsed+p.rng.randf_range(1,30),"jump_at":p.elapsed+p.rng.randf_range(20,120),"jump_until":0.0,"scatter_until":0.0,"preferred_area":habitat.id}
+	if p.water_column!=null: p.water_column.initialize_record(a,false)
 	initialize_bait(a);eco.forage_zones[int(a.zone)].append(eco.forage.size());eco.forage.append(a)
 	if p.hunting!=null and p.hunting.ready: p.hunting.index_entity(0,eco.forage.size()-1)
 	return true
@@ -217,11 +218,14 @@ func update_bait(index: int,dt: float):
 	var velocity := (1.8 if a.kind>=6 else 1.0) if a.fear>.3 else (.45 if a.kind>=6 else (.05 if a.kind in [4,5] else .3))
 	formation(index,dt)
 	p.movement.move_record(a,dt,velocity)
+	if p.water_column!=null: p.water_column.update_bait(a,dt)
 	if a.zone!=z: eco.forage_zones[z].erase(index);eco.forage_zones[int(a.zone)].append(index)
 	if not a.get("individual",false) and a.quantity>=4 and (a.fear>.6 or p.rng.randf()<dt*.0002) and p.elapsed>=a.split_after and eco.forage.size()<int(eco.config.get("bait_record_limit",24000)):
 		var split_quantity := floorf(a.quantity*.4) if a.fear>.6 else 1.0
 		a.quantity-=split_quantity;a.capacity=maxf(a.quantity,a.capacity-split_quantity);a.split_after=p.elapsed+300;a.merge_after=p.elapsed+80
-		var child: Dictionary=a.duplicate(true);child.individual=split_quantity==1;child.quantity=split_quantity;child.capacity=split_quantity;child.id=eco.forage.size()+1;child.parent_id=a.id;child.last=p.elapsed;child.next=p.elapsed;child.turn_at=p.elapsed;child.heading=Vector2.from_angle(float(child.id));child.erase("natural_path")
+		var child: Dictionary=a.duplicate(true);child.individual=split_quantity==1
+		if child.individual: child.vertical_spread=0.0
+		child.quantity=split_quantity;child.capacity=split_quantity;child.id=eco.forage.size()+1;child.parent_id=a.id;child.last=p.elapsed;child.next=p.elapsed;child.turn_at=p.elapsed;child.heading=Vector2.from_angle(float(child.id));child.erase("natural_path")
 		eco.forage_zones[int(a.zone)].append(eco.forage.size());eco.forage.append(child)
 		if p.hunting!=null: p.hunting.index_entity(0,eco.forage.size()-1)
 		events.append({"time":p.elapsed,"kind":"split","id":a.id,"other":child.id,"position":Vector2(a.x,a.y)})
