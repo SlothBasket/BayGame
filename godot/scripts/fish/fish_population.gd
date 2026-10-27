@@ -224,7 +224,7 @@ func choose_destination(i: int):
 	if ecology!=null: ecology.on_decision(i)
 func update_fish(i: int,dt: float):
 	if ecology!=null and not ecology.is_alive(i): return
-	hunger[i]=minf(1,hunger[i]+dt*.0006*(size_cm[i]/60.0))
+	hunger[i]=minf(1,hunger[i]+dt*.00006*clampf(60.0/maxf(20,size_cm[i]),.5,1.5)*(1.25 if species[i] in [4,5] else 1.0))
 	var z := region[i]
 	if ecology!=null:
 		ecology.interact(i,dt)

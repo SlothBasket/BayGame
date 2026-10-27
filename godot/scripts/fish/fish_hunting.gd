@@ -2,6 +2,7 @@ class_name FishHunting
 extends RefCounted
 # Shared physical hunt sequence for game fish (>=0) and predator records (-index-1).
 enum Stage { SEARCH, DETECT, APPROACH, PURSUE, AMBUSH, STRIKE, CAPTURE, MISS, CONSUME, RECOVER }
+const SEARCH_LABELS := {"patrol":"patrolling shoreline edges","bottom":"searching bottom / grass edges","structure":"inspecting structure","bottom_ambush":"relocating bottom ambush","ambush":"searching cover / intercept position","intercept":"inspecting cuts / potholes","chase":"sweeping for moving bait","travel":"tracking forage concentrations","shark":"searching prey habitat","dolphin":"pod searching for schools"}
 const LABELS := ["search","detect","approach / stalk","pursue","ambush / wait","strike","capture","miss / escape","consume","recover"]
 var p
 var eco
@@ -110,7 +111,7 @@ func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 				if other.kind==3 and other.pod==eco.predators[-actor-1].pod and other.has("hunt") and other.hunt.kind==candidate.x and other.hunt.target==candidate.y: score+=.7;break
 		if score>best: best=score;selected_kind=candidate.x;selected_id=candidate.y
 	if selected_kind<0: s.search_failures+=1;return false
-	s.kind=selected_kind;s.target=selected_id;s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
+	s.kind=selected_kind;s.target=selected_id;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
 	event(actor,s,"detected "+prey(selected_kind,selected_id).label);return true
 func event(actor: int,s: Dictionary,text: String):
 	s.last_event=text
@@ -132,14 +133,58 @@ func set_position(actor: int,at: Vector2,heading: Vector2):
 func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionary,fast: bool):
 	var at := position(actor);var limit: float=float(r.burst_mph if fast else r.cruise_mph)*.44704*(.7+.3*minf(1.5,length_cm(actor)/70.0))
 	s.velocity=move_toward(float(s.velocity),limit,dt*2.0)
-	if s.path.is_empty() or (s.cursor>=s.path.size() and at.distance_squared_to(target)>.25) or (p.elapsed>=s.replan_at and target.distance_squared_to(s.get("planned_target",Vector2.INF))>9):
+	if nav.clear(at,target):
+		s.path=PackedVector2Array([at,target]);s.cursor=1
+	elif s.path.is_empty() or (s.cursor>=s.path.size() and at.distance_squared_to(target)>.25) or (p.elapsed>=s.replan_at and target.distance_squared_to(s.get("planned_target",Vector2.INF))>9):
 		var goal: int=nav.nearest(target)
 		if goal>=0: s.path=nav.route(at,target,goal);s.cursor=1
 		s.replan_at=p.elapsed+2;s.planned_target=target
 	if s.path.is_empty(): return
 	var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),s.velocity*dt,actor+90000,s.heading,true,.12)
 	s.cursor=moved.cursor;s.heading=moved.heading;set_position(actor,moved.position,moved.heading)
-	s.energy=maxf(0,s.energy-dt*(.003 if fast else .0007))
+	s.energy=maxf(0,s.energy-dt*(.0015 if fast else .00015))
+func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
+	var at := position(actor)
+	var waiting: bool=r.style in ["ambush","bottom_ambush","intercept"]
+	if waiting and p.elapsed<float(s.get("search_wait_until",0)):
+		s.activity="waiting in ambush";s.energy=minf(1,s.energy+dt*.001);return
+	if not s.has("search_goal") or at.distance_to(s.search_goal)<2 or p.elapsed>=float(s.get("search_until",0)):
+		if waiting and s.has("search_goal") and at.distance_to(s.search_goal)<2:
+			s.erase("search_goal");s.search_wait_until=p.elapsed+minf(45,float(r.wait_seconds));return
+		var feature: int=nav.nearest(at)
+		if actor>=0:
+			# Inspect multiple positions within stable preferred areas before relocating.
+			feature=p.movement.preferred_feed[actor]
+			if s.search_failures>=6:
+				var anchor: int=nav.nearest(at)
+				if anchor>=0:
+					var alternative: int=p.movement.habitat(actor,zone(actor),int(nav.nodes[anchor].component),actor+int(p.elapsed/30))
+					if alternative>=0: feature=alternative
+		if feature<0: s.activity="searching for reachable habitat";return
+		var goal: Vector2=web.feature_destination(feature,"feeding",actor+int(p.elapsed/15))
+		# Mobile hunters inspect nearby forage concentrations using the shared spatial index.
+		if r.style in ["chase","travel","shark","dolphin"]:
+			var best := INF
+			for code in spatial.query(at,120):
+				var kind := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
+				var data := prey(kind,index)
+				if not suitable(actor,kind,index,data,r): continue
+				var distance: float=at.distance_squared_to(data.position)
+				if distance<best and nav.clear(at,data.position): best=distance;goal=data.position
+		if actor>=0 and eco.school[actor]>=0 and r.style=="chase":
+			for member in eco.schools.get(eco.school[actor],[]):
+				if member!=actor and eco.alive[member]==1 and states[member].has("search_goal"):
+					var shared: Vector2=states[member].search_goal+Vector2.from_angle(float(actor))*3
+					if nav.clear(goal,shared): goal=shared
+					break
+		s.search_goal=goal;s.search_until=p.elapsed+60;s.path=PackedVector2Array();s.cursor=0
+
+	s.activity=SEARCH_LABELS.get(r.style,"searching habitat")
+	if actor>=0: p.behavior[actor]=3
+	move_hunter(actor,s,s.search_goal,dt,r,false)
+func abandon(actor: int,s: Dictionary,reason: String):
+	s.stage=Stage.SEARCH;s.kind=-1;s.target=-1;s.detect_at=p.elapsed+8;s.path=PackedVector2Array();s.cursor=0;s.search_failures+=1;s.erase("search_goal");s.search_wait_until=0
+	event(actor,s,reason)
 func step(actor: int,dt: float) -> bool:
 	var s := state(actor);var r := profile(actor);var at := position(actor)
 	if actor>=0 and eco.pressure[zone(actor)]>.45 and eco.boldness[actor]<.8:
@@ -147,7 +192,8 @@ func step(actor: int,dt: float) -> bool:
 		return false
 	if s.stage==Stage.RECOVER:
 		s.energy=minf(1,s.energy+dt*.015);s.activity="recovering / resting"
-		if p.elapsed>=s.until: s.stage=Stage.SEARCH;s.kind=-1;s.detect_at=p.elapsed+2
+		if p.elapsed>=s.until and s.energy>=.65 and hunger(actor)>=.40+float(posmod(actor,11))*.008: s.stage=Stage.SEARCH;s.kind=-1;s.detect_at=p.elapsed+2
+		if actor>=0: p.behavior[actor]=0
 		return true
 	if s.stage==Stage.CAPTURE:
 		s.stage=Stage.CONSUME;s.until=p.elapsed+float(r.consume_seconds);return true
@@ -161,18 +207,14 @@ func step(actor: int,dt: float) -> bool:
 	if s.stage==Stage.MISS:
 		s.stage=Stage.RECOVER;s.until=p.elapsed+float(r.recovery_seconds)*.5;return true
 	if hunger(actor)<.25 or s.energy<.15:
-		s.stage=Stage.RECOVER;s.until=p.elapsed+20;s.kind=-1;return false
+		s.stage=Stage.RECOVER;s.until=p.elapsed+20;s.kind=-1;s.activity="resting; satisfied or tired";return true
 	if s.stage==Stage.SEARCH:
-		s.energy=minf(1,s.energy+dt*.002);s.activity="searching habitat"
-		if p.elapsed<s.detect_at: return false
-		s.detect_at=p.elapsed+5
-		if detect(actor,s,r):
-			if actor>=0: p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.destination[actor]=-1
-			return true
-		if r.style in ["ambush","bottom_ambush","intercept","structure"]:
-			if at.distance_to(s.hold_anchor)>20: s.hold_anchor=at;s.hold_until=p.elapsed+float(r.wait_seconds)
-			if p.elapsed<s.hold_until: s.activity="camouflaged bottom wait" if r.style=="bottom_ambush" else "hovering / watching";return true
-		return false
+		if p.elapsed>=s.detect_at:
+			s.detect_at=p.elapsed+5
+			if detect(actor,s,r):
+				if actor>=0: p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.destination[actor]=-1
+				return true
+		search_habitat(actor,s,r,dt);return true
 	var data := prey(int(s.kind),int(s.target))
 	if data.is_empty(): s.stage=Stage.RECOVER;s.until=p.elapsed+5;event(actor,s,"prey escaped / no longer available");return true
 	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance := at.distance_to(target)
@@ -186,19 +228,29 @@ func step(actor: int,dt: float) -> bool:
 				if s.kind==0: eco.forage[s.target].quantity-=1;eco.forage_consumed+=1
 				elif s.kind==1: eco.consume_fish(s.target)
 				else: web.bottom[s.target].quantity-=1;eco.forage_consumed+=1
-				s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.06+float(data.size)/length_cm(actor)*.9,.06,.65);s.stage=Stage.CAPTURE
+				s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE
 				if actor<0: eco.predator_meals+=1
 				scare(actor,s);event(actor,s,"capture: "+data.label);return true
 		s.misses+=1;s.energy=maxf(0,s.energy-.08);set_hunger(actor,hunger(actor)+.02);s.stage=Stage.MISS
 		scare(actor,s);event(actor,s,"miss / prey escape");return true
+	if distance<float(s.get("best_distance",INF))-1:
+		s.best_distance=distance;s.progress_at=p.elapsed
+	if not s.has("hunt_until"): s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed
+	if p.elapsed>=s.hunt_until or p.elapsed-float(s.get("progress_at",p.elapsed))>20:
+		abandon(actor,s,"target unproductive; searching another position");return true
 	if distance>float(r.detect_ft)*.3048*3 or s.energy<.1:
 		s.stage=Stage.RECOVER;s.until=p.elapsed+8;event(actor,s,"pursuit abandoned");return true
 	if s.stage==Stage.DETECT:
 		if p.elapsed<s.until: return true
 		s.stage=Stage.APPROACH;s.activity="stalking detected prey"
 	if r.style in ["ambush","bottom_ambush","intercept"] and distance>float(r.lunge_ft)*.3048:
-		s.stage=Stage.AMBUSH;s.activity="camouflaged / waiting" if r.style=="bottom_ambush" else "watching passing bait"
-		return true
+		if not s.has("ambush_until"): s.ambush_until=p.elapsed+12
+		var approaching: bool=Vector2(data.heading).dot((at-target).normalized())>.3
+		if approaching and p.elapsed<s.ambush_until:
+			s.stage=Stage.AMBUSH;s.activity="waiting in ambush for approaching prey";return true
+		# Out-of-range or receding prey requires a new intercept, never indefinite waiting.
+		s.stage=Stage.APPROACH;s.activity="repositioning to intercept"
+		move_hunter(actor,s,target,dt,r,false);return true
 	var fast: bool=distance<float(r.lunge_ft)*.3048 or r.style in ["chase","travel","shark","dolphin"]
 	s.stage=Stage.PURSUE if fast else Stage.APPROACH
 	s.activity="tailing / bottom foraging" if actor>=0 and p.species[actor]==0 and s.kind==2 and eco.depth_at(zone(actor))<1.2 else ("coordinated pursuit" if r.style in ["chase","dolphin"] else LABELS[s.stage])
@@ -212,7 +264,7 @@ func step(actor: int,dt: float) -> bool:
 	move_hunter(actor,s,intercept,dt,r,fast)
 	if fast: web.threaten(actor,position(actor),20 if actor>=0 else 65)
 	if position(actor).distance_to(target)<=reach:
-		s.stage=Stage.STRIKE;s.until=p.elapsed+.25;s.activity="rapid surface strike" if actor>=0 and p.species[actor]==2 and p.size_cm[actor]<45 else "strike"
+		s.energy=maxf(0,s.energy-.025);s.stage=Stage.STRIKE;s.until=p.elapsed+.25;s.activity="rapid surface strike" if actor>=0 and p.species[actor]==2 and p.size_cm[actor]<45 else "strike"
 		event(actor,s,s.activity)
 	return true
 func serialize() -> Dictionary:
