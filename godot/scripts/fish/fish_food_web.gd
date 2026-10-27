@@ -121,8 +121,10 @@ func update_bait(index: int,dt: float):
 	var a: Dictionary=eco.forage[index]
 	if not a.active: return
 	var z: int=a.zone;a.hunger=minf(1,a.hunger+dt*.00015);a.fear=maxf(0,a.fear-dt*.01)
+	var danger := Vector2.ZERO;var nearby_threats := 0
 	for threat in threats.values():
-		if Vector2(a.x,a.y).distance_squared_to(threat.position)<float(threat.radius)*float(threat.radius): flee(a,threat.position);break
+		if Vector2(a.x,a.y).distance_squared_to(threat.position)<float(threat.radius)*float(threat.radius): danger+=Vector2(threat.position);nearby_threats+=1
+	if nearby_threats>0: flee(a,danger/nearby_threats)
 	if eco.pressure[z]>.4: a.fear=maxf(a.fear,eco.pressure[z]);a.scatter_until=p.elapsed+15
 	var local: Array=zone_areas[z]
 	for value in local:

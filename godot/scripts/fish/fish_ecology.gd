@@ -4,6 +4,7 @@ extends RefCounted
 var population
 var pending_movement: Dictionary = {}
 var pending_food_web: Dictionary = {}
+var pending_hunting: Dictionary = {}
 var config: Dictionary = {}
 var habitats: Array = []
 var home := PackedInt32Array()
@@ -162,10 +163,11 @@ func on_arrival(i: int):
 func is_alive(i: int) -> bool:
 	return alive[i]==1
 func serialize() -> Dictionary:
-	return {"food_web":population.food_web.serialize() if population.food_web!=null and population.food_web.ready else {},"movement":population.movement.serialize() if population.movement!=null and population.movement.ready else {},"food_web_version":1,"forage":forage,"predators":predators,"pressure":pressure,"forage_cursor":forage_cursor,"predator_clock":predator_clock,"forage_consumed":forage_consumed,"game_fish_consumed":game_fish_consumed,"predator_meals":predator_meals,"jumps":jumps,"predator_ratio":predator_ratio,"home":home,"feeding":feeding,"resting":resting,"phase":phase,"boldness":boldness,"school":school,"alive":alive,"spot":spot,"returning":returning,"tide_level_m":tide_level_m,"current":current,"returns":returns}
+	return {"hunting":population.hunting.serialize() if population.hunting!=null and population.hunting.ready else {},"food_web":population.food_web.serialize() if population.food_web!=null and population.food_web.ready else {},"movement":population.movement.serialize() if population.movement!=null and population.movement.ready else {},"food_web_version":1,"forage":forage,"predators":predators,"pressure":pressure,"forage_cursor":forage_cursor,"predator_clock":predator_clock,"forage_consumed":forage_consumed,"game_fish_consumed":game_fish_consumed,"predator_meals":predator_meals,"jumps":jumps,"predator_ratio":predator_ratio,"home":home,"feeding":feeding,"resting":resting,"phase":phase,"boldness":boldness,"school":school,"alive":alive,"spot":spot,"returning":returning,"tide_level_m":tide_level_m,"current":current,"returns":returns}
 func restore(d: Dictionary) -> bool:
 	pending_movement=d.get("movement",{})
 	pending_food_web=d.get("food_web",{})
+	pending_hunting=d.get("hunting",{})
 	var count: int=population.ids.size()
 	for key in ["home","feeding","resting","phase","boldness","school","alive","spot","returning"]:
 		if not d.has(key) or d[key].size()!=count: return false
@@ -295,35 +297,10 @@ func prey_available(i: int,z: int) -> float:
 func edible(i: int,a: Dictionary) -> bool:
 	if population.species[i]==3: return a.kind in [4,5] # Sheepshead favor benthic forage.
 	return a.size_cm<population.size_cm[i]*float(profile(i).max_prey_ratio)
-func interact(i: int,dt: float):
+func interact(i: int,_dt: float):
 	var p=population;var z: int=p.region[i]
-	if pressure[z]>.35 and p.behavior[i]!=5:
-		p.behavior[i]=5;p.decision_at[i]=p.elapsed
-	if (p.destination[i]>=0 and p.movement==null) or p.behavior[i] not in [2,4] or p.hunger[i]<.15: return
-	var close: bool=near_zones.has(z) or p.observed_fish==i;var reach := 90.0 if profile(i).style=="chase" else 45.0
-	if profile(i).style in ["ambush","bottom_ambush"]: reach=25.0
-	for index in forage_zones.get(z,[]):
-		var a: Dictionary=forage[index]
-		if not edible(i,a) or a.quantity<=0: continue
-		if close and Vector2(a.x-p.east[i],a.y-p.south[i]).length()>reach: continue
-		var eaten := minf(float(a.quantity),minf(p.hunger[i]/.04,dt*.08))
-		a.quantity-=eaten;p.hunger[i]=maxf(0,p.hunger[i]-eaten*.04);forage_consumed+=eaten;p.behavior[i]=2
-		if a.kind>=6: a.scatter_until=p.elapsed+30;a.next=p.elapsed
-		return
-	# Stationary inferred oyster habitat provides finite replenishing benthic food.
-	if p.species[i] in [0,3] and "oyster_bar_candidate" in habitats[z].tags:
-		var eaten := minf(p.hunger[i],p.food[z]*dt*.001)
-		p.hunger[i]-=eaten;p.food[z]=maxf(0,p.food[z]-eaten*.05)
-		if eaten>0: p.behavior[i]=2;return
-	if p.species[i]==3 or p.hunger[i]<.5: return
-	var members: Array=p.buckets[z]
-	for trial in range(mini(5,members.size())):
-		var prey: int=members[p.rng.randi_range(0,members.size()-1)]
-		if prey==i or alive[prey]==0 or p.size_cm[prey]>=p.size_cm[i]*float(profile(i).max_prey_ratio): continue
-		if close and Vector2(p.east[prey]-p.east[i],p.south[prey]-p.south[i]).length()>reach: continue
-		if p.rng.randf()<1-exp(-dt*.002):
-			consume_fish(prey);p.hunger[i]=maxf(0,p.hunger[i]-.55);p.behavior[i]=2
-		break
+	if pressure[z]>.35 and p.behavior[i]!=5: p.behavior[i]=5;p.decision_at[i]=p.elapsed
+	# All nutrition now comes exclusively from the physical hunting/capture sequence.
 func consume_fish(i: int):
 	if alive[i]==0: return
 	var p=population;var z: int=p.region[i];alive[i]=0;p.behavior[i]=6;p.destination[i]=-1
@@ -332,33 +309,8 @@ func update_predator(a: Dictionary,dt: float):
 	var p=population;var z: int=a.zone;a.hunger=minf(1,a.hunger+dt*.0003)
 	pressure[z]=minf(1,pressure[z]+dt*.035)
 	for neighbor in p.zones[z].neighbors: pressure[neighbor]=minf(1,pressure[neighbor]+dt*.006)
+	if p.hunting!=null and p.hunting.ready and p.hunting.step(-int(a.id),dt): return
 	if move_record(a,dt,1.8 if a.kind==3 else 1.1): return
-	if a.hunger>.35:
-		if a.kind==2: # Bonnetheads draw primarily from the crab/shrimp pool.
-			for index in forage_zones[z]:
-				var prey: Dictionary=forage[index]
-				if prey.kind not in [4,5] or prey.quantity<=0: continue
-				var eaten := minf(prey.quantity,dt*.2);prey.quantity-=eaten;a.hunger=maxf(0,a.hunger-eaten*.02);forage_consumed+=eaten;break
-		else:
-			var members: Array=p.buckets[z]
-			if not members.is_empty():
-				var prey: int=members[p.rng.randi_range(0,members.size()-1)]
-				var in_reach: bool=not near_zones.has(z) or Vector2(p.east[prey]-a.x,p.south[prey]-a.y).length()<90
-				if p.size_cm[prey]<a.size_cm*.55 and in_reach and p.rng.randf()<1-exp(-dt*.003):
-					consume_fish(prey);a.hunger=maxf(0,a.hunger-.6);predator_meals+=1
 	if p.elapsed<a.next: return
 	a.next=p.elapsed+p.rng.randf_range(30,90)
-	var choices: Array=[z];choices.append_array(p.zones[z].neighbors);var best: int=z;var score := -INF
-	for candidate in choices:
-		if depth_at(candidate)<(.5 if a.kind==2 else 1.0): continue
-		var value: float=float(p.zone_counts[candidate])*.1*a.hunger+p.rng.randf_range(-1,1)
-		if a.kind==3:
-			for other in predators:
-				if other.id<a.id and other.kind==3 and other.pod==a.pod and other.active:
-					if candidate==(other.destination if other.destination>=0 else other.zone): value+=2
-					break
-		if value>score: score=value;best=candidate
-	if best!=z: a.destination=best
-	if p.movement!=null and p.movement.ready: p.movement.plan_record(a,a.has("hunger"))
-
-
+	if p.movement!=null and p.movement.ready: p.movement.plan_record(a,true)

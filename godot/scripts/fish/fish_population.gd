@@ -23,6 +23,7 @@ var ecology: FishEcology
 var pending_ecology: Dictionary = {}
 var restored_rng_state := 0
 var fresh_population := true
+var hunting: FishHunting
 var food_web: FishFoodWeb
 var movement: FishMovement
 var observed_fish := -1
@@ -185,6 +186,7 @@ func update_fish(i: int,dt: float):
 	var z := region[i]
 	if ecology!=null:
 		ecology.interact(i,dt)
+		if hunting!=null and hunting.ready and hunting.step(i,dt): return
 		if movement!=null and movement.ready:
 			movement.tick_fish(i,dt);return
 		if ecology.move_local(i,dt): return
@@ -242,12 +244,12 @@ func boost_food(z: int):
 			for index in ecology.forage_zones.get(z,[]): ecology.forage[index].quantity=ecology.forage[index].capacity
 func save_ecosystem(path: String) -> Error:
 	if migration_backup_needed and FileAccess.file_exists(path):
-		var backup := path+".before-natural-movement"
+		var backup := path+".before-dynamic-foodweb"
 		if not FileAccess.file_exists(backup):
 			var error := DirAccess.copy_absolute(path,backup)
 			if error!=OK: return error
 		migration_backup_needed=false
-	var d := {"version":4 if movement!=null and movement.ready else (3 if ecology!=null else 2),"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
+	var d := {"version":5 if hunting!=null and hunting.ready else (4 if movement!=null and movement.ready else (3 if ecology!=null else 2)),"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: d[key]=get(key)
 	if ecology!=null: d["ecology"]=ecology.serialize()
 	var f := FileAccess.open(path+".tmp",FileAccess.WRITE)
@@ -258,7 +260,7 @@ func load_ecosystem(path: String) -> Error:
 	var f := FileAccess.open(path,FileAccess.READ)
 	if f==null: return FileAccess.get_open_error()
 	var d = f.get_var(false)
-	if not d is Dictionary or not d.get("version",0) in [2,3,4] or d.get("fingerprint","")!=fingerprint: return ERR_INVALID_DATA
+	if not d is Dictionary or not d.get("version",0) in [2,3,4,5] or d.get("fingerprint","")!=fingerprint: return ERR_INVALID_DATA
 	if not d.get("ids") is PackedInt64Array or d.ids.is_empty(): return ERR_INVALID_DATA
 	var count: int=d.ids.size()
 	for key in ["east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed"]:
@@ -270,7 +272,7 @@ func load_ecosystem(path: String) -> Error:
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: set(key,d[key])
 	pending_ecology=d.get("ecology",{})
 	restored_rng_state=d.rng_state;fresh_population=false
-	migration_backup_needed=int(d.version)<4
+	migration_backup_needed=int(d.version)<5
 	elapsed=d.elapsed;zone_clock=d.zone_clock;rng.state=d.rng_state;cursor=int(d.cursor)%count;migrations=d.migrations;decisions=d.decisions
 	buckets.clear()
 	for z in range(zones.size()): buckets[z]=[];zone_counts[z]=0;zone_species_counts[z]=PackedInt32Array([0,0,0,0,0,0,0])
@@ -311,6 +313,8 @@ func setup_movement(root: String) -> bool:
 	return movement.setup(self,root,ecology.pending_movement)
 
 func dispose():
+	if hunting!=null: hunting.p=null;hunting.eco=null;hunting.web=null
+	hunting=null
 	if food_web!=null: food_web.p=null;food_web.eco=null
 	food_web=null
 	if movement!=null: movement.p=null;movement.eco=null
@@ -319,4 +323,6 @@ func dispose():
 
 func setup_food_web(root: String) -> bool:
 	food_web=FishFoodWeb.new()
-	return food_web.setup(self,root,ecology.pending_food_web)
+	if not food_web.setup(self,root,ecology.pending_food_web): return false
+	hunting=FishHunting.new()
+	return hunting.setup(self,root,ecology.pending_hunting)

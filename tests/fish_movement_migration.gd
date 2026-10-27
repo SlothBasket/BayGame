@@ -18,7 +18,7 @@ func run():
 		if route.is_empty(): fail("missing route");return
 		for n in range(1,route.size()):
 			if not migrated.movement.nav.clear(route[n-1],route[n]): fail("unsafe migration route");return
-	if migrated.save_to(path)!=OK or not FileAccess.file_exists(path+".before-natural-movement"): fail("migration backup/save");return
+	if migrated.save_to(path)!=OK or not FileAccess.file_exists(path+".before-dynamic-foodweb"): fail("migration backup/save");return
 	var restored := FishPopulation.new();restored.configure(zones,42)
 	if restored.load_from(path)!=OK or not restored.setup_ecology(config,habitats) or not restored.setup_movement(root): fail("version 4 restore");return
 	if restored.ids!=ids or restored.size_cm!=sizes or restored.ecology.home!=homes or restored.ecology.phase!=phases or restored.east!=migrated.east or restored.movement.preferred_feed!=migrated.movement.preferred_feed: fail("round trip mismatch");return

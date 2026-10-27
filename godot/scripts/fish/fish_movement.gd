@@ -73,7 +73,7 @@ func choose(i: int):
 	if anchor<0: p.decision_at[i]=p.elapsed+30;return
 	var component: int=nav.nodes[anchor].component;var goal: int=preferred_feed[i] if eco.routine_goal(i)==eco.feeding[i] else preferred_rest[i]
 	var candidate := habitat(i,p.region[i],component,int(p.ids[i])+int(p.elapsed/30))
-	if candidate>=0 and (p.rng.randf()<.25 or eco.pressure[p.region[i]]>.35 or (p.food_web!=null and p.food_web.productivity(int(nav.nodes[goal].zone))<.2)): goal=candidate
+	if candidate>=0 and (p.rng.randf()<.25 or eco.pressure[p.region[i]]>.35 or (p.hunting!=null and p.hunting.states[i].search_failures>3) or (p.food_web!=null and p.food_web.productivity(int(nav.nodes[goal].zone))<.2)): goal=candidate
 	# Schoolmates follow broad habitat goals, with their own offsets and routes.
 	if eco.school[i]>=0 and eco.pressure[p.region[i]]<.3:
 		for member in eco.schools.get(eco.school[i],[]):
@@ -111,11 +111,11 @@ func update_region(i: int,z: int):
 		p.buckets[old].erase(i);p.zone_counts[old]-=1;p.zone_species_counts[old][p.species[i]]-=1
 		p.buckets[z].append(i);p.zone_counts[z]+=1;p.zone_species_counts[z][p.species[i]]+=1
 	p.region[i]=z;p.migrations+=1
-func advance(at: Vector2,path: PackedVector2Array,index: int,distance: float,seed_value: int,heading: Vector2,near: bool) -> Dictionary:
+func advance(at: Vector2,path: PackedVector2Array,index: int,distance: float,seed_value: int,heading: Vector2,near: bool,arrival_radius := 2.0) -> Dictionary:
 	var remaining := distance;var steps := 0
 	while index<path.size() and remaining>0 and steps<96:
 		steps+=1;var delta := path[index]-at;var length := delta.length()
-		if length<2: index+=1;continue
+		if length<arrival_radius: index+=1;continue
 		var stride := minf(remaining,minf(length,12.0 if near else 48.0))
 		var forward := delta.normalized();var side := Vector2(-forward.y,forward.x)
 		var wave := sin(float(seed_value)*.71+float(p.elapsed)*.025+at.x*.004+at.y*.003)*.24
