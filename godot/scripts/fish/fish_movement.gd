@@ -134,7 +134,7 @@ func tick_fish(i: int,dt: float):
 		else: eco.choose_state(i);return
 	if routes[i].is_empty(): return
 	var at := Vector2(p.east[i],p.south[i]);var velocity: float=p.speed[i]*(1.7 if p.behavior[i]==5 else 1.0)
-	var near: bool=eco.near_zones.has(p.region[i]) or p.observed_fish==i;var heading: Vector2=headings[i]
+	var near := true;var heading: Vector2=headings[i]
 	var result := advance(at,routes[i],cursors[i],maxf(.05,velocity+eco.current.dot(heading))*dt,int(p.ids[i]),heading,near)
 	var next: Vector2=result.position
 	# Local separation is bounded to actual neighbors, never the entire population.
@@ -188,7 +188,7 @@ func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 		plan_record(a,a.has("pod"))
 	if not a.has("natural_path"): return false
 	if a.has("pod") and a.hunger>.35 and p.elapsed>=float(a.get("replan_at",0)): plan_record(a,true)
-	var result := advance(Vector2(a.x,a.y),a.natural_path,int(a.path_cursor),velocity*dt,int(a.id)+50000,a.get("heading",Vector2.ZERO),eco.near_zones.has(int(a.zone)))
+	var result := advance(Vector2(a.x,a.y),a.natural_path,int(a.path_cursor),velocity*dt,int(a.id)+50000,a.get("heading",Vector2.ZERO),true)
 	a.x=result.position.x;a.y=result.position.y;a.path_cursor=result.cursor;a.heading=result.heading
 	var anchor := nav.nearest(result.position)
 	if anchor>=0: a.zone=nav.nodes[anchor].zone

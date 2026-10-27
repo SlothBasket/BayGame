@@ -163,8 +163,9 @@ func on_arrival(i: int):
 func is_alive(i: int) -> bool:
 	return alive[i]==1
 func serialize() -> Dictionary:
-	return {"hunting":population.hunting.serialize() if population.hunting!=null and population.hunting.ready else {},"food_web":population.food_web.serialize() if population.food_web!=null and population.food_web.ready else {},"movement":population.movement.serialize() if population.movement!=null and population.movement.ready else {},"food_web_version":1,"forage":forage,"predators":predators,"pressure":pressure,"forage_cursor":forage_cursor,"predator_clock":predator_clock,"forage_consumed":forage_consumed,"game_fish_consumed":game_fish_consumed,"predator_meals":predator_meals,"jumps":jumps,"predator_ratio":predator_ratio,"home":home,"feeding":feeding,"resting":resting,"phase":phase,"boldness":boldness,"school":school,"alive":alive,"spot":spot,"returning":returning,"tide_level_m":tide_level_m,"current":current,"returns":returns}
+	return {"pressure_clock":pressure_clock,"hunting":population.hunting.serialize() if population.hunting!=null and population.hunting.ready else {},"food_web":population.food_web.serialize() if population.food_web!=null and population.food_web.ready else {},"movement":population.movement.serialize() if population.movement!=null and population.movement.ready else {},"food_web_version":1,"forage":forage,"predators":predators,"pressure":pressure,"forage_cursor":forage_cursor,"predator_clock":predator_clock,"forage_consumed":forage_consumed,"game_fish_consumed":game_fish_consumed,"predator_meals":predator_meals,"jumps":jumps,"predator_ratio":predator_ratio,"home":home,"feeding":feeding,"resting":resting,"phase":phase,"boldness":boldness,"school":school,"alive":alive,"spot":spot,"returning":returning,"tide_level_m":tide_level_m,"current":current,"returns":returns}
 func restore(d: Dictionary) -> bool:
+	pressure_clock=float(d.get("pressure_clock",0))
 	pending_movement=d.get("movement",{})
 	pending_food_web=d.get("food_web",{})
 	pending_hunting=d.get("hunting",{})
@@ -229,38 +230,12 @@ func set_predator_ratio(value: float):
 			if anchor>=0:
 				var at: Vector2=nav.offset(anchor,index+700,30);predators[-1].x=at.x;predators[-1].y=at.y
 				p.movement.plan_record(predators[-1],true)
-func tick(dt: float,player: GeoPosition):
-	var p=population;near_zones.clear()
-	if p.food_web!=null and p.food_web.ready: p.food_web.tick(dt)
-	var cell := Vector2i(roundi(player.east/750),roundi(player.south/750))
-	for y in range(-1,2):
-		for x in range(-1,2):
-			var z: int=p.spatial.get(cell+Vector2i(x,y),-1)
-			if z>=0: near_zones[z]=true
-	if p.food_web!=null and p.food_web.ready:
-		var nearby: Dictionary={}
-		for z in near_zones:
-			for index in forage_zones.get(z,[]): nearby[index]=true
-		if p.food_web.observed_bait>=0: nearby[p.food_web.observed_bait]=true
-		for index in nearby:
-			if index>=forage.size(): continue
-			var age: float=p.elapsed-forage[index].last
-			if age>=.1: update_forage(index,age);forage[index].last=p.elapsed
+func tick(dt: float,_player: GeoPosition):
+	if population.food_web!=null and population.food_web.ready: population.food_web.tick(dt)
 	pressure_clock+=dt
 	if pressure_clock>=2:
 		for z in range(pressure.size()): pressure[z]*=exp(-pressure_clock/120.0)
 		pressure_clock=0
-	for n in range(mini(96,forage.size())):
-		var index := forage_cursor;forage_cursor=(forage_cursor+1)%forage.size();var a: Dictionary=forage[index]
-		var age: float=p.elapsed-a.last
-		if age<2: continue
-		update_forage(index,age);a.last=p.elapsed
-	predator_clock+=dt
-	if predator_clock>=1:
-		for a in predators:
-			if not a.active: continue
-			update_predator(a,p.elapsed-a.last);a.last=p.elapsed
-		predator_clock=0
 func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 	if population.movement!=null and population.movement.ready: return population.movement.move_record(a,dt,velocity)
 	if a.destination<0: return false

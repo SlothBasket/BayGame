@@ -1,6 +1,7 @@
 class_name FishNavigation
 extends RefCounted
 var nodes: Dictionary = {}
+var route_cache: Dictionary = {}
 var zone_nodes: Array = []
 var spatial: Dictionary = {}
 class WaterGraph extends AStar2D:
@@ -75,7 +76,13 @@ func route(start: Vector2,target: Vector2,goal: int,follow_edge := false) -> Pac
 	if from<0 or not nodes.has(goal) or nodes[from].component!=nodes[goal].component: return PackedVector2Array()
 	graph.follow_edges=follow_edge and float(nodes[from].shore_m)<250 and float(nodes[goal].shore_m)<250
 	var coastal := graph.follow_edges
-	var raw := graph.get_point_path(from,goal)
+	var cache_key := Vector3i(from,goal,1 if coastal else 0)
+	var raw: PackedVector2Array
+	if route_cache.has(cache_key): raw=route_cache[cache_key].duplicate()
+	else:
+		raw=graph.get_point_path(from,goal)
+		if route_cache.size()>=512: route_cache.erase(route_cache.keys()[0])
+		route_cache[cache_key]=raw.duplicate()
 	graph.follow_edges=false
 	if raw.is_empty(): return raw
 	raw.insert(0,start);raw.append(target)

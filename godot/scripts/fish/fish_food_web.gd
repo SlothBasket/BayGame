@@ -14,6 +14,7 @@ var clock := 0.0
 var threats: Dictionary = {}
 var split_count := 0
 var merge_count := 0
+var events: Array = []
 var ready := false
 var observed_bait := -1
 func setup(population,root: String,saved: Dictionary) -> bool:
@@ -35,7 +36,7 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 		if saved.get("nutrients",PackedFloat32Array()).size()!=areas.size() or not saved.get("bottom") is Array: return false
 		for b in saved.bottom:
 			if not area_by_id.has(b.area) or not nav.wet(Vector2(b.x,b.y)) or b.quantity<0: return false
-		bottom=saved.bottom;nutrients=saved.nutrients;clock=saved.get("clock",0);split_count=saved.get("split_count",0);merge_count=saved.get("merge_count",0)
+		threats=saved.get("threats",{});events=saved.get("events",[]);bottom=saved.bottom;nutrients=saved.nutrients;clock=saved.get("clock",0);split_count=saved.get("split_count",0);merge_count=saved.get("merge_count",0)
 		for z in bottom_zones: bottom_zones[z]=[]
 		for index in range(bottom.size()): bottom_zones[int(bottom[index].zone)].append(index)
 	for a in eco.forage: initialize_bait(a)
@@ -101,6 +102,7 @@ func plan_bait(a: Dictionary):
 	if a.fear>.3:
 		var away := (at-Vector2(a.flee_from)).normalized()
 		if away==Vector2.ZERO: away=Vector2.from_angle(float(a.id))
+		away=away.rotated(float(posmod(int(a.id),5)-2)*.2)
 		var escape: int=nav.nearest(at+away*160)
 		if escape>=0 and nav.nodes[escape].component==nav.nodes[anchor].component: target=nav.point(escape);chosen=escape
 	if chosen<0:
@@ -146,8 +148,12 @@ func update_bait(index: int,dt: float):
 	if a.zone!=z: eco.forage_zones[z].erase(index);eco.forage_zones[int(a.zone)].append(index)
 	if a.fear>.6 and a.quantity>=24 and p.elapsed>=a.split_after and eco.forage.size()<6000:
 		a.quantity*=.5;a.capacity*=.5;a.split_after=p.elapsed+300;a.merge_after=p.elapsed+80
-		var child: Dictionary=a.duplicate(true);child.id=eco.forage.size()+1;child.parent_id=a.id;child.next=p.elapsed;child.turn_at=p.elapsed;child.erase("natural_path")
-		eco.forage_zones[int(a.zone)].append(eco.forage.size());eco.forage.append(child);split_count+=1;a.last_event="school split; individuals conserved"
+		var child: Dictionary=a.duplicate(true);child.id=eco.forage.size()+1;child.parent_id=a.id;child.last=p.elapsed;child.next=p.elapsed;child.turn_at=p.elapsed;child.erase("natural_path")
+		eco.forage_zones[int(a.zone)].append(eco.forage.size());eco.forage.append(child)
+		if p.hunting!=null: p.hunting.index_entity(0,eco.forage.size()-1)
+		events.append({"time":p.elapsed,"kind":"split","id":a.id,"other":child.id,"position":Vector2(a.x,a.y)})
+		if events.size()>40: events.pop_front()
+		split_count+=1;a.last_event="school split; individuals conserved"
 	if a.fear<.1 and p.elapsed>=a.merge_after:
 		for other_index in eco.forage_zones[int(a.zone)].duplicate():
 			if other_index==index: continue
@@ -155,8 +161,8 @@ func update_bait(index: int,dt: float):
 			if not other.active or other.kind!=a.kind or other.fear>.1 or other.quantity+a.quantity>160: continue
 			if Vector2(a.x-other.x,a.y-other.y).length()>12 or not nav.clear(Vector2(a.x,a.y),Vector2(other.x,other.y)): continue
 			other.quantity+=a.quantity;other.capacity+=a.capacity;other.merge_after=p.elapsed+60;other.last_event="school regrouped / merged"
-			a.quantity=0;a.active=false;a.merged_into=other.id;a.activity="merged";eco.forage_zones[int(a.zone)].erase(index);merge_count+=1;break
+			a.quantity=0;a.active=false;a.merged_into=other.id;a.activity="merged";events.append({"time":p.elapsed,"kind":"merge","id":a.id,"other":other.id,"position":Vector2(a.x,a.y)});eco.forage_zones[int(a.zone)].erase(index);merge_count+=1;break
 		a.merge_after=p.elapsed+30
 func serialize() -> Dictionary:
-	return {"nutrients":nutrients,"bottom":bottom,"clock":clock,"split_count":split_count,"merge_count":merge_count}
+	return {"threats":threats,"events":events,"nutrients":nutrients,"bottom":bottom,"clock":clock,"split_count":split_count,"merge_count":merge_count}
 

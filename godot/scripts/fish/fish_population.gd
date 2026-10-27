@@ -23,6 +23,14 @@ var ecology: FishEcology
 var pending_ecology: Dictionary = {}
 var restored_rng_state := 0
 var fresh_population := true
+const WORLD_STEP := .5
+var time_debt := 0.0
+var sim_phase := -1
+var sim_cursor := 0
+var step_forage_count := 0
+var completed_steps := 0
+var simulation_budget_us := 5000
+var presentation := FishPresentation.new()
 var hunting: FishHunting
 var food_web: FishFoodWeb
 var movement: FishMovement
@@ -204,34 +212,47 @@ func update_fish(i: int,dt: float):
 			east[i]+=dx/distance*travel;south[i]+=dy/distance*travel
 		return
 	if elapsed>=decision_at[i]: choose_destination(i)
-func tick_ecosystem(dt: float,player: GeoPosition):
-	if ids.is_empty(): return
-	var begin := Time.get_ticks_usec();var sim_dt := dt*time_scale;elapsed+=sim_dt;zone_clock+=sim_dt
-	if ecology!=null: ecology.tick(sim_dt,player)
-	if zone_clock>=2:
-		for z in range(zones.size()): food[z]=move_toward(food[z],float(zones[z].food_capacity),zone_clock*.0002)
-		zone_clock=0
-	# 250 records/frame gives distant fish a bounded cadence, not an all-fish frame loop.
-	for _n in range(mini(250,ids.size())):
-		var i := cursor;cursor=(cursor+1)%ids.size()
-		var age := elapsed-last_update[i]
-		if age<.5: continue
-		update_fish(i,age);last_update[i]=elapsed
-	# Nearby records get finer updates. Neither camera position nor zoom enters here.
-	var cell := Vector2i(roundi(player.east/750),roundi(player.south/750))
-	for y in range(-1,2):
-		for x in range(-1,2):
-			var z: int=spatial.get(cell+Vector2i(x,y),-1)
-			if z<0: continue
-			var members: Array=buckets[z].duplicate()
-			for i in members:
-				var age: float=elapsed-last_update[i]
-				if age<.1: continue
-				update_fish(i,age);last_update[i]=elapsed
-	if observed_fish>=0 and observed_fish<ids.size():
-		var age := elapsed-last_update[observed_fish]
-		if age>=.05: update_fish(observed_fish,age);last_update[observed_fish]=elapsed
+func tick_ecosystem(dt: float,_player: GeoPosition):
+	presentation.tick(dt)
+	if ids.is_empty() or time_scale<=0: return
+	var begin := Time.get_ticks_usec();time_debt+=dt*time_scale
+	# Deterministic phases and a persistent cursor: frame budgets change throughput, not outcomes.
+	while Time.get_ticks_usec()-begin<simulation_budget_us:
+		if sim_phase<0:
+			if time_debt+0.0000001<WORLD_STEP: break
+			time_debt=maxf(0,time_debt-WORLD_STEP);elapsed+=WORLD_STEP;zone_clock+=WORLD_STEP
+			if ecology!=null: ecology.tick(WORLD_STEP,null)
+			if zone_clock>=2:
+				for z in range(zones.size()): food[z]=move_toward(food[z],float(zones[z].food_capacity),zone_clock*.0002)
+				zone_clock=0
+			sim_phase=0;sim_cursor=0;step_forage_count=ecology.forage.size()
+		if sim_phase==0:
+			if sim_cursor>=step_forage_count: sim_phase=1;sim_cursor=0;continue
+			var a: Dictionary=ecology.forage[sim_cursor];var age: float=maxf(0,elapsed-float(a.last));var step := minf(WORLD_STEP,age)
+			if step>0 and a.get("active",true): ecology.update_forage(sim_cursor,step)
+			a.last=minf(elapsed,float(a.last)+step)
+			if hunting!=null: hunting.index_entity(0,sim_cursor)
+			if age<=WORLD_STEP+.000001 or not a.get("active",true): a.last=elapsed;sim_cursor+=1
+		elif sim_phase==1:
+			if sim_cursor>=ids.size(): sim_phase=2;sim_cursor=0;continue
+			var age := maxf(0,elapsed-last_update[sim_cursor]);var step := minf(WORLD_STEP,age)
+			if step>0: update_fish(sim_cursor,step)
+			last_update[sim_cursor]=minf(elapsed,last_update[sim_cursor]+step)
+			if hunting!=null: hunting.index_entity(1,sim_cursor)
+			if age<=WORLD_STEP+.000001: sim_cursor+=1
+		else:
+			if sim_cursor>=ecology.predators.size():
+				sim_phase=-1;sim_cursor=0;completed_steps+=1;presentation.snapshot(self);continue
+			var a: Dictionary=ecology.predators[sim_cursor];var age: float=maxf(0,elapsed-float(a.last));var step := minf(WORLD_STEP,age)
+			if step>0 and a.active: ecology.update_predator(a,step)
+			a.last=minf(elapsed,float(a.last)+step)
+			if age<=WORLD_STEP+.000001 or not a.active: a.last=elapsed;sim_cursor+=1
 	update_ms=(Time.get_ticks_usec()-begin)/1000.0
+func displayed(kind: int,index: int) -> Vector2:
+	var at := Vector2(east[index],south[index]) if kind==0 else Vector2.ZERO
+	if kind>0:
+		var a: Dictionary=ecology.forage[index] if kind==1 else ecology.predators[index];at=Vector2(a.x,a.y)
+	return presentation.position(kind,index,at)
 func inspect_fish(i: int) -> Dictionary:
 	return {"id":ids[i],"species":SPECIES[species[i]],"size_cm":size_cm[i],"preferred_depth_m":preferred_depth[i],"hunger":hunger[i],"east":east[i],"south":south[i],"zone":zones[region[i]].id,"destination":zones[destination[i]].id if destination[i]>=0 else "staying","state":["resting","traveling","feeding","searching","hunting","fleeing","consumed"][behavior[i]]}
 func boost_food(z: int):
@@ -241,13 +262,14 @@ func boost_food(z: int):
 			for index in ecology.forage_zones.get(z,[]): ecology.forage[index].quantity=ecology.forage[index].capacity
 func save_ecosystem(path: String) -> Error:
 	if migration_backup_needed and FileAccess.file_exists(path):
-		var backup := path+".before-dynamic-foodweb"
+		var backup := path+".before-world-scheduler"
 		if not FileAccess.file_exists(backup):
 			var error := DirAccess.copy_absolute(path,backup)
 			if error!=OK: return error
 		migration_backup_needed=false
-	var d := {"version":5 if hunting!=null and hunting.ready else (4 if movement!=null and movement.ready else (3 if ecology!=null else 2)),"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
+	var d := {"version":6 if hunting!=null and hunting.ready else (4 if movement!=null and movement.ready else (3 if ecology!=null else 2)),"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: d[key]=get(key)
+	d["scheduler"]={"debt":time_debt,"phase":sim_phase,"cursor":sim_cursor,"forage_count":step_forage_count,"completed_steps":completed_steps}
 	if ecology!=null: d["ecology"]=ecology.serialize()
 	var f := FileAccess.open(path+".tmp",FileAccess.WRITE)
 	if f==null: return FileAccess.get_open_error()
@@ -257,7 +279,7 @@ func load_ecosystem(path: String) -> Error:
 	var f := FileAccess.open(path,FileAccess.READ)
 	if f==null: return FileAccess.get_open_error()
 	var d = f.get_var(false)
-	if not d is Dictionary or not d.get("version",0) in [2,3,4,5] or d.get("fingerprint","")!=fingerprint: return ERR_INVALID_DATA
+	if not d is Dictionary or not d.get("version",0) in [2,3,4,5,6] or d.get("fingerprint","")!=fingerprint: return ERR_INVALID_DATA
 	if not d.get("ids") is PackedInt64Array or d.ids.is_empty(): return ERR_INVALID_DATA
 	var count: int=d.ids.size()
 	for key in ["east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed"]:
@@ -268,8 +290,11 @@ func load_ecosystem(path: String) -> Error:
 		if d.version<4 and d.destination[i]>=0 and not d.destination[i] in zones[d.region[i]].neighbors: return ERR_INVALID_DATA
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: set(key,d[key])
 	pending_ecology=d.get("ecology",{})
+	var schedule: Dictionary=d.get("scheduler",{})
+	time_debt=float(schedule.get("debt",0));sim_phase=int(schedule.get("phase",-1));sim_cursor=int(schedule.get("cursor",0));step_forage_count=int(schedule.get("forage_count",0));completed_steps=int(schedule.get("completed_steps",0))
+	if sim_phase < -1 or sim_phase>2 or sim_cursor<0 or time_debt<0: return ERR_INVALID_DATA
 	restored_rng_state=d.rng_state;fresh_population=false
-	migration_backup_needed=int(d.version)<5
+	migration_backup_needed=int(d.version)<6
 	elapsed=d.elapsed;zone_clock=d.zone_clock;rng.state=d.rng_state;cursor=int(d.cursor)%count;migrations=d.migrations;decisions=d.decisions
 	buckets.clear()
 	for z in range(zones.size()): buckets[z]=[];zone_counts[z]=0;zone_species_counts[z]=PackedInt32Array([0,0,0,0,0,0,0])
@@ -322,4 +347,6 @@ func setup_food_web(root: String) -> bool:
 	food_web=FishFoodWeb.new()
 	if not food_web.setup(self,root,ecology.pending_food_web): return false
 	hunting=FishHunting.new()
-	return hunting.setup(self,root,ecology.pending_hunting)
+	var valid := hunting.setup(self,root,ecology.pending_hunting)
+	presentation.snapshot(self)
+	return valid

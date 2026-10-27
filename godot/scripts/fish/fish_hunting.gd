@@ -7,6 +7,8 @@ var p
 var eco
 var web
 var nav
+var spatial := FishSpatialIndex.new()
+var profile_cache: Dictionary = {}
 var states: Array = []
 var events: Array = []
 var rules: Dictionary = {}
@@ -26,6 +28,9 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 		states=saved.states;events=saved.get("events",[])
 	for a in eco.predators:
 		if not a.has("hunt"): a.hunt=initial()
+	for i in range(eco.forage.size()): index_entity(0,i)
+	for i in range(p.ids.size()): index_entity(1,i)
+	for i in range(web.bottom.size()): index_entity(2,i)
 	ready=true;return true
 func state(actor: int) -> Dictionary:
 	if actor>=0: return states[actor]
@@ -44,6 +49,8 @@ func set_hunger(actor: int,value: float):
 	if actor>=0: p.hunger[actor]=clampf(value,0,1)
 	else: eco.predators[-actor-1].hunger=clampf(value,0,1)
 func profile(actor: int) -> Dictionary:
+	var band := 0 if length_cm(actor)<45 else (1 if length_cm(actor)<55 else 2)
+	if profile_cache.has(actor) and profile_cache[actor]._band==band: return profile_cache[actor]
 	var r: Dictionary=rules.game_fish[int(p.species[actor])].duplicate() if actor>=0 else rules.predators[int(eco.predators[-actor-1].kind)].duplicate()
 	if actor>=0:
 		var size: float=p.size_cm[actor]
@@ -51,6 +58,7 @@ func profile(actor: int) -> Dictionary:
 		if p.species[actor]==1 and size>55: r.style="intercept"
 		if p.species[actor]==2 and size<45: r.detect_ft*=.7;r.activity="juvenile cover ambush / surface strike"
 		r.gape=float(eco.profile(actor).max_prey_ratio)
+	r._band=band;profile_cache[actor]=r
 	return r
 func prey(kind: int,index: int) -> Dictionary:
 	if kind==0:
@@ -81,29 +89,23 @@ func suitable(actor: int,kind: int,index: int,data: Dictionary,r: Dictionary) ->
 func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 	var at := position(actor);var best := -INF;var selected_kind := -1;var selected_id := -1
 	var radius: float=float(r.detect_ft)*.3048*(.75+.25*s.energy)
-	var z := zone(actor);var zones: Array=[z];zones.append_array(p.zones[z].neighbors)
-	for region_id in zones:
-		var candidates: Array=[]
-		for index in eco.forage_zones.get(int(region_id),[]): candidates.append(Vector2i(0,index))
-		for index in web.bottom_zones.get(int(region_id),[]): candidates.append(Vector2i(2,index))
-		if r.style not in ["structure","bottom_shark"]:
-			for index in p.buckets[int(region_id)]: candidates.append(Vector2i(1,index))
-		for candidate in candidates:
-			var data := prey(candidate.x,candidate.y)
-			if not suitable(actor,candidate.x,candidate.y,data,r): continue
-			var target := prey_position(actor,candidate.x,candidate.y,data);var distance := at.distance_to(target)
-			var senses: float=1.3 if r.sense in ["electroreception / scent","echolocation"] else 1.0
-			var detection: float=radius*senses*(1.0-float(data.cover)*.5)*(1.1 if data.speed>.4 else .9)
-			if distance>detection or not nav.clear(at,target): continue
-			var score: float=hunger(actor)*2+float(data.size)/maxf(1,length_cm(actor))-distance/maxf(1,detection)-float(data.cover)
-			if candidate.x==2 and r.style in ["bottom","structure","bottom_shark"]: score+=1
-			if r.style=="chase" and actor>=0 and eco.school[actor]>=0:
-				for member in eco.schools.get(eco.school[actor],[]):
-					if member!=actor and states[member].kind==candidate.x and states[member].target==candidate.y and states[member].stage in [Stage.APPROACH,Stage.PURSUE]: score+=.7;break
-			if r.style=="dolphin":
-				for other in eco.predators:
-					if other.kind==3 and other.pod==eco.predators[-actor-1].pod and other.has("hunt") and other.hunt.kind==candidate.x and other.hunt.target==candidate.y: score+=.7;break
-			if score>best: best=score;selected_kind=candidate.x;selected_id=candidate.y
+	for code in spatial.query(at,radius*1.5):
+		var candidate := Vector2i(int(code)/FishSpatialIndex.STRIDE,int(code)%FishSpatialIndex.STRIDE)
+		var data := prey(candidate.x,candidate.y)
+		if not suitable(actor,candidate.x,candidate.y,data,r): continue
+		var target := prey_position(actor,candidate.x,candidate.y,data);var distance := at.distance_to(target)
+		var senses: float=1.3 if r.sense in ["electroreception / scent","echolocation"] else 1.0
+		var detection: float=radius*senses*(1.0-float(data.cover)*.5)*(1.1 if data.speed>.4 else .9)
+		if distance>detection or not nav.clear(at,target): continue
+		var score: float=hunger(actor)*2+float(data.size)/maxf(1,length_cm(actor))-distance/maxf(1,detection)-float(data.cover)
+		if candidate.x==2 and r.style in ["bottom","structure","bottom_shark"]: score+=1
+		if r.style=="chase" and actor>=0 and eco.school[actor]>=0:
+			for member in eco.schools.get(eco.school[actor],[]):
+				if member!=actor and states[member].kind==candidate.x and states[member].target==candidate.y and states[member].stage in [Stage.APPROACH,Stage.PURSUE]: score+=.7;break
+		if r.style=="dolphin":
+			for other in eco.predators:
+				if other.kind==3 and other.pod==eco.predators[-actor-1].pod and other.has("hunt") and other.hunt.kind==candidate.x and other.hunt.target==candidate.y: score+=.7;break
+		if score>best: best=score;selected_kind=candidate.x;selected_id=candidate.y
 	if selected_kind<0: s.search_failures+=1;return false
 	s.kind=selected_kind;s.target=selected_id;s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
 	event(actor,s,"detected "+prey(selected_kind,selected_id).label);return true
@@ -127,10 +129,10 @@ func set_position(actor: int,at: Vector2,heading: Vector2):
 func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionary,fast: bool):
 	var at := position(actor);var limit: float=float(r.burst_mph if fast else r.cruise_mph)*.44704*(.7+.3*minf(1.5,length_cm(actor)/70.0))
 	s.velocity=move_toward(float(s.velocity),limit,dt*2.0)
-	if p.elapsed>=s.replan_at or s.path.is_empty():
+	if s.path.is_empty() or (p.elapsed>=s.replan_at and (target.distance_squared_to(s.get("planned_target",Vector2.INF))>9 or s.cursor>=s.path.size())):
 		var goal: int=nav.nearest(target)
 		if goal>=0: s.path=nav.route(at,target,goal);s.cursor=1
-		s.replan_at=p.elapsed+(1 if actor==p.observed_fish else 3)
+		s.replan_at=p.elapsed+2;s.planned_target=target
 	if s.path.is_empty(): return
 	var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),s.velocity*dt,actor+90000,s.heading,true,.12)
 	s.cursor=moved.cursor;s.heading=moved.heading;set_position(actor,moved.position,moved.heading)
@@ -160,7 +162,7 @@ func step(actor: int,dt: float) -> bool:
 	if s.stage==Stage.SEARCH:
 		s.energy=minf(1,s.energy+dt*.002);s.activity="searching habitat"
 		if p.elapsed<s.detect_at: return false
-		s.detect_at=p.elapsed+(1 if actor==p.observed_fish else 5)
+		s.detect_at=p.elapsed+5
 		if detect(actor,s,r):
 			if actor>=0: p.movement.routes[actor]=PackedVector2Array();p.destination[actor]=-1
 			return true
@@ -168,9 +170,6 @@ func step(actor: int,dt: float) -> bool:
 			if at.distance_to(s.hold_anchor)>20: s.hold_anchor=at;s.hold_until=p.elapsed+float(r.wait_seconds)
 			if p.elapsed<s.hold_until: s.activity="camouflaged bottom wait" if r.style=="bottom_ambush" else "hovering / watching";return true
 		return false
-	if s.kind==0 and s.target>=0 and s.target<eco.forage.size():
-		var bait: Dictionary=eco.forage[s.target];var age: float=p.elapsed-bait.last
-		if age>.1: web.update_bait(s.target,age);bait.last=p.elapsed
 	var data := prey(int(s.kind),int(s.target))
 	if data.is_empty(): s.stage=Stage.RECOVER;s.until=p.elapsed+5;event(actor,s,"prey escaped / no longer available");return true
 	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance := at.distance_to(target)
@@ -215,3 +214,10 @@ func step(actor: int,dt: float) -> bool:
 	return true
 func serialize() -> Dictionary:
 	return {"states":states,"events":events}
+
+func index_entity(kind: int,index: int):
+	if kind==2:
+		spatial.move(kind,index,Vector2(web.bottom[index].x,web.bottom[index].y));return
+	var data := prey(kind,index)
+	if data.is_empty(): spatial.remove_key(kind*FishSpatialIndex.STRIDE+index)
+	else: spatial.move(kind,index,data.position)
