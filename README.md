@@ -2,13 +2,15 @@
 
 An offline Godot 4.5.2 geographic boating prototype for Tampa Bay. One projected meter is one game unit. The active project is an ordinary, unzipped Git checkout.
 
-## Fish ecosystem
+## Fish ecosystem and Fish Lab
 
-New populations default to **8,000 game fish**, seven configurable species, **1,380 connected zones** and **31,389 irregular geographic habitat/navigation points**. Fish retain IDs, home ranges, preferred feeding/resting areas, routines and school membership. They now navigate continuous water-valid paths to geographic habitat, with curved steering, individual spacing and varied return positions. Persistent forage, sharks and dolphin pods add feeding, predation and temporary displacement. Existing three-species saves retain their original fish and receive 100 of each missing species (a 10,000-fish save becomes 10,400).
+The default is **8,000 persistent game fish**. Existing populations keep their identities and counts. The entire bay uses the same fixed-step behavior, water-valid movement and physical hunting rules; camera position and selection do not change the simulation. Accelerated time queues work when the CPU cannot keep up, rather than skipping elapsed time.
 
-Press **F4** for the ecosystem map. Click fish, forage rings or predator triangles; enter a fish ID to find it again. Cycle map views for habitat, schools, prey and predator pressure. The scrolling panel includes food replenishment, temporary predator scares, tide and predator-density controls, and **1× / 10× / 60× / 300×** simulation. Grid boundaries are hidden unless enabled. Select **Follow selected fish continuously** to track its actual movement; cyan trails show traveled positions and yellow lines show planned paths. Habitat view distinguishes geographic evidence from inferred candidates. Select a fish and use **Observe selected fish feeding / return cycle** to accelerate its routine; use Center to find it again later.
+Habitat now comprises **3,768 overlapping opportunity areas**, including **291 bottom-forage habitats**. Mobile prey groups search, scatter, split and regroup. Game fish, sharks and dolphins must physically reach prey and complete a capture before feeding. Substrate and vegetation classifications remain inferred where mapped evidence is unavailable.
 
-See [current ecosystem scope](docs/ECOSYSTEM-NEXT.md). Habitat vegetation/substrate labels are inferred candidates, not surveyed maps. The latest behavior pass has a focused migration/route-safety check, but is **not gameplay-tested or benchmarked**; earlier [performance results](docs/BAY-ECOSYSTEM.md) describe the previous implementation. Bay imagery now retains a permanent coarse layer with fading detail transitions, zoom hysteresis and bounded caching. River work remains paused. See [natural movement notes](docs/NATURAL-MOVEMENT.md).
+Press **F4** for a compact toolbar and one selected-entity inspector. Fish, bait schools, predators and habitat areas have distinct contextual views. Use **Follow Selected**, **Center**, optional selection lock, display modes, paths and advanced details. Bait markers show species, group ID, abundance, direction and recent splits/merges. Simulation-rate and queued-time readouts distinguish requested acceleration from actual progress. Displayed movement is interpolated; authoritative positions and captures remain unchanged.
+
+Close zoom now has additional intermediate stops. UI lengths/depths use inches/feet, longer distances yards/miles, and speed MPH. Internal geography remains SI. [Current implementation and limits](docs/WORLD-SIMULATION.md).
 
 ## Play the current project
 

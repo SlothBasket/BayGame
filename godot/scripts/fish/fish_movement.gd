@@ -131,7 +131,7 @@ func tick_fish(i: int,dt: float):
 	if not ready or eco.alive[i]==0: return
 	if routes[i].is_empty() or cursors[i]>=routes[i].size():
 		if p.elapsed>=p.decision_at[i]: choose(i)
-		else: eco.choose_state(i);return
+		else: return
 	if routes[i].is_empty(): return
 	var at := Vector2(p.east[i],p.south[i]);var velocity: float=p.speed[i]*(1.7 if p.behavior[i]==5 else 1.0)
 	var near := true;var heading: Vector2=headings[i]

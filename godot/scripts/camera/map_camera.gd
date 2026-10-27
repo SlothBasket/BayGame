@@ -13,6 +13,12 @@ var manifest: Dictionary
 func setup(m: Dictionary):
 	manifest=m
 	presets=m.parameters.zoom_spans_m.duplicate()
+	var original: Array=presets.duplicate()
+	for i in range(original.size()-1):
+		var value: float=original[i]*1.3
+		while value<minf(float(original[i+1]),2000.0)*.98:
+			presets.append(value);value*=1.3
+	presets.sort()
 	presets.append(overview_span())
 	index=presets.size()-1
 	overview()
@@ -35,6 +41,10 @@ func event(e: InputEvent,boat: BoatModel):
 	if e.is_action_pressed("zoom_in",false,true) or e.is_action_pressed("zoom_out",false,true):
 		if not follow:
 			cursor=reticle if targeting else get_viewport().get_mouse_position();anchor=world_at(cursor)
+		var nearest := INF
+		for i in range(presets.size()):
+			var distance := absf(log(float(presets[i])/target_span))
+			if distance<nearest: nearest=distance;index=i
 		index=clampi(index+(-1 if e.is_action_pressed("zoom_in",false,true) else 1),0,presets.size()-1)
 		target_span=presets[index]
 	if e is InputEventMouseMotion and drag:

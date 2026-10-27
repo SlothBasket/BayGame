@@ -129,7 +129,7 @@ func set_position(actor: int,at: Vector2,heading: Vector2):
 func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionary,fast: bool):
 	var at := position(actor);var limit: float=float(r.burst_mph if fast else r.cruise_mph)*.44704*(.7+.3*minf(1.5,length_cm(actor)/70.0))
 	s.velocity=move_toward(float(s.velocity),limit,dt*2.0)
-	if s.path.is_empty() or (p.elapsed>=s.replan_at and (target.distance_squared_to(s.get("planned_target",Vector2.INF))>9 or s.cursor>=s.path.size())):
+	if s.path.is_empty() or (s.cursor>=s.path.size() and at.distance_squared_to(target)>.25) or (p.elapsed>=s.replan_at and target.distance_squared_to(s.get("planned_target",Vector2.INF))>9):
 		var goal: int=nav.nearest(target)
 		if goal>=0: s.path=nav.route(at,target,goal);s.cursor=1
 		s.replan_at=p.elapsed+2;s.planned_target=target
@@ -216,8 +216,11 @@ func serialize() -> Dictionary:
 	return {"states":states,"events":events}
 
 func index_entity(kind: int,index: int):
-	if kind==2:
-		spatial.move(kind,index,Vector2(web.bottom[index].x,web.bottom[index].y));return
-	var data := prey(kind,index)
-	if data.is_empty(): spatial.remove_key(kind*FishSpatialIndex.STRIDE+index)
-	else: spatial.move(kind,index,data.position)
+	if kind==2: spatial.move(kind,index,Vector2(web.bottom[index].x,web.bottom[index].y));return
+	if kind==1:
+		if eco.alive[index]==0: spatial.remove_key(kind*FishSpatialIndex.STRIDE+index)
+		else: spatial.move(kind,index,Vector2(p.east[index],p.south[index]))
+		return
+	var a: Dictionary=eco.forage[index]
+	if not a.get("active",true) or a.quantity<1: spatial.remove_key(index)
+	else: spatial.move(kind,index,Vector2(a.x,a.y))

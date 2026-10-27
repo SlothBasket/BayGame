@@ -163,6 +163,7 @@ func update_bait(index: int,dt: float):
 			other.quantity+=a.quantity;other.capacity+=a.capacity;other.merge_after=p.elapsed+60;other.last_event="school regrouped / merged"
 			a.quantity=0;a.active=false;a.merged_into=other.id;a.activity="merged";events.append({"time":p.elapsed,"kind":"merge","id":a.id,"other":other.id,"position":Vector2(a.x,a.y)});eco.forage_zones[int(a.zone)].erase(index);merge_count+=1;break
 		a.merge_after=p.elapsed+30
+	while events.size()>40: events.pop_front()
 func serialize() -> Dictionary:
 	return {"threats":threats,"events":events,"nutrients":nutrients,"bottom":bottom,"clock":clock,"split_count":split_count,"merge_count":merge_count}
 

@@ -302,15 +302,7 @@ func load_ecosystem(path: String) -> Error:
 	return OK
 
 func setup_ecology(settings: Dictionary,habitat_data: Dictionary) -> bool:
-	# Upgrade old three-species saves without replacing existing identities/species.
-	if pending_ecology.is_empty():
-		for kind in range(3,SPECIES.size()):
-			if species.find(kind)>=0: continue
-			for n in range(100):
-				var z := rng.randi_range(0,zones.size()-1);var i := ids.size()
-				ids.append(i+1);east.append(zones[z].x);south.append(zones[z].y);region.append(z);last_update.append(elapsed)
-				species.append(kind);size_cm.append(rng.randf_range(settings.species[kind].size_min_cm,settings.species[kind].size_max_cm));preferred_depth.append(settings.species[kind].depth_m);hunger.append(.5);behavior.append(0);destination.append(-1);decision_at.append(elapsed+rng.randf()*60);speed.append(.5)
-				buckets[z].append(i);zone_counts[z]+=1;zone_species_counts[z][kind]+=1
+	# Existing populations are never enlarged during save migration.
 	if fresh_population:
 		for i in range(ids.size()):
 			var profile: Dictionary=settings.species[species[i]]
