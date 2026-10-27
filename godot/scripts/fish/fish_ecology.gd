@@ -155,7 +155,9 @@ func on_decision(i: int):
 	if population.behavior[i]==5: interval=Vector2(5,15)
 	population.decision_at[i]=population.elapsed+population.rng.randf_range(interval.x,interval.y)
 func on_arrival(i: int):
-	if population.region[i]==routine_goal(i): returns+=1
+	if population.movement!=null and population.movement.ready:
+		if population.movement.targets[i] in [population.movement.preferred_feed[i],population.movement.preferred_rest[i]]: returns+=1
+	elif population.region[i]==routine_goal(i): returns+=1
 func is_alive(i: int) -> bool:
 	return alive[i]==1
 func serialize() -> Dictionary:
@@ -216,6 +218,12 @@ func set_predator_ratio(value: float):
 			for other in predators:
 				if other.kind==3 and other.pod==pod: z=other.zone;break
 		predators.append({"id":index+1,"kind":kind,"pod":pod,"active":true,"zone":z,"destination":-1,"x":float(p.zones[z].x),"y":float(p.zones[z].y),"last":p.elapsed,"next":p.elapsed+p.rng.randf()*90,"hunger":p.rng.randf_range(.2,.8),"size_cm":[180.0,140.0,90.0,250.0][kind]})
+		if p.movement!=null and p.movement.ready:
+			var nav=p.movement.nav;var anchor: int=nav.nearest(Vector2(p.zones[z].x,p.zones[z].y))
+			if anchor<0: anchor=nav.migration_anchor(Vector2(p.zones[z].x,p.zones[z].y),z)
+			if anchor>=0:
+				var at: Vector2=nav.offset(anchor,index+700,30);predators[-1].x=at.x;predators[-1].y=at.y
+				p.movement.plan_record(predators[-1],true)
 func tick(dt: float,player: GeoPosition):
 	var p=population;near_zones.clear()
 	var cell := Vector2i(roundi(player.east/750),roundi(player.south/750))
@@ -287,7 +295,7 @@ func interact(i: int,dt: float):
 	if pressure[z]>.35 and p.behavior[i]!=5:
 		p.behavior[i]=5;p.decision_at[i]=p.elapsed
 	if (p.destination[i]>=0 and p.movement==null) or p.behavior[i] not in [2,4] or p.hunger[i]<.15: return
-	var close: bool=near_zones.has(z);var reach := 90.0 if profile(i).style=="chase" else 45.0
+	var close: bool=near_zones.has(z) or p.observed_fish==i;var reach := 90.0 if profile(i).style=="chase" else 45.0
 	if profile(i).style in ["ambush","bottom_ambush"]: reach=25.0
 	for index in forage_zones.get(z,[]):
 		var a: Dictionary=forage[index]

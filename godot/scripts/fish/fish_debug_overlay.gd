@@ -6,6 +6,12 @@ var selected_zone := -1
 var enabled := false
 var timer := 0.0
 var mode := 0
+var show_grid := false
+var follow_selected := false
+var selected_feature := -1
+var trail := PackedVector2Array()
+var trail_id := -1
+var centroids := PackedVector2Array()
 var selected_forage := -1
 var selected_predator := -1
 var tide_button: Button
@@ -34,6 +40,12 @@ func setup(game):
 	speed_button=Button.new();speed_button.text="Simulation: 1×";body.add_child(speed_button)
 	speed_button.pressed.connect(func(): main.fish.time_scale=10.0 if main.fish.time_scale==1 else (60.0 if main.fish.time_scale==10 else (300.0 if main.fish.time_scale==60 else 1.0));speed_button.text="Simulation: %d×" % main.fish.time_scale)
 	var bait := Button.new();bait.text="Add food to selected zone";body.add_child(bait);bait.pressed.connect(func(): main.fish.boost_food(selected_zone);refresh())
+	var grid_toggle := CheckButton.new();grid_toggle.text="Show internal population grid";body.add_child(grid_toggle)
+	grid_toggle.toggled.connect(func(value: bool): show_grid=value;queue_redraw())
+	var track_toggle := CheckButton.new();track_toggle.text="Follow selected fish continuously";body.add_child(track_toggle)
+	track_toggle.toggled.connect(func(value: bool):
+		follow_selected=value
+		if value: main.camera.follow=false;main.camera.anchor=null;main.camera.target_span=1500)
 	var nearby := Button.new();nearby.text="Select fish in zone (next)";body.add_child(nearby);nearby.pressed.connect(select_next)
 	var follow := Button.new();follow.text="Center map on selected fish";body.add_child(follow)
 	follow.pressed.connect(func():
@@ -67,16 +79,31 @@ func setup(game):
 func toggle():
 	enabled=not enabled;panel.visible=enabled;refresh();queue_redraw()
 func tick(dt: float):
+	if main.fish!=null: main.fish.observed_fish=selected if enabled else -1
 	if not enabled or main.fish==null: return
+	if follow_selected and selected>=0:
+		main.camera.follow=false;main.camera.anchor=null;main.camera.geo=GeoPosition.new(main.fish.east[selected],main.fish.south[selected])
 	var current_origin := Vector2(main.origin.east,main.origin.south)
 	if current_origin!=drawn_origin: queue_redraw()
 	timer+=dt
-	if timer>=.2: timer=0;refresh();queue_redraw()
+	if timer>=.2:
+		timer=0;refresh();queue_redraw()
+		if selected>=0:
+			if trail_id!=selected: trail.clear();trail_id=selected
+			var at := Vector2(main.fish.east[selected],main.fish.south[selected])
+			if trail.is_empty() or trail[-1].distance_to(at)>1:
+				trail.append(at)
+				if trail.size()>120: trail.remove_at(0)
 func refresh():
 	if main.fish==null or main.fish.zones.is_empty(): return
 	var fish: FishPopulation=main.fish
 	speed_button.text="Simulation: %d×" % fish.time_scale
 	counts=fish.zone_counts;species_counts=fish.zone_species_counts
+	centroids.resize(fish.zones.size())
+	for z in range(fish.zones.size()):
+		var center := Vector2.ZERO
+		for i in fish.buckets[z]: center+=Vector2(fish.east[i],fish.south[i])
+		centroids[z]=center/maxi(1,counts[z]) if counts[z]>0 else Vector2(fish.zones[z].x,fish.zones[z].y)
 	var eco=fish.ecology
 	if eco!=null:
 		tide_button.text="Ecology tide: %+.1f m (click to cycle)" % eco.tide_level_m
@@ -96,6 +123,9 @@ func refresh():
 		info.text+="\nFish #%d · %s · %.0f cm\nPrefers %.1f ft · Hunger %.0f%%\nE %.1f / S %.1f m\n%s → %s\n%s" % [d.id,d.species,d.size_cm,d.preferred_depth_m*3.280839895,d.hunger*100,d.east,d.south,d.zone,d.destination,d.state]
 		if eco!=null:
 			info.text+="\n"+eco.describe(selected)
+			if fish.movement!=null and fish.movement.ready:
+				var move=fish.movement;var target: int=move.targets[selected]
+				info.text+="\nPreferred habitats: %d / %d\nTarget feature: %d · route point %d\nCyan: traveled trail · Yellow: planned route" % [move.preferred_rest[selected],move.preferred_feed[selected],target,move.cursors[selected]]
 			if eco.school[selected]>=0: info.text+="\nSchool member IDs: "+school_summary(eco.school[selected])
 	if eco!=null and selected_forage>=0:
 		var a: Dictionary=eco.forage[selected_forage]
@@ -103,6 +133,9 @@ func refresh():
 	if eco!=null and selected_predator>=0:
 		var a: Dictionary=eco.predators[selected_predator]
 		info.text+="\nPREDATOR #%d · %s\nHunger %.0f%% · dolphin pod %s\nDestination %s" % [a.id,eco.PREDATOR_NAMES[int(a.kind)],a.hunger*100,str(a.pod),str(a.destination)]
+	if selected_feature>=0 and fish.movement!=null and fish.movement.nav.nodes.has(selected_feature):
+		var feature: Dictionary=fish.movement.nav.nodes[selected_feature]
+		info.text+="\nHABITAT #%d · %.1f m depth\n%s\nEvidence: %s\nVegetation/substrate candidates are inferred." % [selected_feature,feature.depth_m,", ".join(feature.tags),", ".join(feature.evidence)]
 func forage_summary(z: int) -> String:
 	var eco=main.fish.ecology;var totals: Dictionary={}
 	for index in eco.forage_zones.get(z,[]):
@@ -129,7 +162,7 @@ func select_at(p: GeoPosition,mpp: float):
 			if fish.ecology!=null and fish.ecology.alive[i]==0: continue
 			var d := pow(fish.east[i]-p.east,2)+pow(fish.south[i]-p.south,2)
 			if d<best: best=d;found=i
-	selected_forage=-1;selected_predator=-1
+	selected_feature=-1;selected_forage=-1;selected_predator=-1
 	if fish.ecology!=null and main.camera.span<7000:
 		for index in range(fish.ecology.forage.size()):
 			var a: Dictionary=fish.ecology.forage[index];var d: float=Vector2(a.x-p.east,a.y-p.south).length_squared()
@@ -142,6 +175,10 @@ func select_at(p: GeoPosition,mpp: float):
 	if selected_forage>=0 or selected_predator>=0: refresh();queue_redraw();return
 	if found>=0: selected=found;selected_zone=fish.region[found]
 	else:
+		if fish.movement!=null and fish.movement.ready:
+			var feature: int=fish.movement.nav.nearest(Vector2(p.east,p.south))
+			if feature>=0 and fish.movement.nav.point(feature).distance_to(Vector2(p.east,p.south))<maxf(14*mpp,40):
+				selected_feature=feature;selected_zone=fish.movement.nav.nodes[feature].zone;refresh();queue_redraw();return
 		best=pow(maxf(20*mpp,450),2)
 		for z in range(fish.zones.size()):
 			var d := pow(float(fish.zones[z].x)-p.east,2)+pow(float(fish.zones[z].y)-p.south,2)
@@ -157,7 +194,8 @@ func _draw():
 		var zone: Dictionary=fish.zones[z];var absolute := Vector2(zone.x,zone.y)
 		if not bounds.has_point(absolute): continue
 		var p := absolute-Vector2(main.origin.east,main.origin.south)
-		if main.camera.span<20000:
+		if show_grid and main.camera.span<20000:
+			draw_rect(Rect2(p-Vector2.ONE*375,Vector2.ONE*750),Color(.5,.9,.8,.2),false,mpp)
 			for neighbor in zone.neighbors:
 				if neighbor<z: continue
 				var q: Dictionary=fish.zones[neighbor]
@@ -169,8 +207,9 @@ func _draw():
 		if mode==1: color=Color(.2,.22,.15).lerp(Color(.5,1,.25),fish.food[z])
 		if mode==3 and fish.ecology!=null: color=Color(.1,.5,.4).lerp(Color(1,.1,.1),fish.ecology.pressure[z])
 		if mode==2: color=Color(.8,.2,.2).lerp(Color(.2,.9,.7),fish.suitability(selected,z) if selected>=0 else .5)
-		draw_circle(p,clampf(3+sqrt(float(counts[z])),3,12)*mpp,Color(color,.65))
-		if z==selected_zone: draw_circle(p,15*mpp,Color.WHITE,false,mpp)
+		if counts[z]>0 and (main.camera.span>=7000 or mode in [1,2,3]):
+			var actual_center := centroids[z]-Vector2(main.origin.east,main.origin.south)
+			draw_circle(actual_center,clampf(3+sqrt(float(counts[z])),3,12)*mpp,Color(color,.65))
 	if main.camera.span<7000:
 		for i in range(fish.ids.size()):
 			if fish.ecology!=null and fish.ecology.alive[i]==0: continue
@@ -179,14 +218,17 @@ func _draw():
 			var p := absolute-Vector2(main.origin.east,main.origin.south)
 			draw_circle(p,2.5*mpp,COLORS[fish.species[i]])
 			if fish.destination[i]>=0:
-				var z: Dictionary=fish.zones[fish.destination[i]];var direction := Vector2(z.x-fish.east[i],z.y-fish.south[i]).normalized()
+				var direction: Vector2=fish.movement.headings[i] if fish.movement!=null and fish.movement.ready else Vector2.ZERO
 				draw_line(p,p+direction*12*mpp,COLORS[fish.species[i]],mpp)
 	if selected>=0:
 		var p := Vector2(fish.east[selected]-main.origin.east,fish.south[selected]-main.origin.south)
 		draw_circle(p,8*mpp,Color.WHITE,false,2*mpp)
-		if fish.destination[selected]>=0:
-			var z: Dictionary=fish.zones[fish.destination[selected]]
-			draw_line(p,Vector2(z.x-main.origin.east,z.y-main.origin.south),Color(1,1,.4,.8),2*mpp)
+		if fish.movement!=null and fish.movement.ready:
+			draw_route(fish.movement.routes[selected],fish.movement.cursors[selected],p,Color(1,1,.4,.8),mpp)
+		if trail.size()>1:
+			var local := PackedVector2Array()
+			for at in trail: local.append(at-Vector2(main.origin.east,main.origin.south))
+			draw_polyline(local,Color(.2,1,1,.7),mpp,true)
 
 	if fish.ecology!=null: draw_ecology(fish,mpp,bounds)
 func draw_ecology(fish: FishPopulation,mpp: float,bounds: Rect2):
@@ -207,19 +249,37 @@ func draw_ecology(fish: FishPopulation,mpp: float,bounds: Rect2):
 			var pos := absolute-origin;var r := 8*mpp;var color := Color(1,.25,.2) if a.kind!=3 else Color(.4,.95,1)
 			draw_colored_polygon(PackedVector2Array([pos+Vector2(0,-r),pos+Vector2(r,r),pos+Vector2(-r,r)]),color)
 			if index==selected_predator: draw_circle(pos,15*mpp,Color.WHITE,false,2*mpp)
-		if selected_zone>=0 and mode==4:
-			var z: Dictionary=fish.zones[selected_zone]
-			for spot in eco.habitats[selected_zone].spots:
-				var pos := Vector2(spot.x,spot.y)-origin
-				draw_circle(pos,8*mpp,Color(.5,1,.4),false,mpp)
-				draw_line(Vector2(z.x,z.y)-origin,pos,Color(.5,1,.4,.4),mpp)
+		if mode==4 and fish.movement!=null and fish.movement.ready:
+			var nav=fish.movement.nav;var drawn := 0
+			for feature in nav.nodes.values():
+				var absolute := Vector2(feature.x,feature.y)
+				if not bounds.has_point(absolute) or feature.tags==["open_water"]: continue
+				var color := Color(.95,.65,.25,.8) if feature.evidence.is_empty() else Color(.3,1,.7,.9)
+				draw_circle(absolute-origin,3*mpp,color,false,mpp);drawn+=1
+				if drawn>=1800: break
+			if selected_feature>=0:
+				draw_circle(nav.point(selected_feature)-origin,12*mpp,Color.WHITE,false,2*mpp)
 	if selected>=0:
-		for z in [eco.home[selected],eco.feeding[selected],eco.resting[selected]]:
-			var zone: Dictionary=fish.zones[z];var pos := Vector2(zone.x,zone.y)-origin
-			draw_rect(Rect2(pos-Vector2.ONE*14*mpp,Vector2.ONE*28*mpp),Color(1,.8,.2),false,2*mpp)
+		if fish.movement!=null and fish.movement.ready:
+			for feature in [fish.movement.preferred_feed[selected],fish.movement.preferred_rest[selected]]:
+				var pos: Vector2=fish.movement.nav.point(feature)-origin
+				draw_rect(Rect2(pos-Vector2.ONE*10*mpp,Vector2.ONE*20*mpp),Color(1,.8,.2),false,2*mpp)
 		if mode==5 and eco.school[selected]>=0:
 			var p := Vector2(fish.east[selected],fish.south[selected])-origin
 			for member in eco.schools.get(eco.school[selected],[]):
 				if eco.alive[member]==0: continue
 				var q := Vector2(fish.east[member],fish.south[member])-origin
 				draw_line(p,q,Color(.8,.8,1,.35),mpp)
+
+	if selected_forage>=0:
+		var a: Dictionary=eco.forage[selected_forage]
+		if a.has("natural_path"): draw_route(a.natural_path,int(a.path_cursor),Vector2(a.x,a.y)-origin,Color(1,.8,.3),mpp)
+	if selected_predator>=0:
+		var a: Dictionary=eco.predators[selected_predator]
+		if a.has("natural_path"): draw_route(a.natural_path,int(a.path_cursor),Vector2(a.x,a.y)-origin,Color(1,.3,.3),mpp)
+func draw_route(path: PackedVector2Array,cursor: int,start: Vector2,color: Color,mpp: float):
+	if cursor>=path.size(): return
+	var local := PackedVector2Array([start]);var origin := Vector2(main.origin.east,main.origin.south)
+	for index in range(cursor,path.size()): local.append(path[index]-origin)
+	if local.size()>1: draw_polyline(local,color,1.5*mpp,true)
+	draw_circle(local[-1],6*mpp,color,false,mpp)

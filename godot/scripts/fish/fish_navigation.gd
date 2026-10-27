@@ -3,7 +3,13 @@ extends RefCounted
 var nodes: Dictionary = {}
 var zone_nodes: Array = []
 var spatial: Dictionary = {}
-var graph := AStar2D.new()
+class WaterGraph extends AStar2D:
+	var follow_edges := false
+	var shore: Dictionary = {}
+	func _compute_cost(from_id: int,to_id: int) -> float:
+		var distance := get_point_position(from_id).distance_to(get_point_position(to_id))
+		return distance*(1.0+minf(3.0,float(shore.get(to_id,1000))/180.0)) if follow_edges else distance
+var graph := WaterGraph.new()
 var mask := PackedByteArray()
 var origin := Vector2.ZERO
 var width := 0
@@ -19,7 +25,7 @@ func setup(root: String) -> bool:
 	for record in data.nodes:
 		var id: int=record.id;record.id=id;record.zone=int(record.zone);record.component=int(record.component)
 		record.neighbors=PackedInt32Array(record.neighbors);nodes[id]=record
-		var p := Vector2(record.x,record.y);graph.add_point(id,p)
+		var p := Vector2(record.x,record.y);graph.add_point(id,p);graph.shore[id]=float(record.shore_m)
 		var key := Vector2i(floori(p.x/256),floori(p.y/256))
 		if not spatial.has(key): spatial[key]=[]
 		spatial[key].append(id)
@@ -63,18 +69,21 @@ func nearest(p: Vector2,zone := -1,component := -1) -> int:
 					if d<distance and (not wet(p) or clear(p,point(id))): distance=d;best=id
 		if best>=0 and distance<pow(maxi(1,ring)*256,2): break
 	return best
-func route(start: Vector2,target: Vector2,goal: int) -> PackedVector2Array:
-	if clear(start,target): return PackedVector2Array([start,target])
+func route(start: Vector2,target: Vector2,goal: int,follow_edge := false) -> PackedVector2Array:
+	if not follow_edge and clear(start,target): return PackedVector2Array([start,target])
 	var from := nearest(start)
 	if from<0 or not nodes.has(goal) or nodes[from].component!=nodes[goal].component: return PackedVector2Array()
+	graph.follow_edges=follow_edge and float(nodes[from].shore_m)<250 and float(nodes[goal].shore_m)<250
+	var coastal := graph.follow_edges
 	var raw := graph.get_point_path(from,goal)
+	graph.follow_edges=false
 	if raw.is_empty(): return raw
 	raw.insert(0,start);raw.append(target)
 	# Visibility smoothing removes triangulation zigzags; steering supplies natural curvature.
 	var result := PackedVector2Array([start]);var index := 0
 	while index<raw.size()-1:
 		var next := index+1
-		for candidate in range(index+2,mini(raw.size(),index+10)):
+		for candidate in range(index+2,mini(raw.size(),index+(3 if coastal else 10))):
 			if clear(raw[index],raw[candidate]): next=candidate
 		result.append(raw[next]);index=next
 	return result

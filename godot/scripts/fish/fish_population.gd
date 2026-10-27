@@ -24,6 +24,7 @@ var pending_ecology: Dictionary = {}
 var restored_rng_state := 0
 var fresh_population := true
 var movement: FishMovement
+var observed_fish := -1
 var migration_backup_needed := false
 var zones: Array = []
 var zone_counts := PackedInt32Array()
@@ -227,6 +228,9 @@ func tick_ecosystem(dt: float,player: GeoPosition):
 				var age: float=elapsed-last_update[i]
 				if age<.1: continue
 				update_fish(i,age);last_update[i]=elapsed
+	if observed_fish>=0 and observed_fish<ids.size():
+		var age := elapsed-last_update[observed_fish]
+		if age>=.05: update_fish(observed_fish,age);last_update[observed_fish]=elapsed
 	update_ms=(Time.get_ticks_usec()-begin)/1000.0
 func inspect_fish(i: int) -> Dictionary:
 	return {"id":ids[i],"species":SPECIES[species[i]],"size_cm":size_cm[i],"preferred_depth_m":preferred_depth[i],"hunger":hunger[i],"east":east[i],"south":south[i],"zone":zones[region[i]].id,"destination":zones[destination[i]].id if destination[i]>=0 else "staying","state":["resting","traveling","feeding","searching","hunting","fleeing","consumed"][behavior[i]]}

@@ -77,8 +77,9 @@ func choose(i: int):
 	# Schoolmates follow broad habitat goals, with their own offsets and routes.
 	if eco.school[i]>=0 and eco.pressure[p.region[i]]<.3:
 		for member in eco.schools.get(eco.school[i],[]):
-			if member!=i and eco.alive[member]==1 and targets[member]>=0:
-				goal=targets[member];break
+			if eco.alive[member]==0: continue
+			if member!=i and targets[member]>=0 and cursors[member]<routes[member].size(): goal=targets[member]
+			break
 	if eco.pressure[p.region[i]]>.35:
 		var low: float=eco.pressure[int(nav.nodes[goal].zone)]
 		for z in p.zones[p.region[i]].neighbors:
@@ -95,7 +96,7 @@ func choose(i: int):
 			var pos := Vector2(prey.x,prey.y);var distance := at.distance_squared_to(pos);var candidate_id := nav.nearest(pos)
 			if distance<nearest and candidate_id>=0 and nav.nodes[candidate_id].component==component:
 				nearest=distance;goal=candidate_id;target=pos
-	var path := nav.route(at,target,goal)
+	var path := nav.route(at,target,goal,"shoreline_edge" in eco.profile(i).habitats or "mangrove_edge_candidate" in eco.profile(i).habitats)
 	if path.is_empty(): p.decision_at[i]=p.elapsed+30;return
 	targets[i]=goal;routes[i]=path;cursors[i]=1;p.destination[i]=int(nav.nodes[goal].zone)
 	p.decisions+=1;eco.on_decision(i)
@@ -130,7 +131,7 @@ func tick_fish(i: int,dt: float):
 		else: eco.choose_state(i);return
 	if routes[i].is_empty(): return
 	var at := Vector2(p.east[i],p.south[i]);var velocity: float=p.speed[i]*(1.7 if p.behavior[i]==5 else 1.0)
-	var near: bool=eco.near_zones.has(p.region[i]);var heading: Vector2=headings[i]
+	var near: bool=eco.near_zones.has(p.region[i]) or p.observed_fish==i;var heading: Vector2=headings[i]
 	var result := advance(at,routes[i],cursors[i],maxf(.05,velocity+eco.current.dot(heading))*dt,int(p.ids[i]),heading,near)
 	var next: Vector2=result.position
 	# Local separation is bounded to actual neighbors, never the entire population.
@@ -142,6 +143,8 @@ func tick_fish(i: int,dt: float):
 			if d.length()>0 and d.length()<spacing: separation+=d.normalized()*(spacing-d.length())*.15
 		if separation.length()>0 and nav.clear(next,next+separation): next+=separation.limit_length(2)
 	p.east[i]=next.x;p.south[i]=next.y;cursors[i]=result.cursor;headings[i]=result.heading
+	if next.distance_squared_to(at)<.0001 and cursors[i]<routes[i].size():
+		routes[i]=PackedVector2Array();p.destination[i]=-1;p.decision_at[i]=p.elapsed+1;return
 	var anchor := nav.nearest(next)
 	if anchor>=0: update_region(i,nav.nodes[anchor].zone)
 	if cursors[i]>=routes[i].size():
