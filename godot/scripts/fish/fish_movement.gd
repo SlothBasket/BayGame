@@ -10,26 +10,33 @@ var cursors := PackedInt32Array()
 var headings := PackedVector2Array()
 var routes: Array = []
 var ready := false
+var last_error := ""
+func fail(reason: String) -> bool:
+	last_error=reason;return false
 func setup(population,root: String,saved: Dictionary) -> bool:
 	p=population;eco=p.ecology
-	if not nav.setup(root): return false
+	if not nav.setup(root): return fail("navigation asset or water mask invalid")
 	var n: int=p.ids.size();preferred_feed.resize(n);preferred_rest.resize(n);targets.resize(n);targets.fill(-1);cursors.resize(n);headings.resize(n);routes.resize(n)
 	for i in range(n): routes[i]=PackedVector2Array()
 	if not saved.is_empty():
-		if saved.get("fingerprint","")!=nav.fingerprint: return false
+		if saved.get("fingerprint","")!=nav.fingerprint: return fail("saved navigation fingerprint differs from generated navigation")
 		for key in ["preferred_feed","preferred_rest","targets","cursors","headings","routes"]:
-			if not saved.has(key) or saved[key].size()!=n: return false
+			if not saved.has(key) or saved[key].size()!=n: return fail("saved movement array invalid: "+key)
 		for i in range(n):
-			if not nav.nodes.has(saved.preferred_feed[i]) or not nav.nodes.has(saved.preferred_rest[i]): return false
-			if saved.targets[i]>=0 and not nav.nodes.has(saved.targets[i]): return false
-			if saved.cursors[i]<0 or saved.cursors[i]>saved.routes[i].size(): return false
+			if not nav.nodes.has(saved.preferred_feed[i]) or not nav.nodes.has(saved.preferred_rest[i]): return fail("saved habitat reference or migration anchor invalid")
+			if saved.targets[i]>=0 and not nav.nodes.has(saved.targets[i]): return fail("saved habitat reference or migration anchor invalid")
+			if saved.cursors[i]<0 or (not saved.routes[i].is_empty() and saved.cursors[i]>saved.routes[i].size()): return fail("invalid route cursor for fish #"+str(p.ids[i]))
 		for key in ["preferred_feed","preferred_rest","targets","cursors","headings","routes"]: set(key,saved[key])
+		# Canceled paths in older saves retained a harmless cursor. Preserve all fish data.
+		cursors=cursors.duplicate()
+		for i in range(n):
+			if routes[i].is_empty(): cursors[i]=0
 	else:
 		# Only locations/navigation migrate. Identity, size, home, routine phase and school stay intact.
 		for i in range(n):
 			var at := Vector2(p.east[i],p.south[i]);var anchor := nav.nearest(at)
 			if anchor<0: anchor=nav.migration_anchor(at,int(p.region[i]))
-			if anchor<0: return false
+			if anchor<0: return fail("saved habitat reference or migration anchor invalid")
 			var component: int=nav.nodes[anchor].component
 			preferred_feed[i]=habitat(i,eco.feeding[i],component,int(p.ids[i]));preferred_rest[i]=habitat(i,eco.resting[i],component,int(p.ids[i])+17)
 			if preferred_feed[i]<0: preferred_feed[i]=anchor
@@ -43,7 +50,7 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 		for a in eco.forage+eco.predators:
 			var at := Vector2(a.x,a.y);var anchor := nav.nearest(at)
 			if anchor<0: anchor=nav.migration_anchor(at,int(a.zone))
-			if anchor<0: return false
+			if anchor<0: return fail("saved habitat reference or migration anchor invalid")
 			var moved := nav.offset(anchor,int(a.id)+300,28)
 			a.x=moved.x;a.y=moved.y;a.zone=nav.nodes[anchor].zone;a.destination=-1;a.erase("natural_path");a.next=p.elapsed+float(int(a.id)%30)
 		eco.rebuild_forage_index()
@@ -147,7 +154,7 @@ func tick_fish(i: int,dt: float):
 		if separation.length()>0 and nav.clear(next,next+separation): next+=separation.limit_length(2)
 	p.east[i]=next.x;p.south[i]=next.y;cursors[i]=result.cursor;headings[i]=result.heading
 	if next.distance_squared_to(at)<.0001 and cursors[i]<routes[i].size():
-		routes[i]=PackedVector2Array();p.destination[i]=-1;p.decision_at[i]=p.elapsed+1;return
+		routes[i]=PackedVector2Array();cursors[i]=0;p.destination[i]=-1;p.decision_at[i]=p.elapsed+1;return
 	var anchor := nav.nearest(next)
 	if anchor>=0: update_region(i,nav.nodes[anchor].zone)
 	if cursors[i]>=routes[i].size():

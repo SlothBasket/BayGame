@@ -13,6 +13,9 @@ var states: Array = []
 var events: Array = []
 var rules: Dictionary = {}
 var ready := false
+var last_error := ""
+func fail(reason: String) -> bool:
+	last_error=reason;return false
 func initial() -> Dictionary:
 	return {"stage":Stage.SEARCH,"kind":-1,"target":-1,"until":0.0,"detect_at":0.0,"replan_at":0.0,"energy":1.0,"velocity":0.0,"path":PackedVector2Array(),"cursor":0,"heading":Vector2.ZERO,"last_event":"","captures":0,"misses":0,"search_failures":0,"hold_until":0.0,"hold_anchor":Vector2.ZERO,"activity":"searching","meal":0.0,"prey_cm":0.0}
 func setup(population,root: String,saved: Dictionary) -> bool:
@@ -20,11 +23,11 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 	rules=JSON.parse_string(FileAccess.get_file_as_string(root+"hunting-config.json"))
 	for i in range(p.ids.size()): states.append(initial())
 	if not saved.is_empty():
-		if not saved.get("states") is Array or saved.states.size()!=p.ids.size(): return false
+		if not saved.get("states") is Array or saved.states.size()!=p.ids.size(): return fail("saved hunting states incompatible")
 		for state in saved.states:
 			for key in initial():
-				if not state.has(key): return false
-			if state.stage<0 or state.stage>=LABELS.size() or state.kind < -1 or state.kind>2: return false
+				if not state.has(key): return fail("saved hunting states incompatible")
+			if state.stage<0 or state.stage>=LABELS.size() or state.kind < -1 or state.kind>2: return fail("saved hunting states incompatible")
 		states=saved.states;events=saved.get("events",[])
 	for a in eco.predators:
 		if not a.has("hunt"): a.hunt=initial()
@@ -140,7 +143,7 @@ func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionar
 func step(actor: int,dt: float) -> bool:
 	var s := state(actor);var r := profile(actor);var at := position(actor)
 	if actor>=0 and eco.pressure[zone(actor)]>.45 and eco.boldness[actor]<.8:
-		if s.stage!=Stage.SEARCH: s.stage=Stage.SEARCH;s.kind=-1;p.movement.routes[actor]=PackedVector2Array();p.decision_at[actor]=p.elapsed
+		if s.stage!=Stage.SEARCH: s.stage=Stage.SEARCH;s.kind=-1;p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.decision_at[actor]=p.elapsed
 		return false
 	if s.stage==Stage.RECOVER:
 		s.energy=minf(1,s.energy+dt*.015);s.activity="recovering / resting"
@@ -164,7 +167,7 @@ func step(actor: int,dt: float) -> bool:
 		if p.elapsed<s.detect_at: return false
 		s.detect_at=p.elapsed+5
 		if detect(actor,s,r):
-			if actor>=0: p.movement.routes[actor]=PackedVector2Array();p.destination[actor]=-1
+			if actor>=0: p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.destination[actor]=-1
 			return true
 		if r.style in ["ambush","bottom_ambush","intercept","structure"]:
 			if at.distance_to(s.hold_anchor)>20: s.hold_anchor=at;s.hold_until=p.elapsed+float(r.wait_seconds)

@@ -16,11 +16,15 @@ var split_count := 0
 var merge_count := 0
 var events: Array = []
 var ready := false
+var last_error := ""
+func fail(reason: String) -> bool:
+	last_error=reason;return false
 var observed_bait := -1
 func setup(population,root: String,saved: Dictionary) -> bool:
 	p=population;eco=p.ecology;nav=p.movement.nav
 	var data=JSON.parse_string(FileAccess.get_file_as_string(root+"habitat-areas.json"))
-	if not data is Dictionary or data.navigation_fingerprint!=nav.fingerprint: return false
+	if not data is Dictionary: return fail("invalid habitat-areas.json")
+	if data.navigation_fingerprint!=nav.fingerprint: return fail("habitat navigation fingerprint differs from navigation")
 	areas=data.areas;feature_areas=data.feature_areas;zone_areas=data.zone_areas;nutrients.resize(areas.size());nutrients.fill(.8)
 	for z in range(p.zones.size()): bottom_zones[z]=[]
 	for index in range(areas.size()):
@@ -33,9 +37,9 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 			bottom_zones[a.zone].append(bottom.size())
 			bottom.append({"id":bottom.size()+1,"area":a.id,"zone":a.zone,"x":at.x,"y":at.y,"capacity":a.bottom_capacity,"quantity":a.bottom_capacity*.8,"size_cm":2.0 if a.kind=="mapped_structure" else 4.0,"kind":"barnacles / attached forage" if a.kind=="mapped_structure" else "small crabs / bottom forage"})
 	if not saved.is_empty():
-		if saved.get("nutrients",PackedFloat32Array()).size()!=areas.size() or not saved.get("bottom") is Array: return false
+		if saved.get("nutrients",PackedFloat32Array()).size()!=areas.size() or not saved.get("bottom") is Array: return fail("saved food resource arrays or bottom-forage records incompatible")
 		for b in saved.bottom:
-			if not area_by_id.has(b.area) or not nav.wet(Vector2(b.x,b.y)) or b.quantity<0: return false
+			if not area_by_id.has(b.area) or not nav.wet(Vector2(b.x,b.y)) or b.quantity<0: return fail("saved food resource arrays or bottom-forage records incompatible")
 		threats=saved.get("threats",{});events=saved.get("events",[]);bottom=saved.bottom;nutrients=saved.nutrients;clock=saved.get("clock",0);split_count=saved.get("split_count",0);merge_count=saved.get("merge_count",0)
 		for z in bottom_zones: bottom_zones[z]=[]
 		for index in range(bottom.size()): bottom_zones[int(bottom[index].zone)].append(index)

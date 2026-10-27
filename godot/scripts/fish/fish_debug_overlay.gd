@@ -40,6 +40,28 @@ var event_seen: Dictionary = {}
 const SPEEDS := [0.0,1.0,5.0,10.0,30.0,60.0,300.0]
 const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25)]
 const BAIT_COLORS := [Color(.8,1,.9),Color(.35,.7,1),Color(1,.7,.4),Color(1,.9,.25),Color(1,.5,.7),Color(.8,.5,.3),Color(.55,1,.6),Color(.25,.8,.45)]
+var diagnostic_shown := ""
+func available() -> bool:
+	var reason := "population not initialized" if main==null or main.fish==null else str(main.fish.initialization_problem())
+	if reason.is_empty():
+		diagnostic_shown=""
+		return true
+	candidates.clear();visible_areas.clear();trail.clear();entity=Entity.NONE;entity_index=-1;selected_zone=-1;following=false
+	if info!=null and reason!=diagnostic_shown:
+		diagnostic_shown=reason;heading.text="Fish Lab unavailable";info.text=reason+".\n\nSimulation paused; original save preserved.";status.text="Ecology initialization incomplete"
+		follow_toggle.set_pressed_no_signal(false)
+	return false
+func valid_entity(kind: int,index: int) -> bool:
+	if not available() or index<0: return false
+	var p=main.fish
+	match kind:
+		Entity.FISH: return index<p.ids.size()
+		Entity.BAIT: return index<p.ecology.forage.size()
+		Entity.PREDATOR: return index<p.ecology.predators.size()
+		Entity.AREA: return index<p.food_web.areas.size()
+	return false
+func set_speed(value: int):
+	if available(): main.fish.time_scale=SPEEDS[value]
 func style() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new();s.bg_color=Color(.025,.045,.06,.95)
 	for side in ["left","right","top","bottom"]: s.set("content_margin_"+side,12)
@@ -59,7 +81,7 @@ func setup(game):
 	row.add_child(modes);modes.item_selected.connect(func(value): mode=value;cache_view();queue_redraw())
 	speed_picker=OptionButton.new()
 	for speed in SPEEDS: speed_picker.add_item("Paused" if speed==0 else "%d×" % speed)
-	speed_picker.select(1);row.add_child(speed_picker);speed_picker.item_selected.connect(func(value): main.fish.time_scale=SPEEDS[value])
+	speed_picker.select(1);row.add_child(speed_picker);speed_picker.item_selected.connect(set_speed)
 	toggle_button(row,"Paths",true,func(v): show_paths=v)
 	toggle_button(row,"Areas",false,func(v): show_areas=v;cache_view())
 	toggle_button(row,"Grid",false,func(v): show_grid=v)
@@ -77,15 +99,18 @@ func setup(game):
 	info=Label.new();info.custom_minimum_size.x=360;info.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;info.add_theme_font_size_override("font_size",18);scroll.add_child(info)
 	var find := LineEdit.new();find.placeholder_text="Find persistent fish ID → Enter";column.add_child(find)
 	find.text_submitted.connect(func(value):
+		if not available(): return
 		var index: int=main.fish.ids.find(str(value).to_int())
 		if index>=0: select_entity(Entity.FISH,index))
 	button(column,"Find active hunt",find_hunt)
 	toolbar.hide();panel.hide();refresh()
 func toggle():
 	enabled=not enabled;toolbar.visible=enabled;panel.visible=enabled and inspector_open
-	if enabled: prior_sim=main.fish.elapsed;rate_clock=0;actual_rate=0;cache_view();refresh()
+	if enabled and available(): prior_sim=main.fish.elapsed;rate_clock=0;actual_rate=0;cache_view();refresh()
 	queue_redraw()
 func select_entity(kind: int,index: int):
+	if not available(): return
+	if not valid_entity(kind,index): kind=Entity.NONE;index=-1
 	entity=kind if index>=0 else Entity.NONE;entity_index=index;selected_zone=-1;trail.clear()
 	if main!=null and main.fish!=null:
 		var fish=main.fish
@@ -100,6 +125,7 @@ func select_entity(kind: int,index: int):
 	if panel!=null and entity!=Entity.NONE: inspector_open=true;panel.visible=enabled
 	refresh();queue_redraw()
 func selected_position() -> Vector2:
+	if not valid_entity(entity,entity_index): return Vector2.ZERO
 	var fish=main.fish
 	if entity==Entity.FISH: return fish.displayed(0,entity_index)
 	if entity==Entity.BAIT: return fish.displayed(1,entity_index)
@@ -108,11 +134,11 @@ func selected_position() -> Vector2:
 		var b: Array=fish.food_web.areas[entity_index].bounds;return Vector2((b[0]+b[2])*.5,(b[1]+b[3])*.5)
 	return Vector2.ZERO
 func center_selected():
-	if entity==Entity.NONE: return
+	if not valid_entity(entity,entity_index): return
 	var at := selected_position();main.camera.follow=false;main.camera.anchor=null;main.camera.geo=GeoPosition.new(at.x,at.y)
 func tick(dt: float):
 	real_time+=dt
-	if not enabled or main.fish==null: return
+	if not enabled or not available(): return
 	if following and entity!=Entity.NONE:
 		var at := selected_position();var t := 1-exp(-10*dt)
 		main.camera.follow=false;main.camera.anchor=null;main.camera.geo.east=lerpf(main.camera.geo.east,at.x,t);main.camera.geo.south=lerpf(main.camera.geo.south,at.y,t)
@@ -133,7 +159,7 @@ func tick(dt: float):
 		if real_time-float(event_seen[key])>10: event_seen.erase(key)
 	queue_redraw()
 func cache_view():
-	if main.fish==null or main.fish.hunting==null: return
+	if not available(): return
 	var size := get_viewport_rect().size;var half: Vector2=Vector2(size.x/size.y,1)*main.camera.span*.5
 	view_bounds=Rect2(Vector2(main.camera.geo.east,main.camera.geo.south)-half,half*2).grow(250)
 	candidates=main.fish.hunting.spatial.rectangle(view_bounds)
@@ -143,7 +169,7 @@ func cache_view():
 			var b: Array=main.fish.food_web.areas[index].bounds
 			if view_bounds.intersects(Rect2(b[0],b[1],b[2]-b[0],b[3]-b[1])): visible_areas.append(index)
 func refresh():
-	if info==null or main==null or main.fish==null: return
+	if info==null or not available(): return
 	var p=main.fish;var eco=p.ecology;var web=p.food_web
 	status.text="%d fish · %.1f× running\nQueued %.1f s · %.1f ms/frame" % [p.ids.size(),actual_rate,p.time_debt,p.update_ms]
 	var speed_index := SPEEDS.find(p.time_scale)
@@ -176,6 +202,7 @@ func refresh():
 		if advanced: text+="\nEvidence: "+", ".join(a.evidence)+"\n"+a.id
 	info.text=text
 func hunt_text(actor: int) -> String:
+	if not available(): return "Hunting unavailable"
 	var p=main.fish;var h=p.hunting;var s: Dictionary=h.state(actor);var target: Dictionary=h.prey(int(s.kind),int(s.target))
 	var text := "%s\n%s\nEnergy %.0f%% · captures %d / misses %d\n" % [h.LABELS[int(s.stage)],s.activity,s.energy*100,s.captures,s.misses]
 	if not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,h.position(actor).distance_to(target.position)/.9144]
@@ -189,6 +216,7 @@ func hunt_text(actor: int) -> String:
 			if count>=4: break
 	return text
 func find_hunt():
+	if not available(): return
 	var p=main.fish;var best := -1.0;var found := -1
 	for i in range(p.ids.size()):
 		if p.ecology.alive[i]==0: continue
@@ -196,6 +224,7 @@ func find_hunt():
 		if score>best: best=score;found=i
 	if found>=0: select_entity(Entity.FISH,found);center_selected();main.camera.target_span=180
 func select_at(geo: GeoPosition,mpp: float):
+	if not available(): return
 	var p=main.fish;var at := Vector2(geo.east,geo.south);var best := pow(maxf(12*mpp,3),2);var kind := Entity.NONE;var found := -1
 	for code in candidates:
 		var type := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
@@ -224,7 +253,7 @@ func path_line(path: PackedVector2Array,cursor: int,start: Vector2,mpp: float,co
 	for i in range(cursor,path.size()): line.append(path[i]-origin)
 	if line.size()>1: draw_polyline(line,color,1.5*mpp,true)
 func _draw():
-	if not enabled or main.fish==null: return
+	if not enabled or not available(): return
 	var p=main.fish;var eco=p.ecology;var mpp: float=main.camera.span/get_viewport_rect().size.y;var origin := Vector2(main.origin.east,main.origin.south)
 	for code in candidates:
 		var kind := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
@@ -281,6 +310,7 @@ func _draw():
 		var color := Color(.7,1,.7,1-age/3);draw_circle(event.position-origin,(12+age*9)*mpp,color,false,mpp)
 		caption(event.position-origin,"%s #%d → #%d" % [event.kind,event.id,event.other],mpp,color)
 func selected_paths(at: Vector2,mpp: float):
+	if not available(): return
 	var p=main.fish
 	if entity in [Entity.FISH,Entity.PREDATOR]:
 		var actor := entity_index if entity==Entity.FISH else -entity_index-1;var s: Dictionary=p.hunting.state(actor)

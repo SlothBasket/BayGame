@@ -1,5 +1,38 @@
 class_name FishPopulation
 extends RefCounted
+var startup_error := ""
+var ecology_ready := false
+var startup_ready := false
+func startup_failed(reason: String) -> bool:
+	startup_error=reason;startup_ready=false;return false
+func initialize(root: String,path: String) -> bool:
+	startup_ready=false;startup_error="initialization did not complete"
+	# Stop at the first failure: dependent systems must never see partially restored data.
+	var data: Dictionary={}
+	var required := {"ecosystem-config.json":["species"],"bay-population-zones.json":["zones","root_zone"],"bay-habitats.json":["habitats","zone_ids"],"fish-navigation.json":["fingerprint","origin","width","height","cell_m","mask","nodes","zone_nodes"],"habitat-areas.json":["navigation_fingerprint","areas","feature_areas","zone_areas"],"hunting-config.json":["game_fish","predators"]}
+	for file in required:
+		if not FileAccess.file_exists(root+file): return startup_failed("asset missing: "+file)
+		var parsed=JSON.parse_string(FileAccess.get_file_as_string(root+file))
+		if not parsed is Dictionary: return startup_failed("invalid JSON asset: "+file)
+		for key in required[file]:
+			if not parsed.has(key): return startup_failed("asset "+file+" missing "+key)
+		data[file]=parsed
+	if not FileAccess.file_exists(root+str(data["fish-navigation.json"].mask)): return startup_failed("navigation: water mask missing")
+	configure(data["bay-population-zones.json"],int(data["ecosystem-config.json"].get("default_population",8000)))
+	var error := load_from(path)
+	if error!=OK and error!=ERR_FILE_NOT_FOUND: return startup_failed("population save incompatible or unreadable (error %d)" % error)
+	if not setup_ecology(data["ecosystem-config.json"],data["bay-habitats.json"]): return startup_failed("ecology: saved identities, regions or resource records incompatible")
+	if not setup_movement(root): return startup_failed("movement: "+movement.last_error)
+	if not setup_food_web(root):
+		return startup_failed("food web: "+food_web.last_error if not food_web.ready else "hunting: "+hunting.last_error)
+	startup_error="";startup_ready=true;return true
+func initialization_problem() -> String:
+	if not startup_error.is_empty(): return startup_error
+	if ecology==null or not ecology_ready: return "ecology not initialized"
+	if movement==null or not movement.ready: return "movement not initialized"
+	if food_web==null or not food_web.ready: return "food web not initialized"
+	if hunting==null or not hunting.ready: return "hunting not initialized"
+	return ""
 # Packed records, never scene nodes. Positions are absolute world meters.
 var ids := PackedInt64Array()
 var east := PackedFloat64Array()
@@ -121,6 +154,7 @@ func tick(dt: float,player: GeoPosition,depth_service: DepthService=null):
 func packed_bytes() -> int:
 	return ids.size()*8+east.size()*8+south.size()*8+region.size()*4+progress.size()*4+direction.size()*4+habitat_depth.size()*4+last_update.size()*8+(ids.size()*30+food.size()*4 if not zones.is_empty() else 0)
 func save_to(path: String) -> Error:
+	if not startup_error.is_empty(): return ERR_UNAVAILABLE
 	if not zones.is_empty(): return save_ecosystem(path)
 	var f := FileAccess.open(path+".tmp",FileAccess.WRITE)
 	if f==null: return FileAccess.get_open_error()
@@ -261,6 +295,7 @@ func boost_food(z: int):
 		if ecology!=null:
 			for index in ecology.forage_zones.get(z,[]): ecology.forage[index].quantity=ecology.forage[index].capacity
 func save_ecosystem(path: String) -> Error:
+	if not startup_error.is_empty(): return ERR_UNAVAILABLE
 	if migration_backup_needed and FileAccess.file_exists(path):
 		var backup := path+".before-world-scheduler"
 		if not FileAccess.file_exists(backup):
@@ -315,12 +350,12 @@ func setup_ecology(settings: Dictionary,habitat_data: Dictionary) -> bool:
 			if ecology.alive[i]==0:
 				buckets[region[i]].erase(i);zone_counts[region[i]]-=1;zone_species_counts[region[i]][species[i]]-=1
 		rng.state=restored_rng_state
-		return true
+		ecology_ready=true;return true
 	for i in range(ids.size()):
 		var profile: Dictionary=settings.species[species[i]]
 		# Preserve existing size and depth preferences on migration; calibrate speeds per species.
 		speed[i]=float(profile.speed_mps)*rng.randf_range(.75,1.25)
-	return true
+	ecology_ready=true;return true
 
 func setup_movement(root: String) -> bool:
 	movement=FishMovement.new()

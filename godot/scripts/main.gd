@@ -2,7 +2,7 @@ extends Node2D
 var fish_overlay: FishDebugOverlay
 var fish: FishPopulation
 var fish_save_time := 0.0
-var fish_save_allowed := true
+var fish_save_allowed := false
 var fish_save_path := "user://bay-fish-population.dat"
 var structures: GeographicStructures
 var imagery: AerialImageryLayer
@@ -41,16 +41,11 @@ func _ready():
 	overlay=DebugOverlay.new();add_child(overlay);overlay.visible=false
 	hud=GameHud.new();add_child(hud);hud.setup(self,settings)
 	apply_visual_mode()
-	if FileAccess.file_exists(store.root+"bay-population-zones.json"):
-		var ecosystem_config: Dictionary=JSON.parse_string(FileAccess.get_file_as_string(store.root+"ecosystem-config.json"))
-		fish=FishPopulation.new();fish.configure(JSON.parse_string(FileAccess.get_file_as_string(store.root+"bay-population-zones.json")),int(ecosystem_config.get("default_population",8000)))
-		var error := fish.load_from(fish_save_path)
-		if "--fish-smoke" in OS.get_cmdline_user_args(): print("FISH_LOAD ",error," COUNT ",fish.ids.size()," PATH ",OS.get_user_data_dir())
-		fish_save_allowed=(error==OK or error==ERR_FILE_NOT_FOUND)
-		if not fish.setup_ecology(ecosystem_config,JSON.parse_string(FileAccess.get_file_as_string(store.root+"bay-habitats.json"))): fish_save_allowed=false
-		if not fish.setup_movement(store.root): fish_save_allowed=false
-		elif not fish.setup_food_web(store.root): fish_save_allowed=false
-		if not fish_save_allowed: hud.tell("Fish save incompatible; saving disabled to preserve your original population.")
+	fish=FishPopulation.new();fish_save_allowed=fish.initialize(store.root,fish_save_path)
+	if fish_save_allowed: print("[Fish startup] ecology, movement, food web and hunting ready; %d persistent fish" % fish.ids.size())
+	else:
+		var diagnostic := "Fish startup failed: "+fish.startup_error+". Simulation and saving disabled; original save preserved."
+		push_warning(diagnostic);hud.tell(diagnostic)
 	fish_overlay=FishDebugOverlay.new();add_child(fish_overlay);fish_overlay.setup(self)
 	bench="--benchmark" in OS.get_cmdline_user_args()
 	if "--view=alafia" in OS.get_cmdline_user_args():
@@ -108,7 +103,7 @@ func _process(dt):
 		for x in range(-1,2):
 			store.request(GeoPosition.new(boat.geo.east+x*store.manifest.chunk_m,boat.geo.south+y*store.manifest.chunk_m).key(0,store.manifest.chunk_m))
 	renderer.tick(camera,origin);imagery.tick(camera,origin,not renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
-	if fish!=null and not hud.menu.visible:
+	if fish!=null and fish.startup_ready and not hud.menu.visible:
 		fish.tick(dt,boat.geo,depth);fish_save_time+=dt
 		if fish_save_time>=60 and fish_save_allowed:
 			fish_save_time=0
