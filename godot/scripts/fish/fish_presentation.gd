@@ -45,4 +45,4 @@ func snapshot(p):
 					var path: PackedVector2Array=nav.route(start[i],end,goal)
 					if not path.is_empty(): bends[kind][i]=path
 		previous[kind]=start;current[kind]=targets[kind]
-	interval=maxf(since_snapshot,.016);since_snapshot=0;alpha=0
+	interval=maxf(since_snapshot,.5/maxf(1,p.time_scale));since_snapshot=0;alpha=0

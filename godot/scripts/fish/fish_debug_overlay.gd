@@ -26,10 +26,7 @@ var heading: Label
 var info: Label
 var status: Label
 var follow_toggle: CheckButton
-var speed_picker: OptionButton
-var simulation_mode: OptionButton
-var budget_picker: SpinBox
-var draw_clock := 0.0
+var speed_buttons: Array[Button] = []
 var refresh_clock := 0.0
 var real_time := 0.0
 var rate_clock := 0.0
@@ -40,7 +37,7 @@ var visible_areas: Array[int] = []
 var view_bounds := Rect2()
 var trail := PackedVector2Array()
 var event_seen: Dictionary = {}
-const SPEEDS := [0.0,1.0,5.0,10.0,30.0,60.0,300.0,-1.0]
+const SPEEDS := [0.0,1.0,5.0,10.0]
 const HUNT_RANK := {5:10,6:9,8:8,3:7,2:6,1:4}
 const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25)]
 const BAIT_COLORS := [Color(.8,1,.9),Color(.35,.7,1),Color(1,.7,.4),Color(1,.9,.25),Color(1,.5,.7),Color(.8,.5,.3),Color(.55,1,.6),Color(.25,.8,.45)]
@@ -52,7 +49,7 @@ func available() -> bool:
 		return true
 	candidates.clear();visible_areas.clear();trail.clear();entity=Entity.NONE;entity_index=-1;selected_zone=-1;following=false
 	if info!=null and reason!=diagnostic_shown:
-		diagnostic_shown=reason;heading.text="Fish Lab unavailable";info.text=reason+".\n\nSimulation paused; original save preserved.";status.text="Ecology initialization incomplete"
+		diagnostic_shown=reason;heading.text="Fish Lab unavailable";info.text=reason+".\n\nSimulation unavailable for this session.";status.text="Ecology initialization incomplete"
 		follow_toggle.set_pressed_no_signal(false)
 	return false
 func valid_entity(kind: int,index: int) -> bool:
@@ -67,8 +64,7 @@ func valid_entity(kind: int,index: int) -> bool:
 func set_speed(value: int):
 	if not available(): return
 	var p=main.fish
-	if SPEEDS[value]<0: p.fast_forward=true;p.max_throughput=true;p.ahead_active=false;p.time_scale=1
-	else: p.max_throughput=false;p.time_scale=SPEEDS[value]
+	p.time_scale=SPEEDS[value]
 	refresh()
 func style() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new();s.bg_color=Color(.025,.045,.06,.95)
@@ -88,34 +84,17 @@ func setup(game):
 	var modes := OptionButton.new()
 	for text in ["All life","Game fish","Bait schools","Predators","Habitat / food"]: modes.add_item(text)
 	row.add_child(modes);modes.item_selected.connect(func(value): mode=value;cache_view();queue_redraw())
-	speed_picker=OptionButton.new()
-	for speed in SPEEDS: speed_picker.add_item("Max Throughput" if speed<0 else ("Paused" if speed==0 else "%d×" % speed))
-	speed_picker.select(1);row.add_child(speed_picker);speed_picker.item_selected.connect(set_speed)
+	var speed_group := ButtonGroup.new()
+	for i in range(SPEEDS.size()):
+		var speed_button := Button.new();speed_button.text="Pause" if i==0 else "%d×" % SPEEDS[i];speed_button.toggle_mode=true;speed_button.button_group=speed_group
+		speed_button.pressed.connect(set_speed.bind(i));row.add_child(speed_button);speed_buttons.append(speed_button)
 	toggle_button(row,"Paths",true,func(v): show_paths=v)
 	toggle_button(row,"Areas",false,func(v): show_areas=v;cache_view())
 	toggle_button(row,"Grid",false,func(v): show_grid=v)
 	toggle_button(row,"Advanced",false,func(v): advanced=v;refresh())
 	button(row,"Inspector",func(): inspector_open=not inspector_open;panel.visible=enabled and inspector_open)
 	status=Label.new();status.custom_minimum_size.x=330;status.add_theme_font_size_override("font_size",16);row.add_child(status)
-	var simulation_row := HBoxContainer.new();simulation_row.add_theme_constant_override("separation",10);controls.add_child(simulation_row)
-	simulation_mode=OptionButton.new();simulation_mode.add_item("Live Mode");simulation_mode.add_item("Fast-Forward Mode");simulation_row.add_child(simulation_mode)
-	simulation_mode.item_selected.connect(func(value):
-		if not available(): return
-		main.fish.fast_forward=value==1
-		if value==0: main.fish.max_throughput=false
-		refresh())
-	var budget_label := Label.new();budget_label.text="CPU budget (ms/frame)";simulation_row.add_child(budget_label)
-	budget_picker=SpinBox.new();budget_picker.min_value=1;budget_picker.max_value=100;budget_picker.step=1;simulation_row.add_child(budget_picker)
-	budget_picker.value_changed.connect(func(value):
-		if not available(): return
-		if main.fish.fast_forward: main.fish.fast_forward_budget_us=int(value*1000)
-		else: main.fish.simulation_budget_us=int(value*1000))
-	var hours := SpinBox.new();hours.min_value=.25;hours.max_value=168;hours.step=.25;hours.value=1;hours.suffix="hours";simulation_row.add_child(hours)
-	button(simulation_row,"Simulate Ahead",func():
-		if available(): main.fish.simulate_ahead(hours.value);refresh())
-	button(simulation_row,"Stop / Pause",func():
-		if available(): main.fish.pause_simulation();refresh())
-	panel=PanelContainer.new();panel.position=Vector2(16,270);panel.custom_minimum_size=Vector2(390,660);panel.size=Vector2(390,660);panel.add_theme_stylebox_override("panel",style());canvas.add_child(panel)
+	panel=PanelContainer.new();panel.position=Vector2(16,210);panel.custom_minimum_size=Vector2(390,660);panel.size=Vector2(390,660);panel.add_theme_stylebox_override("panel",style());canvas.add_child(panel)
 	var column := VBoxContainer.new();column.add_theme_constant_override("separation",10);panel.add_child(column)
 	heading=Label.new();heading.add_theme_font_size_override("font_size",22);heading.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;heading.custom_minimum_size.x=365;column.add_child(heading)
 	var actions := HBoxContainer.new();column.add_child(actions)
@@ -152,11 +131,13 @@ func select_entity(kind: int,index: int):
 	if panel!=null and entity!=Entity.NONE: inspector_open=true;panel.visible=enabled
 	refresh();queue_redraw()
 func observed_position(kind: int,index: int) -> Vector2:
-	# Fish Lab uses current world state for both predator and prey, not delayed display snapshots.
-	var p=main.fish
-	if kind==0: return Vector2(p.east[index],p.south[index])
-	var a: Dictionary=p.ecology.forage[index] if kind==1 else p.ecology.predators[index]
-	return Vector2(a.x,a.y)
+	return main.fish.displayed(kind,index)
+func observed_prey(actor: int,s: Dictionary,data: Dictionary) -> Vector2:
+	var h=main.fish.hunting
+	var contact: Vector2=h.prey_position(actor,int(s.kind),int(s.target),data)
+	if s.kind==0: return observed_position(1,int(s.target))+contact-Vector2(data.position)
+	if s.kind==1: return observed_position(0,int(s.target))
+	return contact
 func selected_position() -> Vector2:
 	if not valid_entity(entity,entity_index): return Vector2.ZERO
 	var fish=main.fish
@@ -172,13 +153,13 @@ func center_selected():
 func tick(dt: float):
 	real_time+=dt
 	if not enabled or not available(): return
-	if following and entity!=Entity.NONE and (not main.fish.fast_forward or draw_clock>=.2):
+	if following and entity!=Entity.NONE:
 		var at := selected_position();var t := 1-exp(-10*dt)
 		main.camera.follow=false;main.camera.anchor=null;main.camera.geo.east=lerpf(main.camera.geo.east,at.x,t);main.camera.geo.south=lerpf(main.camera.geo.south,at.y,t)
-	refresh_clock+=dt;rate_clock+=dt;draw_clock+=dt
+	refresh_clock+=dt;rate_clock+=dt
 	if rate_clock>=1:
 		actual_rate=maxf(0,(main.fish.completed_time()-prior_sim)/rate_clock);prior_sim=main.fish.completed_time();rate_clock=0
-	if refresh_clock>=(.5 if main.fish.fast_forward else .25):
+	if refresh_clock>=.25:
 		refresh_clock=0;cache_view();refresh()
 		if entity in [Entity.FISH,Entity.BAIT,Entity.PREDATOR]:
 			var at := selected_position()
@@ -190,7 +171,7 @@ func tick(dt: float):
 			if not event_seen.has(key): event_seen[key]=real_time
 	for key in event_seen.keys():
 		if real_time-float(event_seen[key])>10: event_seen.erase(key)
-	if not main.fish.fast_forward or draw_clock>=.2: draw_clock=0;queue_redraw()
+	queue_redraw()
 func cache_view():
 	if not available(): return
 	var size := get_viewport_rect().size;var half: Vector2=Vector2(size.x/size.y,1)*main.camera.span*.5
@@ -204,11 +185,11 @@ func cache_view():
 func refresh():
 	if info==null or not available(): return
 	var p=main.fish;var eco=p.ecology;var web=p.food_web
-	status.text="%s · %.2f× achieved\nSimulated %.2f h · queued %.2f h\nProcessing %.1f ms/frame" % [p.requested_speed(),actual_rate,p.completed_time()/3600.0,p.time_debt/3600.0,p.update_ms]
-	simulation_mode.select(1 if p.fast_forward else 0)
-	budget_picker.set_value_no_signal((p.fast_forward_budget_us if p.fast_forward else p.simulation_budget_us)/1000.0)
-	var speed_index := SPEEDS.find(-1.0 if p.max_throughput else p.time_scale)
-	if speed_index>=0: speed_picker.select(speed_index)
+	var slow: bool=p.time_scale>0 and real_time>2 and actual_rate<p.time_scale*.9 and p.time_debt>maxf(1,p.time_scale*.5)
+	status.text="Paused" if p.time_scale<=0 else "%d×%s" % [p.time_scale," — running slower; CPU limit" if slow else ""]
+	if advanced: status.text+="\nActual %.2f× · queued %.1f s\nSimulated %.2f h · %.1f ms/frame" % [actual_rate,p.time_debt,p.completed_time()/3600,p.update_ms]
+	var speed_index := SPEEDS.find(p.time_scale)
+	for i in range(speed_buttons.size()): speed_buttons[i].set_pressed_no_signal(i==speed_index)
 	if entity==Entity.NONE:
 		heading.text="Explore the ecosystem";info.text="Click a fish, bait school, predator or habitat.\n\nOne entity is inspected at a time. Empty clicks clear selection unless locked.\n\nFollowing and zooming never change simulation behavior.";return
 	var at := selected_position();var text := "Location E %.2f / S %.2f mi\n" % [at.x/1609.344,at.y/1609.344]
@@ -217,6 +198,7 @@ func refresh():
 		text+="%.1f in · hunger %.0f%% (100 = starving)\nPreferred depth %.1f ft\n" % [p.size_cm[i]/2.54,p.hunger[i]*100,p.preferred_depth[i]/.3048]
 		if eco.alive[i]==0: text+="Consumed — identity retained\n"
 		else: text+=hunt_text(i)
+		text+="\nSize cohort: "+p.size_cohort(i)+"\n"
 		text+="\nPreferred areas\nRest: %s\nFeed: %s\nSchool: %s\n" % [web.area_for_feature(p.movement.preferred_rest[i],"resting"),web.area_for_feature(p.movement.preferred_feed[i],"feeding"),str(eco.school[i]) if eco.school[i]>=0 else "solo"]
 		if advanced: text+="\n"+eco.describe(i)+"\nNavigation target: "+str(p.movement.targets[i])
 	elif entity==Entity.BAIT:
@@ -363,7 +345,7 @@ func selected_paths(at: Vector2,mpp: float):
 		elif entity==Entity.FISH: path_line(p.movement.routes[entity_index],p.movement.cursors[entity_index],at,mpp,Color(1,.9,.3))
 		var target: Dictionary=p.hunting.prey(int(s.kind),int(s.target))
 		if not target.is_empty():
-			var contact: Vector2=s.get("capture_position",p.hunting.position(actor)) if s.stage in [6,8] else p.hunting.prey_position(actor,int(s.kind),int(s.target),target)
+			var contact: Vector2=s.get("capture_position",p.hunting.position(actor)) if s.stage in [6,8] else observed_prey(actor,s,target)
 			var pos: Vector2=contact-Vector2(main.origin.east,main.origin.south)
 			draw_circle(pos,3*mpp,Color(1,.3,.2),false,mpp);draw_line(at,pos,Color(1,.4,.2,.7),mpp)
 			caption(pos,"Captured meal" if s.stage in [6,8] else "Target prey member",mpp,Color(1,.6,.3))
