@@ -79,13 +79,19 @@ func prey(kind: int,index: int) -> Dictionary:
 		if b.quantity<1: return {}
 		return {"position":Vector2(b.x,b.y),"size":b.size_cm,"heading":Vector2.ZERO,"speed":0.0,"cover":.1,"bottom":true,"label":b.kind,"zone":int(b.zone)}
 	return {}
+func school_radius(index: int) -> float:
+	# Physical aggregate footprint in metres, independent of map zoom or UI marker size.
+	return clampf(sqrt(maxf(1,eco.forage[index].quantity))*.35,1.0,12.0)
 func prey_position(actor: int,kind: int,index: int,data: Dictionary) -> Vector2:
 	var at: Vector2=data.position
 	if kind!=0: return at
-	# A selected member's local position is stable within the moving aggregate school.
-	var a: Dictionary=eco.forage[index];var angle := float(posmod((actor+10001)*7919+int(a.id)*137,6283))*.001
-	var offset := Vector2.from_angle(angle)*(2+float(a.fear)*7)
+	var a: Dictionary=eco.forage[index];var member: int=int(state(actor).get("member",0))
+	var seed_value := (actor+10001)*7919+int(a.id)*137+member*613
+	var angle := float(posmod(seed_value,6283))*.001
+	var offset := Vector2.from_angle(angle)*school_radius(index)*(.25+.65*float(posmod(seed_value,997))/997.0)
 	return at+offset if nav.clear(at,at+offset) else at
+func attack_cooldown(r: Dictionary) -> float:
+	return float(r.get("attack_cooldown_seconds",3.0))
 func suitable(actor: int,kind: int,index: int,data: Dictionary,r: Dictionary) -> bool:
 	if data.is_empty() or (kind==1 and actor==index): return false
 	if r.style in ["structure","bottom_shark"] and not data.bottom: return false
@@ -183,7 +189,7 @@ func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
 	if actor>=0: p.behavior[actor]=3
 	move_hunter(actor,s,s.search_goal,dt,r,false)
 func abandon(actor: int,s: Dictionary,reason: String):
-	s.stage=Stage.SEARCH;s.kind=-1;s.target=-1;s.detect_at=p.elapsed+8;s.path=PackedVector2Array();s.cursor=0;s.search_failures+=1;s.erase("search_goal");s.search_wait_until=0
+	s.stage=Stage.SEARCH;s.kind=-1;s.target=-1;s.detect_at=p.elapsed+2;s.path=PackedVector2Array();s.cursor=0;s.search_failures+=1;s.erase("search_goal");s.search_wait_until=0
 	event(actor,s,reason)
 func step(actor: int,dt: float) -> bool:
 	var s := state(actor);var r := profile(actor);var at := position(actor)
@@ -202,10 +208,18 @@ func step(actor: int,dt: float) -> bool:
 			set_hunger(actor,hunger(actor)-s.meal)
 			if actor>=0:
 				p.size_cm[actor]=maxf(p.size_cm[actor],minf(float(eco.profile(actor).size_max_cm),p.size_cm[actor]+minf(.02,s.prey_cm*.002)))
-			s.stage=Stage.RECOVER;s.until=p.elapsed+float(r.recovery_seconds);s.activity="fed; digesting";event(actor,s,"consumed captured prey")
+			s.activity="fed; digesting";event(actor,s,"consumed captured prey")
+			if hunger(actor)>.35 and s.energy>.25:
+				abandon(actor,s,"still hungry; resuming patrol");s.detect_at=p.elapsed+attack_cooldown(r)
+			else: s.stage=Stage.RECOVER;s.until=p.elapsed+float(r.recovery_seconds)
 		return true
 	if s.stage==Stage.MISS:
-		s.stage=Stage.RECOVER;s.until=p.elapsed+float(r.recovery_seconds)*.5;return true
+		if s.energy<.15: s.stage=Stage.RECOVER;s.until=p.elapsed+10;return true
+		s.activity="repositioning after missed strike"
+		search_habitat(actor,s,r,dt)
+		if p.elapsed>=s.until:
+			s.member=int(s.get("member",0))+1;abandon(actor,s,"retrying another prey member");s.detect_at=p.elapsed
+		return true
 	if hunger(actor)<.25 or s.energy<.15:
 		s.stage=Stage.RECOVER;s.until=p.elapsed+20;s.kind=-1;s.activity="resting; satisfied or tired";return true
 	if s.stage==Stage.SEARCH:
@@ -216,7 +230,7 @@ func step(actor: int,dt: float) -> bool:
 				return true
 		search_habitat(actor,s,r,dt);return true
 	var data := prey(int(s.kind),int(s.target))
-	if data.is_empty(): s.stage=Stage.RECOVER;s.until=p.elapsed+5;event(actor,s,"prey escaped / no longer available");return true
+	if data.is_empty(): abandon(actor,s,"prey escaped; resuming search");return true
 	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance := at.distance_to(target)
 	var reach: float=maxf(.35,minf(2.5,float(r.strike_ft)*.3048+length_cm(actor)*.003))
 	if s.stage==Stage.STRIKE:
@@ -228,10 +242,10 @@ func step(actor: int,dt: float) -> bool:
 				if s.kind==0: eco.forage[s.target].quantity-=1;eco.forage_consumed+=1
 				elif s.kind==1: eco.consume_fish(s.target)
 				else: web.bottom[s.target].quantity-=1;eco.forage_consumed+=1
-				s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE
+				s.capture_position=target;s.capture_time=p.elapsed;s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE
 				if actor<0: eco.predator_meals+=1
 				scare(actor,s);event(actor,s,"capture: "+data.label);return true
-		s.misses+=1;s.energy=maxf(0,s.energy-.08);set_hunger(actor,hunger(actor)+.02);s.stage=Stage.MISS
+		s.misses+=1;s.energy=maxf(0,s.energy-.08);set_hunger(actor,hunger(actor)+.02);s.stage=Stage.MISS;s.until=p.elapsed+attack_cooldown(r)
 		scare(actor,s);event(actor,s,"miss / prey escape");return true
 	if distance<float(s.get("best_distance",INF))-1:
 		s.best_distance=distance;s.progress_at=p.elapsed
@@ -239,7 +253,7 @@ func step(actor: int,dt: float) -> bool:
 	if p.elapsed>=s.hunt_until or p.elapsed-float(s.get("progress_at",p.elapsed))>20:
 		abandon(actor,s,"target unproductive; searching another position");return true
 	if distance>float(r.detect_ft)*.3048*3 or s.energy<.1:
-		s.stage=Stage.RECOVER;s.until=p.elapsed+8;event(actor,s,"pursuit abandoned");return true
+		abandon(actor,s,"pursuit lost; resuming patrol");return true
 	if s.stage==Stage.DETECT:
 		if p.elapsed<s.until: return true
 		s.stage=Stage.APPROACH;s.activity="stalking detected prey"

@@ -151,12 +151,18 @@ func select_entity(kind: int,index: int):
 	if scroll!=null: scroll.scroll_vertical=0
 	if panel!=null and entity!=Entity.NONE: inspector_open=true;panel.visible=enabled
 	refresh();queue_redraw()
+func observed_position(kind: int,index: int) -> Vector2:
+	# Fish Lab uses current world state for both predator and prey, not delayed display snapshots.
+	var p=main.fish
+	if kind==0: return Vector2(p.east[index],p.south[index])
+	var a: Dictionary=p.ecology.forage[index] if kind==1 else p.ecology.predators[index]
+	return Vector2(a.x,a.y)
 func selected_position() -> Vector2:
 	if not valid_entity(entity,entity_index): return Vector2.ZERO
 	var fish=main.fish
-	if entity==Entity.FISH: return fish.displayed(0,entity_index)
-	if entity==Entity.BAIT: return fish.displayed(1,entity_index)
-	if entity==Entity.PREDATOR: return fish.displayed(2,entity_index)
+	if entity==Entity.FISH: return observed_position(0,entity_index)
+	if entity==Entity.BAIT: return observed_position(1,entity_index)
+	if entity==Entity.PREDATOR: return observed_position(2,entity_index)
 	if entity==Entity.AREA:
 		var b: Array=fish.food_web.areas[entity_index].bounds;return Vector2((b[0]+b[2])*.5,(b[1]+b[3])*.5)
 	return Vector2.ZERO
@@ -234,7 +240,8 @@ func hunt_text(actor: int) -> String:
 	if not available(): return "Hunting unavailable"
 	var p=main.fish;var h=p.hunting;var s: Dictionary=h.state(actor);var target: Dictionary=h.prey(int(s.kind),int(s.target))
 	var text := "%s\n%s\nEnergy %.0f%% (100 = rested) · captures %d / misses %d\n" % [h.LABELS[int(s.stage)],s.activity,s.energy*100,s.captures,s.misses]
-	if not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,h.position(actor).distance_to(target.position)/.9144]
+	if s.stage in [6,8]: text+="Meal captured at physical contact; school may move away.\n"
+	elif not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,h.position(actor).distance_to(h.prey_position(actor,int(s.kind),int(s.target),target))/.9144]
 	else: text+="Prey: searching\n"
 	text+="\nRecent: "+str(s.last_event)+"\n"
 	if advanced:
@@ -268,11 +275,11 @@ func select_at(geo: GeoPosition,mpp: float):
 		if type==2: continue
 		if type==1 and p.ecology.alive[index]==0: continue
 		if type==0 and not p.ecology.forage[index].get("active",true): continue
-		var pos: Vector2=p.displayed(0 if type==1 else 1,index);var d := at.distance_squared_to(pos)
+		var pos: Vector2=observed_position(0 if type==1 else 1,index);var d := at.distance_squared_to(pos)
 		if d<best: best=d;kind=Entity.FISH if type==1 else Entity.BAIT;found=index
 	for index in range(p.ecology.predators.size()):
 		if not p.ecology.predators[index].active: continue
-		var d := at.distance_squared_to(p.displayed(2,index))
+		var d := at.distance_squared_to(observed_position(2,index))
 		if d<best: best=d;kind=Entity.PREDATOR;found=index
 	if found>=0: select_entity(kind,found);return
 	var area_size := INF
@@ -296,13 +303,14 @@ func _draw():
 		var kind := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
 		if kind==1 and mode in [0,1]:
 			if eco.alive[index]==0 or (main.camera.span>15000 and index%4!=0 and selected!=index): continue
-			var pos: Vector2=p.displayed(0,index)
+			var pos: Vector2=observed_position(0,index)
 			if view_bounds.has_point(pos): draw_circle(pos-origin,(3 if selected==index else 2)*mpp,COLORS[p.species[index]])
 		elif kind==0 and mode in [0,2]:
 			var a: Dictionary=eco.forage[index]
 			if not a.get("active",true) or a.quantity<1: continue
-			var pos: Vector2=p.displayed(1,index)
+			var pos: Vector2=observed_position(1,index)
 			if not view_bounds.has_point(pos): continue
+			draw_circle(pos-origin,p.hunting.school_radius(index),Color(.5,.85,1,.35),false,mpp)
 			pos-=origin;var color: Color=BAIT_COLORS[int(a.kind)];var radius: float=clampf(4+sqrt(a.quantity)*.6,4,15)*mpp
 			if a.kind in [4,5]: draw_rect(Rect2(pos-Vector2.ONE*radius,Vector2.ONE*radius*2),color,false,mpp)
 			else: draw_circle(pos,radius,color,false,1.5*mpp)
@@ -311,7 +319,7 @@ func _draw():
 			if main.camera.span<3500 or (entity==Entity.BAIT and entity_index==index): caption(pos,"%s #%d ≈%.0f" % [eco.FORAGE_NAMES[int(a.kind)],a.id,a.quantity],mpp,color)
 	if mode in [0,3]:
 		for i in range(eco.predators.size()):
-			var a: Dictionary=eco.predators[i];var at: Vector2=p.displayed(2,i)
+			var a: Dictionary=eco.predators[i];var at: Vector2=observed_position(2,i)
 			if not a.active or not view_bounds.has_point(at): continue
 			var pos := at-origin;var r := 7*mpp;draw_colored_polygon(PackedVector2Array([pos+Vector2(0,-r),pos+Vector2(r,r),pos+Vector2(-r,r)]),Color(.35,.9,1) if a.kind==3 else Color(1,.3,.2))
 	if show_grid:
@@ -355,7 +363,10 @@ func selected_paths(at: Vector2,mpp: float):
 		elif entity==Entity.FISH: path_line(p.movement.routes[entity_index],p.movement.cursors[entity_index],at,mpp,Color(1,.9,.3))
 		var target: Dictionary=p.hunting.prey(int(s.kind),int(s.target))
 		if not target.is_empty():
-			var pos: Vector2=target.position-Vector2(main.origin.east,main.origin.south);draw_circle(pos,6*mpp,Color(1,.3,.2),false,2*mpp)
+			var contact: Vector2=s.get("capture_position",p.hunting.position(actor)) if s.stage in [6,8] else p.hunting.prey_position(actor,int(s.kind),int(s.target),target)
+			var pos: Vector2=contact-Vector2(main.origin.east,main.origin.south)
+			draw_circle(pos,3*mpp,Color(1,.3,.2),false,mpp);draw_line(at,pos,Color(1,.4,.2,.7),mpp)
+			caption(pos,"Captured meal" if s.stage in [6,8] else "Target prey member",mpp,Color(1,.6,.3))
 	elif entity==Entity.BAIT:
 		var a: Dictionary=p.ecology.forage[entity_index]
 		if a.has("natural_path"): path_line(a.natural_path,int(a.path_cursor),at,mpp,BAIT_COLORS[int(a.kind)])
