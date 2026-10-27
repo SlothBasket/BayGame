@@ -85,7 +85,9 @@ func school_radius(index: int) -> float:
 func prey_position(actor: int,kind: int,index: int,data: Dictionary) -> Vector2:
 	var at: Vector2=data.position
 	if kind!=0: return at
-	var a: Dictionary=eco.forage[index];var member: int=int(state(actor).get("member",0))
+	var a: Dictionary=eco.forage[index]
+	if a.get("individual",false): return at
+	var member: int=int(state(actor).get("member",0))
 	var seed_value := (actor+10001)*7919+int(a.id)*137+member*613
 	var angle := float(posmod(seed_value,6283))*.001
 	var offset := Vector2.from_angle(angle)*school_radius(index)*(.25+.65*float(posmod(seed_value,997))/997.0)
@@ -239,7 +241,7 @@ func step(actor: int,dt: float) -> bool:
 		if distance<=reach and nav.clear(at,target):
 			var chance: float=clampf(float(r.capture_chance)+s.energy*.08-float(data.speed)*.08,.1,.95)
 			if p.rng.randf()<chance:
-				if s.kind==0: eco.forage[s.target].quantity-=1;eco.forage_consumed+=1
+				if s.kind==0: web.consume_bait(int(s.target))
 				elif s.kind==1: eco.consume_fish(s.target)
 				else: web.bottom[s.target].quantity-=1;eco.forage_consumed+=1
 				s.capture_position=target;s.capture_time=p.elapsed;s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE

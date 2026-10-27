@@ -211,10 +211,7 @@ func describe(i: int) -> String:
 
 func initialize_food_web():
 	var p=population;forage.clear();predators.clear()
-	for z in range(p.zones.size()):
-		for slot in range(2):
-			var kind: int=(z*3+slot)%FORAGE_NAMES.size();var capacity := 80.0 if kind!=7 else 25.0
-			forage.append({"id":forage.size()+1,"kind":kind,"zone":z,"destination":-1,"x":float(p.zones[z].x),"y":float(p.zones[z].y),"quantity":capacity*p.rng.randf_range(.4,1),"capacity":capacity,"size_cm":FORAGE_SIZES[kind],"last":p.elapsed,"next":p.elapsed+p.rng.randf_range(30,180),"jump_at":p.elapsed+p.rng.randf_range(20,120),"jump_until":0.0,"scatter_until":0.0})
+	# Mobile prey are seeded from mapped/inferred habitat areas after navigation is ready.
 	rebuild_forage_index();set_predator_ratio(float(config.get("predators_per_game_fish",.01)))
 func rebuild_forage_index():
 	forage_zones.clear()
@@ -259,8 +256,7 @@ func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 func update_forage(index: int,dt: float):
 	if population.food_web!=null and population.food_web.ready: population.food_web.update_bait(index,dt);return
 	var a: Dictionary=forage[index];var p=population;var z: int=a.zone
-	if a.quantity<=0: a.quantity=0 # Empty pods persist; slow recruitment refills them.
-	a.quantity=minf(a.capacity,a.quantity+dt*.003*p.food[z])
+	if a.quantity<=0: a.active=false;return
 	if a.kind>=6:
 		# Mullet consume abstract algae/detritus, never fish.
 		p.food[z]=maxf(0,p.food[z]-dt*.000001*a.quantity)

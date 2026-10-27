@@ -337,5 +337,10 @@
     }
   ],
   "size_distribution_version": 1,
-  "size_distribution_note": "Authored weighted triangular game distributions informed by linked research/profiles, not fitted local population frequencies. Inches total length for game configuration; internal centimetres. Existing saves unchanged."
+  "size_distribution_note": "Authored weighted triangular game distributions informed by linked research/profiles, not fitted local population frequencies. Inches total length for game configuration; internal centimetres. Existing saves unchanged.",
+  "bait_density_per_area": 1.8,
+  "bait_solitary_fraction": 0.55,
+  "bait_record_limit": 24000,
+  "bait_recruitment_seconds": 300,
+  "bait_recruits_per_interval": 12
 }
