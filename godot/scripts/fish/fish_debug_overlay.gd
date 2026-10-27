@@ -14,7 +14,7 @@ var legend: Label
 var speed_button: Button
 var counts := PackedInt32Array()
 var species_counts: Array = []
-const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96)]
+const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25)]
 func setup(game):
 	main=game;z_index=5
 	canvas=CanvasLayer.new();canvas.layer=9;add_child(canvas)
@@ -89,7 +89,10 @@ func _draw():
 				if neighbor<z: continue
 				var q: Dictionary=fish.zones[neighbor]
 				draw_line(p,Vector2(q.x-main.origin.east,q.y-main.origin.south),Color(.5,.9,.8,.25),mpp)
-		var distribution: PackedInt32Array=species_counts[z];var dominant := distribution.find(maxi(distribution[0],maxi(distribution[1],distribution[2])));var color: Color=COLORS[dominant]
+		var distribution: PackedInt32Array=species_counts[z];var dominant := 0
+		for k in range(distribution.size()):
+			if distribution[k]>distribution[dominant]: dominant=k
+		var color: Color=COLORS[dominant]
 		if mode==1: color=Color(.2,.22,.15).lerp(Color(.5,1,.25),fish.food[z])
 		if mode==2: color=Color(.8,.2,.2).lerp(Color(.2,.9,.7),fish.suitability(selected,z) if selected>=0 else .5)
 		draw_circle(p,clampf(3+sqrt(float(counts[z])),3,12)*mpp,Color(color,.65))

@@ -2,6 +2,7 @@ extends Node2D
 var fish_overlay: FishDebugOverlay
 var fish: FishPopulation
 var fish_save_time := 0.0
+var fish_save_allowed := true
 var fish_save_path := "user://bay-fish-population.dat"
 var structures: GeographicStructures
 var imagery: AerialImageryLayer
@@ -41,10 +42,13 @@ func _ready():
 	hud=GameHud.new();add_child(hud);hud.setup(self,settings)
 	apply_visual_mode()
 	if FileAccess.file_exists(store.root+"bay-population-zones.json"):
-		fish=FishPopulation.new();fish.configure(JSON.parse_string(FileAccess.get_file_as_string(store.root+"bay-population-zones.json")))
+		var ecosystem_config: Dictionary=JSON.parse_string(FileAccess.get_file_as_string(store.root+"ecosystem-config.json"))
+		fish=FishPopulation.new();fish.configure(JSON.parse_string(FileAccess.get_file_as_string(store.root+"bay-population-zones.json")),int(ecosystem_config.get("default_population",8000)))
 		var error := fish.load_from(fish_save_path)
 		if "--fish-smoke" in OS.get_cmdline_user_args(): print("FISH_LOAD ",error," COUNT ",fish.ids.size()," PATH ",OS.get_user_data_dir())
-		if error!=OK and error!=ERR_FILE_NOT_FOUND: hud.tell("Fish save incompatible; initialized current habitat population.")
+		fish_save_allowed=(error==OK or error==ERR_FILE_NOT_FOUND)
+		if not fish.setup_ecology(ecosystem_config,JSON.parse_string(FileAccess.get_file_as_string(store.root+"bay-habitats.json"))): fish_save_allowed=false
+		if not fish_save_allowed: hud.tell("Fish save incompatible; saving disabled to preserve your original population.")
 	fish_overlay=FishDebugOverlay.new();add_child(fish_overlay);fish_overlay.setup(self)
 	bench="--benchmark" in OS.get_cmdline_user_args()
 	if "--view=alafia" in OS.get_cmdline_user_args():
@@ -104,7 +108,7 @@ func _process(dt):
 	renderer.tick(camera,origin);imagery.tick(camera,origin,not renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
 	if fish!=null and not hud.menu.visible:
 		fish.tick(dt,boat.geo,depth);fish_save_time+=dt
-		if fish_save_time>=60:
+		if fish_save_time>=60 and fish_save_allowed:
 			fish_save_time=0
 			if fish.save_to(fish_save_path)!=OK: hud.tell("Fish population could not be saved.")
 	if fish_overlay!=null: fish_overlay.tick(dt)
@@ -181,6 +185,6 @@ func benchmark_tick(dt: float):
 		bench=false
 		if "--benchmark" in OS.get_cmdline_user_args(): get_tree().quit()
 func _exit_tree():
-	if fish!=null and fish.save_to(fish_save_path)!=OK: push_warning("Fish population save failed: "+OS.get_user_data_dir())
+	if fish!=null and fish_save_allowed and fish.save_to(fish_save_path)!=OK: push_warning("Fish population save failed: "+OS.get_user_data_dir())
 	if store!=null: store.shutdown()
 

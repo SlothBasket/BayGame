@@ -18,7 +18,9 @@ var cursor := 0
 var near_cursor := 0
 var update_ms := 0.0
 var near_region := -1
-const SPECIES := ["Red drum","Spotted seatrout","Snook"]
+const SPECIES := ["Redfish","Speckled trout","Snook","Sheepshead","Tarpon","Jack crevalle","Flounder"]
+var ecology: FishEcology
+var pending_ecology: Dictionary = {}
 var zones: Array = []
 var zone_counts := PackedInt32Array()
 var zone_species_counts: Array = []
@@ -36,7 +38,7 @@ var time_scale := 1.0
 var zone_clock := 0.0
 var migrations := 0
 var decisions := 0
-func configure(data: Dictionary, count := 10000):
+func configure(data: Dictionary, count := 8000):
 	if data.has("zones"): configure_zones(data,count);return
 	routes=data.routes;fingerprint=JSON.stringify(routes).sha256_text()
 	if routes.is_empty(): return
@@ -135,12 +137,12 @@ func configure_zones(data: Dictionary,count: int):
 	species.resize(count);size_cm.resize(count);preferred_depth.resize(count);hunger.resize(count);behavior.resize(count);destination.resize(count);decision_at.resize(count);speed.resize(count)
 	food.resize(zones.size());zone_counts.resize(zones.size());zone_counts.fill(0);zone_species_counts.resize(zones.size());buckets.clear();spatial.clear()
 	for z in range(zones.size()):
-		buckets[z]=[];zone_species_counts[z]=PackedInt32Array([0,0,0]);food[z]=float(zones[z].food_capacity)*rng.randf_range(.4,1)
+		buckets[z]=[];zone_species_counts[z]=PackedInt32Array([0,0,0,0,0,0,0]);food[z]=float(zones[z].food_capacity)*rng.randf_range(.4,1)
 		var key := Vector2i(floori(float(zones[z].x)/750),floori(float(zones[z].y)/750))
 		spatial[key]=z
 	for i in range(count):
 		ids[i]=i+1;species[i]=i%SPECIES.size();size_cm[i]=rng.randf_range(25,95)
-		preferred_depth[i]=[2.0,3.0,4.5][species[i]]*rng.randf_range(.55,1.6)
+		preferred_depth[i]=[2.0,3.0,4.5,2.0,4.0,4.0,2.5][species[i]]*rng.randf_range(.55,1.6)
 		hunger[i]=rng.randf_range(.15,.95);speed[i]=rng.randf_range(.35,.85)*(size_cm[i]/60.0)
 		var z := rng.randi_range(0,zones.size()-1)
 		for _attempt in range(5):
@@ -149,7 +151,7 @@ func configure_zones(data: Dictionary,count: int):
 		region[i]=z;destination[i]=-1;east[i]=zones[z].x;south[i]=zones[z].y;buckets[z].append(i);zone_counts[z]+=1;zone_species_counts[z][species[i]]+=1
 		decision_at[i]=rng.randf_range(0,20)
 func suitability(i: int,z: int) -> float:
-	return exp(-absf(float(zones[z].depth_m)-preferred_depth[i])/maxf(.8,preferred_depth[i]*.65))
+	return exp(-absf((float(zones[z].depth_m)+(ecology.tide_level_m if ecology!=null else 0.0))-preferred_depth[i])/maxf(.8,preferred_depth[i]*.65))
 func choose_destination(i: int):
 	var z := region[i];var choices: Array=[z];choices.append_array(zones[z].neighbors)
 	var weights: Array[float]=[];var total := 0.0
@@ -158,7 +160,10 @@ func choose_destination(i: int):
 		var score: float=2.5*suitability(i,candidate)+(1.0+3.0*hunger[i])*food[candidate]
 		score-=minf(1.5,float(buckets[int(candidate)].size())/25.0)
 		if candidate!=z: score-=.45
-		var weight := .12+exp(score);weights.append(weight);total+=weight
+		if ecology!=null: score+=ecology.destination_score(i,candidate)
+		var weight := .12+exp(score)
+		if ecology!=null and not ecology.accessible(i,candidate): weight=0
+		weights.append(weight);total+=weight
 	var roll := rng.randf()*total;var chosen := z
 	for n in range(choices.size()):
 		roll-=weights[n]
@@ -166,20 +171,27 @@ func choose_destination(i: int):
 	decisions+=1
 	if chosen!=z: destination[i]=chosen;behavior[i]=1
 	else: behavior[i]=2 if hunger[i]>.2 and food[z]>.05 else 0
-	decision_at[i]=elapsed+rng.randf_range(12,45)
+	decision_at[i]=elapsed+rng.randf_range(45,150)
+	if ecology!=null: ecology.on_decision(i)
 func update_fish(i: int,dt: float):
+	if ecology!=null and not ecology.is_alive(i): return
 	hunger[i]=minf(1,hunger[i]+dt*.0006*(size_cm[i]/60.0))
 	var z := region[i]
+	if ecology!=null and ecology.move_local(i,dt): return
 	if destination[i]>=0:
 		var target: Dictionary=zones[destination[i]]
 		var dx: float=float(target.x)-east[i];var dy: float=float(target.y)-south[i];var distance := sqrt(dx*dx+dy*dy)
 		var travel := speed[i]*dt
+		if ecology!=null:
+			var flow := ecology.current.dot(Vector2(dx,dy).normalized())
+			travel=maxf(.05,speed[i]+flow)*dt
 		if travel>=distance:
 			buckets[z].erase(i);zone_counts[z]-=1;zone_species_counts[z][species[i]]-=1;region[i]=destination[i];buckets[region[i]].append(i);zone_counts[region[i]]+=1;zone_species_counts[region[i]][species[i]]+=1;east[i]=target.x;south[i]=target.y;destination[i]=-1;behavior[i]=3;decision_at[i]=elapsed;migrations+=1
+			if ecology!=null: ecology.on_arrival(i)
 		else:
 			east[i]+=dx/distance*travel;south[i]+=dy/distance*travel
 		return
-	if behavior[i]==2:
+	if behavior[i]==2 and ecology==null:
 		var eaten := minf(hunger[i],food[z]*dt*.012)
 		hunger[i]-=eaten;food[z]=maxf(0,food[z]-eaten*.008)
 	if elapsed>=decision_at[i]: choose_destination(i)
@@ -208,12 +220,13 @@ func tick_ecosystem(dt: float,player: GeoPosition):
 				update_fish(i,age);last_update[i]=elapsed
 	update_ms=(Time.get_ticks_usec()-begin)/1000.0
 func inspect_fish(i: int) -> Dictionary:
-	return {"id":ids[i],"species":SPECIES[species[i]],"size_cm":size_cm[i],"preferred_depth_m":preferred_depth[i],"hunger":hunger[i],"east":east[i],"south":south[i],"zone":zones[region[i]].id,"destination":zones[destination[i]].id if destination[i]>=0 else "staying","state":["resting","traveling","feeding","searching"][behavior[i]]}
+	return {"id":ids[i],"species":SPECIES[species[i]],"size_cm":size_cm[i],"preferred_depth_m":preferred_depth[i],"hunger":hunger[i],"east":east[i],"south":south[i],"zone":zones[region[i]].id,"destination":zones[destination[i]].id if destination[i]>=0 else "staying","state":["resting","traveling","feeding","searching","hunting","fleeing","consumed"][behavior[i]]}
 func boost_food(z: int):
 	if z>=0 and z<food.size(): food[z]=1.0
 func save_ecosystem(path: String) -> Error:
-	var d := {"version":2,"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
+	var d := {"version":3 if ecology!=null else 2,"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: d[key]=get(key)
+	if ecology!=null: d["ecology"]=ecology.serialize()
 	var f := FileAccess.open(path+".tmp",FileAccess.WRITE)
 	if f==null: return FileAccess.get_open_error()
 	f.store_var(d);f.close();return DirAccess.rename_absolute(path+".tmp",path)
@@ -222,18 +235,37 @@ func load_ecosystem(path: String) -> Error:
 	var f := FileAccess.open(path,FileAccess.READ)
 	if f==null: return FileAccess.get_open_error()
 	var d = f.get_var(false)
-	if not d is Dictionary or d.get("version",0)!=2 or d.get("fingerprint","")!=fingerprint: return ERR_INVALID_DATA
+	if not d is Dictionary or not d.get("version",0) in [2,3] or d.get("fingerprint","")!=fingerprint: return ERR_INVALID_DATA
 	if not d.get("ids") is PackedInt64Array or d.ids.is_empty(): return ERR_INVALID_DATA
 	var count: int=d.ids.size()
 	for key in ["east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed"]:
 		if not d.has(key) or d[key].size()!=count: return ERR_INVALID_DATA
 	if not d.has("food") or d.food.size()!=zones.size(): return ERR_INVALID_DATA
 	for i in range(count):
-		if d.region[i]<0 or d.region[i]>=zones.size() or d.destination[i]>=zones.size() or d.destination[i]<-1 or d.species[i]>=SPECIES.size() or d.behavior[i]>3: return ERR_INVALID_DATA
+		if d.region[i]<0 or d.region[i]>=zones.size() or d.destination[i]>=zones.size() or d.destination[i]<-1 or d.species[i]>=SPECIES.size() or d.behavior[i]>6: return ERR_INVALID_DATA
 		if d.destination[i]>=0 and not d.destination[i] in zones[d.region[i]].neighbors: return ERR_INVALID_DATA
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: set(key,d[key])
+	pending_ecology=d.get("ecology",{})
 	elapsed=d.elapsed;zone_clock=d.zone_clock;rng.state=d.rng_state;cursor=int(d.cursor)%count;migrations=d.migrations;decisions=d.decisions
 	buckets.clear()
-	for z in range(zones.size()): buckets[z]=[];zone_counts[z]=0;zone_species_counts[z]=PackedInt32Array([0,0,0])
+	for z in range(zones.size()): buckets[z]=[];zone_counts[z]=0;zone_species_counts[z]=PackedInt32Array([0,0,0,0,0,0,0])
 	for i in range(count): buckets[region[i]].append(i);zone_counts[region[i]]+=1;zone_species_counts[region[i]][species[i]]+=1
 	return OK
+
+func setup_ecology(settings: Dictionary,habitat_data: Dictionary) -> bool:
+	# Upgrade old three-species saves without replacing existing identities/species.
+	if pending_ecology.is_empty():
+		for kind in range(3,SPECIES.size()):
+			if species.find(kind)>=0: continue
+			for n in range(100):
+				var z := rng.randi_range(0,zones.size()-1);var i := ids.size()
+				ids.append(i+1);east.append(zones[z].x);south.append(zones[z].y);region.append(z);last_update.append(elapsed)
+				species.append(kind);size_cm.append(rng.randf_range(25,95));preferred_depth.append(3);hunger.append(.5);behavior.append(0);destination.append(-1);decision_at.append(elapsed+rng.randf()*60);speed.append(.5)
+				buckets[z].append(i);zone_counts[z]+=1;zone_species_counts[z][kind]+=1
+	ecology=FishEcology.new();ecology.setup(self,settings,habitat_data)
+	if not pending_ecology.is_empty(): return ecology.restore(pending_ecology)
+	for i in range(ids.size()):
+		var profile: Dictionary=settings.species[species[i]]
+		# Preserve existing size and depth preferences on migration; calibrate speeds per species.
+		speed[i]=float(profile.speed_mps)*rng.randf_range(.75,1.25)
+	return true

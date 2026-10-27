@@ -1,0 +1,122 @@
+{
+  "default_population": 8000,
+  "predators_per_game_fish": 0.01,
+  "tide_level_m": 0,
+  "current_mps": [
+    0,
+    0
+  ],
+  "species": [
+    {
+      "name": "Redfish",
+      "depth_m": 2.0,
+      "size_min_cm": 25,
+      "size_max_cm": 110,
+      "speed_mps": 0.7,
+      "school_probability": 0.5,
+      "habitats": [
+        "grass_flat_candidate",
+        "oyster_bar_candidate",
+        "shoreline_edge"
+      ],
+      "style": "patrol",
+      "max_prey_ratio": 0.32,
+      "home_radius_hops": 2
+    },
+    {
+      "name": "Speckled trout",
+      "depth_m": 3.0,
+      "size_min_cm": 20,
+      "size_max_cm": 85,
+      "speed_mps": 0.65,
+      "school_probability": 0.65,
+      "habitats": [
+        "grass_flat_candidate",
+        "pothole_candidate",
+        "channel_dropoff"
+      ],
+      "style": "hunt",
+      "max_prey_ratio": 0.3,
+      "home_radius_hops": 2
+    },
+    {
+      "name": "Snook",
+      "depth_m": 3.5,
+      "size_min_cm": 25,
+      "size_max_cm": 125,
+      "speed_mps": 0.7,
+      "school_probability": 0.15,
+      "habitats": [
+        "mangrove_edge_candidate",
+        "creek_mouth_candidate",
+        "mapped_structure"
+      ],
+      "style": "ambush",
+      "max_prey_ratio": 0.38,
+      "home_radius_hops": 2
+    },
+    {
+      "name": "Sheepshead",
+      "depth_m": 2.0,
+      "size_min_cm": 18,
+      "size_max_cm": 65,
+      "speed_mps": 0.4,
+      "school_probability": 0.4,
+      "habitats": [
+        "oyster_bar_candidate",
+        "mapped_structure",
+        "shoreline_edge"
+      ],
+      "style": "graze",
+      "max_prey_ratio": 0.14,
+      "home_radius_hops": 2
+    },
+    {
+      "name": "Tarpon",
+      "depth_m": 4.0,
+      "size_min_cm": 45,
+      "size_max_cm": 220,
+      "speed_mps": 1.2,
+      "school_probability": 0.85,
+      "habitats": [
+        "channel_dropoff",
+        "creek_mouth_candidate",
+        "open_water"
+      ],
+      "style": "travel",
+      "max_prey_ratio": 0.22,
+      "home_radius_hops": 4
+    },
+    {
+      "name": "Jack crevalle",
+      "depth_m": 4.0,
+      "size_min_cm": 25,
+      "size_max_cm": 120,
+      "speed_mps": 1.5,
+      "school_probability": 0.95,
+      "habitats": [
+        "channel_dropoff",
+        "open_water"
+      ],
+      "style": "chase",
+      "max_prey_ratio": 0.4,
+      "home_radius_hops": 4
+    },
+    {
+      "name": "Flounder",
+      "depth_m": 2.5,
+      "size_min_cm": 18,
+      "size_max_cm": 75,
+      "speed_mps": 0.25,
+      "school_probability": 0.05,
+      "habitats": [
+        "pothole_candidate",
+        "grass_flat_candidate",
+        "channel_dropoff"
+      ],
+      "style": "bottom_ambush",
+      "max_prey_ratio": 0.35,
+      "home_radius_hops": 2
+    }
+  ]
+}
