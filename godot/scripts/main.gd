@@ -1,9 +1,6 @@
 extends Node2D
 var fish_overlay: FishDebugOverlay
 var fish: FishPopulation
-var fish_save_time := 0.0
-var fish_save_allowed := false
-var fish_save_path := "user://bay-fish-population.dat"
 var structures: GeographicStructures
 var imagery: AerialImageryLayer
 var settings: GameSettings
@@ -44,10 +41,10 @@ func _ready():
 	overlay=DebugOverlay.new();add_child(overlay);overlay.visible=false
 	hud=GameHud.new();add_child(hud);hud.setup(self,settings)
 	apply_visual_mode()
-	fish=FishPopulation.new();fish_save_allowed=fish.initialize(store.root,fish_save_path)
-	if fish_save_allowed: print("[Fish startup] ecology, movement, food web and hunting ready; %d persistent fish" % fish.ids.size())
+	fish=FishPopulation.new()
+	if fish.initialize(store.root): print("[Fish startup] ecology, movement, food web and hunting ready; %d fresh session fish" % fish.ids.size())
 	else:
-		var diagnostic := "Fish startup failed: "+fish.startup_error+". Simulation and saving disabled; original save preserved."
+		var diagnostic := "Fish startup failed: "+fish.startup_error+". Simulation unavailable."
 		push_warning(diagnostic);hud.tell(diagnostic)
 	fish_overlay=FishDebugOverlay.new();add_child(fish_overlay);fish_overlay.setup(self)
 	bench="--benchmark" in OS.get_cmdline_user_args()
@@ -115,10 +112,7 @@ func _process(dt):
 				store.request(GeoPosition.new(boat.geo.east+x*store.manifest.chunk_m,boat.geo.south+y*store.manifest.chunk_m).key(0,store.manifest.chunk_m))
 		renderer.tick(camera,origin);imagery.tick(camera,origin,not renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(visual_dt)
 	if fish!=null and fish.startup_ready and not hud.menu.visible:
-		fish.tick(wall_dt,boat.geo,depth);fish_save_time+=wall_dt
-		if fish_save_time>=60 and fish_save_allowed:
-			fish_save_time=0
-			if fish.save_to(fish_save_path)!=OK: hud.tell("Fish population could not be saved.")
+		fish.tick(wall_dt,boat.geo,depth)
 	if fish_overlay!=null: fish_overlay.tick(wall_dt)
 	if visual_due: queue_redraw()
 	if "--capture" in OS.get_cmdline_user_args() and not screenshot_done and Time.get_ticks_msec()>5000:
@@ -193,7 +187,6 @@ func benchmark_tick(dt: float):
 		bench=false
 		if "--benchmark" in OS.get_cmdline_user_args(): get_tree().quit()
 func _exit_tree():
-	if fish!=null and fish_save_allowed and fish.save_to(fish_save_path)!=OK: push_warning("Fish population save failed: "+OS.get_user_data_dir())
 	if fish!=null: fish.dispose()
 	if store!=null: store.shutdown()
 

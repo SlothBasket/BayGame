@@ -21,7 +21,39 @@
       ],
       "style": "patrol",
       "max_prey_ratio": 0.32,
-      "home_radius_hops": 2
+      "home_radius_hops": 2,
+      "size_bands_in": [
+        {
+          "weight": 0.38,
+          "min": 6,
+          "mode": 11,
+          "max": 15,
+          "cohort": "juvenile"
+        },
+        {
+          "weight": 0.58,
+          "min": 15,
+          "mode": 21,
+          "max": 27,
+          "cohort": "common adult"
+        },
+        {
+          "weight": 0.035,
+          "min": 27,
+          "mode": 29,
+          "max": 33,
+          "cohort": "large adult"
+        },
+        {
+          "weight": 0.005,
+          "min": 33,
+          "mode": 37,
+          "max": 43,
+          "cohort": "trophy"
+        }
+      ],
+      "preserve_trophy_in": 33,
+      "size_source": "https://myfwc.com/wildlifehabitats/profiles/saltwater/drums/red-drum/"
     },
     {
       "name": "Speckled trout",
@@ -37,7 +69,46 @@
       ],
       "style": "hunt",
       "max_prey_ratio": 0.3,
-      "home_radius_hops": 2
+      "home_radius_hops": 2,
+      "size_bands_in": [
+        {
+          "weight": 0.22,
+          "min": 5.7,
+          "mode": 9,
+          "max": 12,
+          "cohort": "juvenile"
+        },
+        {
+          "weight": 0.68,
+          "min": 11,
+          "mode": 14.5,
+          "max": 18,
+          "cohort": "common adult"
+        },
+        {
+          "weight": 0.085,
+          "min": 18,
+          "mode": 20,
+          "max": 23,
+          "cohort": "large adult"
+        },
+        {
+          "weight": 0.014,
+          "min": 23,
+          "mode": 24.5,
+          "max": 27,
+          "cohort": "trophy"
+        },
+        {
+          "weight": 0.001,
+          "min": 27,
+          "mode": 28,
+          "max": 32,
+          "cohort": "exceptional"
+        }
+      ],
+      "preserve_trophy_in": 25,
+      "size_source": "https://myfwc.com/research/saltwater/fish/spotted-seatrout/research-overview-tampa-bay/"
     },
     {
       "name": "Snook",
@@ -53,7 +124,39 @@
       ],
       "style": "ambush",
       "max_prey_ratio": 0.38,
-      "home_radius_hops": 2
+      "home_radius_hops": 2,
+      "size_bands_in": [
+        {
+          "weight": 0.45,
+          "min": 6,
+          "mode": 12,
+          "max": 18,
+          "cohort": "juvenile"
+        },
+        {
+          "weight": 0.45,
+          "min": 18,
+          "mode": 23,
+          "max": 29,
+          "cohort": "subadult / adult"
+        },
+        {
+          "weight": 0.09,
+          "min": 29,
+          "mode": 31,
+          "max": 35,
+          "cohort": "large adult"
+        },
+        {
+          "weight": 0.01,
+          "min": 35,
+          "mode": 38,
+          "max": 48,
+          "cohort": "trophy"
+        }
+      ],
+      "preserve_trophy_in": 35,
+      "size_source": "https://myfwc.com/research/saltwater/fish/snook/sketch-common-snook/"
     },
     {
       "name": "Sheepshead",
@@ -69,7 +172,39 @@
       ],
       "style": "graze",
       "max_prey_ratio": 0.14,
-      "home_radius_hops": 2
+      "home_radius_hops": 2,
+      "size_bands_in": [
+        {
+          "weight": 0.25,
+          "min": 5,
+          "mode": 8,
+          "max": 11,
+          "cohort": "juvenile"
+        },
+        {
+          "weight": 0.7,
+          "min": 10,
+          "mode": 13,
+          "max": 17,
+          "cohort": "common adult"
+        },
+        {
+          "weight": 0.045,
+          "min": 17,
+          "mode": 18,
+          "max": 21,
+          "cohort": "large adult"
+        },
+        {
+          "weight": 0.005,
+          "min": 21,
+          "mode": 23,
+          "max": 25.5,
+          "cohort": "trophy"
+        }
+      ],
+      "preserve_trophy_in": 21,
+      "size_source": "https://myfwc.com/wildlifehabitats/profiles/saltwater/porgy/sheepshead/"
     },
     {
       "name": "Tarpon",
@@ -85,7 +220,32 @@
       ],
       "style": "travel",
       "max_prey_ratio": 0.22,
-      "home_radius_hops": 4
+      "home_radius_hops": 4,
+      "size_bands_in": [
+        {
+          "weight": 0.75,
+          "min": 6,
+          "mode": 16,
+          "max": 28,
+          "cohort": "resident juvenile"
+        },
+        {
+          "weight": 0.245,
+          "min": 40,
+          "mode": 55,
+          "max": 72,
+          "cohort": "migratory adult"
+        },
+        {
+          "weight": 0.005,
+          "min": 72,
+          "mode": 77,
+          "max": 86,
+          "cohort": "trophy adult"
+        }
+      ],
+      "preserve_trophy_in": 72,
+      "size_source": "https://myfwc.com/wildlifehabitats/profiles/saltwater/tarpon/tarpon/"
     },
     {
       "name": "Jack crevalle",
@@ -100,7 +260,32 @@
       ],
       "style": "chase",
       "max_prey_ratio": 0.4,
-      "home_radius_hops": 4
+      "home_radius_hops": 4,
+      "size_bands_in": [
+        {
+          "weight": 0.65,
+          "min": 4,
+          "mode": 9,
+          "max": 15,
+          "cohort": "juvenile school"
+        },
+        {
+          "weight": 0.34,
+          "min": 18,
+          "mode": 24,
+          "max": 32,
+          "cohort": "adult"
+        },
+        {
+          "weight": 0.01,
+          "min": 32,
+          "mode": 36,
+          "max": 40,
+          "cohort": "trophy"
+        }
+      ],
+      "preserve_trophy_in": 32,
+      "size_source": "https://www.floridamuseum.ufl.edu/discover-fish/species-profiles/crevalle-jack/"
     },
     {
       "name": "Flounder",
@@ -116,7 +301,41 @@
       ],
       "style": "bottom_ambush",
       "max_prey_ratio": 0.35,
-      "home_radius_hops": 2
+      "home_radius_hops": 2,
+      "size_bands_in": [
+        {
+          "weight": 0.3,
+          "min": 5,
+          "mode": 9,
+          "max": 12,
+          "cohort": "juvenile"
+        },
+        {
+          "weight": 0.65,
+          "min": 11,
+          "mode": 14,
+          "max": 18,
+          "cohort": "common adult"
+        },
+        {
+          "weight": 0.045,
+          "min": 18,
+          "mode": 19,
+          "max": 22,
+          "cohort": "large adult"
+        },
+        {
+          "weight": 0.005,
+          "min": 22,
+          "mode": 24,
+          "max": 28,
+          "cohort": "trophy"
+        }
+      ],
+      "preserve_trophy_in": 22,
+      "size_source": "https://myfwc.com/wildlifehabitats/profiles/saltwater/flounder/gulf-flounder/"
     }
-  ]
+  ],
+  "size_distribution_version": 1,
+  "size_distribution_note": "Authored weighted triangular game distributions informed by linked research/profiles, not fitted local population frequencies. Inches total length for game configuration; internal centimetres. Existing saves unchanged."
 }

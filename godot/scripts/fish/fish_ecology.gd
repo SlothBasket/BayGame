@@ -49,8 +49,17 @@ func setup(p,settings: Dictionary,habitat_data: Dictionary):
 	pressure.resize(p.zones.size());pressure.fill(0)
 	initialize_individuals()
 	initialize_food_web()
+var life_profiles: Dictionary = {}
 func profile(i: int) -> Dictionary:
-	return config.species[population.species[i]]
+	var species: int=population.species[i]
+	if species in [4,5] and population.size_cm[i]<76.2:
+		if not life_profiles.has(species):
+			var juvenile: Dictionary=config.species[species].duplicate(true)
+			juvenile.home_radius_hops=1 if species==4 else 2
+			juvenile.habitats=["mangrove_edge_candidate","creek_mouth_candidate","shoreline_edge"] if species==4 else ["grass_flat_candidate","shoreline_edge","creek_mouth_candidate"]
+			life_profiles[species]=juvenile
+		return life_profiles[species]
+	return config.species[species]
 func local_range(z: int,radius: int) -> Array:
 	var key := Vector2i(z,radius)
 	if ranges.has(key): return ranges[key]

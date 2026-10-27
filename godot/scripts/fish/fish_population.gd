@@ -1,13 +1,14 @@
 class_name FishPopulation
 extends RefCounted
+var size_distribution_version := 0
 var startup_error := ""
 var ecology_ready := false
 var startup_ready := false
 func startup_failed(reason: String) -> bool:
 	startup_error=reason;startup_ready=false;return false
-func initialize(root: String,path: String) -> bool:
+func initialize(root: String) -> bool:
 	startup_ready=false;startup_error="initialization did not complete"
-	# Stop at the first failure: dependent systems must never see partially restored data.
+	# Development sessions always generate fresh fish; serialization remains available but is not called.
 	var data: Dictionary={}
 	var required := {"ecosystem-config.json":["species"],"bay-population-zones.json":["zones","root_zone"],"bay-habitats.json":["habitats","zone_ids"],"fish-navigation.json":["fingerprint","origin","width","height","cell_m","mask","nodes","zone_nodes"],"habitat-areas.json":["navigation_fingerprint","areas","feature_areas","zone_areas"],"hunting-config.json":["game_fish","predators"]}
 	for file in required:
@@ -19,9 +20,7 @@ func initialize(root: String,path: String) -> bool:
 		data[file]=parsed
 	if not FileAccess.file_exists(root+str(data["fish-navigation.json"].mask)): return startup_failed("navigation: water mask missing")
 	configure(data["bay-population-zones.json"],int(data["ecosystem-config.json"].get("default_population",8000)))
-	var error := load_from(path)
-	if error!=OK and error!=ERR_FILE_NOT_FOUND: return startup_failed("population save incompatible or unreadable (error %d)" % error)
-	if not setup_ecology(data["ecosystem-config.json"],data["bay-habitats.json"]): return startup_failed("ecology: saved identities, regions or resource records incompatible")
+	if not setup_ecology(data["ecosystem-config.json"],data["bay-habitats.json"]): return startup_failed("ecology initialization failed")
 	if not setup_movement(root): return startup_failed("movement: "+movement.last_error)
 	if not setup_food_web(root):
 		return startup_failed("food web: "+food_web.last_error if not food_web.ready else "hunting: "+hunting.last_error)
@@ -62,7 +61,7 @@ var sim_phase := -1
 var sim_cursor := 0
 var step_forage_count := 0
 var completed_steps := 0
-var simulation_budget_us := 5000
+var simulation_budget_us := 12000
 var fast_forward := false
 var fast_forward_budget_us := 40000
 var max_throughput := false
@@ -197,7 +196,7 @@ func load_from(path: String) -> Error:
 func configure_zones(data: Dictionary,count: int):
 	zones=data.zones
 	for zone in zones: zone.neighbors=Array(PackedInt32Array(zone.neighbors))
-	fingerprint=JSON.stringify(zones).sha256_text();rng.seed=90210
+	fingerprint=JSON.stringify(zones).sha256_text();rng.randomize()
 	ids.resize(count);east.resize(count);south.resize(count);region.resize(count);last_update.resize(count)
 	species.resize(count);size_cm.resize(count);preferred_depth.resize(count);hunger.resize(count);behavior.resize(count);destination.resize(count);decision_at.resize(count);speed.resize(count)
 	food.resize(zones.size());zone_counts.resize(zones.size());zone_counts.fill(0);zone_species_counts.resize(zones.size());buckets.clear();spatial.clear()
@@ -326,7 +325,7 @@ func save_ecosystem(path: String) -> Error:
 			var error := DirAccess.copy_absolute(path,backup)
 			if error!=OK: return error
 		migration_backup_needed=false
-	var d := {"version":6 if hunting!=null and hunting.ready else (4 if movement!=null and movement.ready else (3 if ecology!=null else 2)),"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
+	var d := {"version":6 if hunting!=null and hunting.ready else (4 if movement!=null and movement.ready else (3 if ecology!=null else 2)),"fingerprint":fingerprint,"size_distribution_version":size_distribution_version,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: d[key]=get(key)
 	d["scheduler"]={"debt":time_debt,"phase":sim_phase,"cursor":sim_cursor,"forage_count":step_forage_count,"completed_steps":completed_steps,"ahead_active":ahead_active}
 	if ecology!=null: d["ecology"]=ecology.serialize()
@@ -348,6 +347,7 @@ func load_ecosystem(path: String) -> Error:
 		if d.region[i]<0 or d.region[i]>=zones.size() or d.destination[i]>=zones.size() or d.destination[i]<-1 or d.species[i]>=SPECIES.size() or d.behavior[i]>6: return ERR_INVALID_DATA
 		if d.version<4 and d.destination[i]>=0 and not d.destination[i] in zones[d.region[i]].neighbors: return ERR_INVALID_DATA
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: set(key,d[key])
+	size_distribution_version=int(d.get("size_distribution_version",0))
 	pending_ecology=d.get("ecology",{})
 	var schedule: Dictionary=d.get("scheduler",{})
 	ahead_active=bool(schedule.get("ahead_active",false))
@@ -367,8 +367,10 @@ func setup_ecology(settings: Dictionary,habitat_data: Dictionary) -> bool:
 	if fresh_population:
 		for i in range(ids.size()):
 			var profile: Dictionary=settings.species[species[i]]
-			size_cm[i]=rng.randf_range(profile.size_min_cm,profile.size_max_cm)
+			size_cm[i]=sample_size_cm(profile,rng)
 			preferred_depth[i]=float(profile.depth_m)*rng.randf_range(.6,1.5)
+			if species[i] in [4,5] and size_cm[i]<76.2: preferred_depth[i]=rng.randf_range(.8,2.0)
+		size_distribution_version=int(settings.get("size_distribution_version",0))
 	ecology=FishEcology.new();ecology.setup(self,settings,habitat_data)
 	if not pending_ecology.is_empty():
 		if not ecology.restore(pending_ecology): return false
@@ -403,3 +405,21 @@ func setup_food_web(root: String) -> bool:
 	var valid := hunting.setup(self,root,ecology.pending_hunting)
 	presentation.snapshot(self)
 	return valid
+
+static func sample_size_cm(profile: Dictionary,random: RandomNumberGenerator) -> float:
+	var bands: Array=profile.get("size_bands_in",[])
+	if bands.is_empty(): return random.randf_range(profile.size_min_cm,profile.size_max_cm)
+	var total := 0.0
+	for b in bands: total+=float(b.weight)
+	var choice := random.randf()*total;var band: Dictionary=bands[-1]
+	for b in bands:
+		choice-=float(b.weight)
+		if choice<=0: band=b;break
+	var low: float=band.min;var high: float=band.max;var mode: float=band.mode;var u := random.randf()
+	var inches := low+sqrt(u*(high-low)*(mode-low)) if u<(mode-low)/(high-low) else high-sqrt((1-u)*(high-low)*(high-mode))
+	return inches*2.54
+func size_cohort(i: int) -> String:
+	var inches := size_cm[i]/2.54
+	for band in ecology.config.species[species[i]].get("size_bands_in",[]):
+		if inches>=float(band.min) and inches<=float(band.max): return str(band.cohort)
+	return "legacy / exceptional individual"
