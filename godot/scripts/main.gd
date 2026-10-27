@@ -48,6 +48,7 @@ func _ready():
 		if "--fish-smoke" in OS.get_cmdline_user_args(): print("FISH_LOAD ",error," COUNT ",fish.ids.size()," PATH ",OS.get_user_data_dir())
 		fish_save_allowed=(error==OK or error==ERR_FILE_NOT_FOUND)
 		if not fish.setup_ecology(ecosystem_config,JSON.parse_string(FileAccess.get_file_as_string(store.root+"bay-habitats.json"))): fish_save_allowed=false
+		if not fish.setup_movement(store.root): fish_save_allowed=false
 		if not fish_save_allowed: hud.tell("Fish save incompatible; saving disabled to preserve your original population.")
 	fish_overlay=FishDebugOverlay.new();add_child(fish_overlay);fish_overlay.setup(self)
 	bench="--benchmark" in OS.get_cmdline_user_args()
@@ -186,5 +187,6 @@ func benchmark_tick(dt: float):
 		if "--benchmark" in OS.get_cmdline_user_args(): get_tree().quit()
 func _exit_tree():
 	if fish!=null and fish_save_allowed and fish.save_to(fish_save_path)!=OK: push_warning("Fish population save failed: "+OS.get_user_data_dir())
+	if fish!=null: fish.dispose()
 	if store!=null: store.shutdown()
 

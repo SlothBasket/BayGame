@@ -2,6 +2,7 @@ class_name FishEcology
 extends RefCounted
 # Persistent individual routines over the existing water graph. No render dependencies.
 var population
+var pending_movement: Dictionary = {}
 var config: Dictionary = {}
 var habitats: Array = []
 var home := PackedInt32Array()
@@ -158,8 +159,9 @@ func on_arrival(i: int):
 func is_alive(i: int) -> bool:
 	return alive[i]==1
 func serialize() -> Dictionary:
-	return {"food_web_version":1,"forage":forage,"predators":predators,"pressure":pressure,"forage_cursor":forage_cursor,"predator_clock":predator_clock,"forage_consumed":forage_consumed,"game_fish_consumed":game_fish_consumed,"predator_meals":predator_meals,"jumps":jumps,"predator_ratio":predator_ratio,"home":home,"feeding":feeding,"resting":resting,"phase":phase,"boldness":boldness,"school":school,"alive":alive,"spot":spot,"returning":returning,"tide_level_m":tide_level_m,"current":current,"returns":returns}
+	return {"movement":population.movement.serialize() if population.movement!=null and population.movement.ready else {},"food_web_version":1,"forage":forage,"predators":predators,"pressure":pressure,"forage_cursor":forage_cursor,"predator_clock":predator_clock,"forage_consumed":forage_consumed,"game_fish_consumed":game_fish_consumed,"predator_meals":predator_meals,"jumps":jumps,"predator_ratio":predator_ratio,"home":home,"feeding":feeding,"resting":resting,"phase":phase,"boldness":boldness,"school":school,"alive":alive,"spot":spot,"returning":returning,"tide_level_m":tide_level_m,"current":current,"returns":returns}
 func restore(d: Dictionary) -> bool:
+	pending_movement=d.get("movement",{})
 	var count: int=population.ids.size()
 	for key in ["home","feeding","resting","phase","boldness","school","alive","spot","returning"]:
 		if not d.has(key) or d[key].size()!=count: return false
@@ -181,7 +183,7 @@ func restore(d: Dictionary) -> bool:
 				for key in ["id","zone","destination","x","y","last","next"]:
 					if not a.has(key): return false
 				if a.zone<0 or a.zone>=population.zones.size() or a.destination < -1 or a.destination>=population.zones.size(): return false
-				if a.destination>=0 and not a.destination in population.zones[a.zone].neighbors: return false
+				if pending_movement.is_empty() and a.destination>=0 and not a.destination in population.zones[a.zone].neighbors: return false
 		if d.get("pressure",PackedFloat32Array()).size()!=population.zones.size(): return false
 		forage=d.forage;predators=d.predators;pressure=d.pressure
 		forage_cursor=int(d.get("forage_cursor",0))%maxi(1,forage.size());predator_clock=d.get("predator_clock",0)
@@ -237,6 +239,7 @@ func tick(dt: float,player: GeoPosition):
 			update_predator(a,p.elapsed-a.last);a.last=p.elapsed
 		predator_clock=0
 func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
+	if population.movement!=null and population.movement.ready: return population.movement.move_record(a,dt,velocity)
 	if a.destination<0: return false
 	var target: Dictionary=population.zones[int(a.destination)]
 	var delta := Vector2(float(target.x)-float(a.x),float(target.y)-float(a.y));var distance := delta.length()
@@ -269,6 +272,7 @@ func update_forage(index: int,dt: float):
 		var value: float=p.food[candidate]-pressure[candidate]*3+p.rng.randf_range(-.8,.8)
 		if value>score: score=value;best=candidate
 	if best!=z: a.destination=best
+	if p.movement!=null and p.movement.ready: p.movement.plan_record(a,a.has("hunger"))
 func prey_available(i: int,z: int) -> float:
 	var total := 0.0
 	for index in forage_zones.get(z,[]):
@@ -282,7 +286,7 @@ func interact(i: int,dt: float):
 	var p=population;var z: int=p.region[i]
 	if pressure[z]>.35 and p.behavior[i]!=5:
 		p.behavior[i]=5;p.decision_at[i]=p.elapsed
-	if p.destination[i]>=0 or p.behavior[i] not in [2,4] or p.hunger[i]<.15: return
+	if (p.destination[i]>=0 and p.movement==null) or p.behavior[i] not in [2,4] or p.hunger[i]<.15: return
 	var close: bool=near_zones.has(z);var reach := 90.0 if profile(i).style=="chase" else 45.0
 	if profile(i).style in ["ambush","bottom_ambush"]: reach=25.0
 	for index in forage_zones.get(z,[]):
@@ -342,5 +346,6 @@ func update_predator(a: Dictionary,dt: float):
 					break
 		if value>score: score=value;best=candidate
 	if best!=z: a.destination=best
+	if p.movement!=null and p.movement.ready: p.movement.plan_record(a,a.has("hunger"))
 
 

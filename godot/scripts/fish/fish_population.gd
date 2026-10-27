@@ -23,6 +23,8 @@ var ecology: FishEcology
 var pending_ecology: Dictionary = {}
 var restored_rng_state := 0
 var fresh_population := true
+var movement: FishMovement
+var migration_backup_needed := false
 var zones: Array = []
 var zone_counts := PackedInt32Array()
 var zone_species_counts: Array = []
@@ -181,6 +183,8 @@ func update_fish(i: int,dt: float):
 	var z := region[i]
 	if ecology!=null:
 		ecology.interact(i,dt)
+		if movement!=null and movement.ready:
+			movement.tick_fish(i,dt);return
 		if ecology.move_local(i,dt): return
 	if destination[i]>=0:
 		var target: Dictionary=zones[destination[i]]
@@ -232,7 +236,13 @@ func boost_food(z: int):
 		if ecology!=null:
 			for index in ecology.forage_zones.get(z,[]): ecology.forage[index].quantity=ecology.forage[index].capacity
 func save_ecosystem(path: String) -> Error:
-	var d := {"version":3 if ecology!=null else 2,"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
+	if migration_backup_needed and FileAccess.file_exists(path):
+		var backup := path+".before-natural-movement"
+		if not FileAccess.file_exists(backup):
+			var error := DirAccess.copy_absolute(path,backup)
+			if error!=OK: return error
+		migration_backup_needed=false
+	var d := {"version":4 if movement!=null and movement.ready else (3 if ecology!=null else 2),"fingerprint":fingerprint,"elapsed":elapsed,"zone_clock":zone_clock,"rng_state":rng.state,"cursor":cursor,"migrations":migrations,"decisions":decisions}
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: d[key]=get(key)
 	if ecology!=null: d["ecology"]=ecology.serialize()
 	var f := FileAccess.open(path+".tmp",FileAccess.WRITE)
@@ -243,7 +253,7 @@ func load_ecosystem(path: String) -> Error:
 	var f := FileAccess.open(path,FileAccess.READ)
 	if f==null: return FileAccess.get_open_error()
 	var d = f.get_var(false)
-	if not d is Dictionary or not d.get("version",0) in [2,3] or d.get("fingerprint","")!=fingerprint: return ERR_INVALID_DATA
+	if not d is Dictionary or not d.get("version",0) in [2,3,4] or d.get("fingerprint","")!=fingerprint: return ERR_INVALID_DATA
 	if not d.get("ids") is PackedInt64Array or d.ids.is_empty(): return ERR_INVALID_DATA
 	var count: int=d.ids.size()
 	for key in ["east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed"]:
@@ -251,10 +261,11 @@ func load_ecosystem(path: String) -> Error:
 	if not d.has("food") or d.food.size()!=zones.size(): return ERR_INVALID_DATA
 	for i in range(count):
 		if d.region[i]<0 or d.region[i]>=zones.size() or d.destination[i]>=zones.size() or d.destination[i]<-1 or d.species[i]>=SPECIES.size() or d.behavior[i]>6: return ERR_INVALID_DATA
-		if d.destination[i]>=0 and not d.destination[i] in zones[d.region[i]].neighbors: return ERR_INVALID_DATA
+		if d.version<4 and d.destination[i]>=0 and not d.destination[i] in zones[d.region[i]].neighbors: return ERR_INVALID_DATA
 	for key in ["ids","east","south","region","last_update","species","size_cm","preferred_depth","hunger","behavior","destination","decision_at","speed","food"]: set(key,d[key])
 	pending_ecology=d.get("ecology",{})
 	restored_rng_state=d.rng_state;fresh_population=false
+	migration_backup_needed=int(d.version)<4
 	elapsed=d.elapsed;zone_clock=d.zone_clock;rng.state=d.rng_state;cursor=int(d.cursor)%count;migrations=d.migrations;decisions=d.decisions
 	buckets.clear()
 	for z in range(zones.size()): buckets[z]=[];zone_counts[z]=0;zone_species_counts[z]=PackedInt32Array([0,0,0,0,0,0,0])
@@ -289,3 +300,12 @@ func setup_ecology(settings: Dictionary,habitat_data: Dictionary) -> bool:
 		# Preserve existing size and depth preferences on migration; calibrate speeds per species.
 		speed[i]=float(profile.speed_mps)*rng.randf_range(.75,1.25)
 	return true
+
+func setup_movement(root: String) -> bool:
+	movement=FishMovement.new()
+	return movement.setup(self,root,ecology.pending_movement)
+
+func dispose():
+	if movement!=null: movement.p=null;movement.eco=null
+	if ecology!=null: ecology.population=null
+	movement=null;ecology=null
