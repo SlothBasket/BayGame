@@ -88,6 +88,9 @@ func _process(dt):
 	var now := Time.get_ticks_usec()
 	wall_dt=(now-previous_frame_usec)/1000000.0 if previous_frame_usec>0 else dt
 	previous_frame_usec=now
+	if fish!=null:
+		fish.diagnostics.frame(fish.completed_time())
+		if fish.movement!=null: fish.movement.nav.diagnostics=fish.diagnostics
 	store.begin_frame()
 	if bench: benchmark_tick(dt)
 	# Shift before float32 scene conversion. Geographic state never shifts.
@@ -105,6 +108,7 @@ func _process(dt):
 		fish.tick(wall_dt,boat.geo,depth)
 	if fish_overlay!=null: fish_overlay.tick(wall_dt)
 	queue_redraw()
+	if fish!=null: fish.diagnostics.add("Main process",Time.get_ticks_usec()-now)
 	if "--capture" in OS.get_cmdline_user_args() and not screenshot_done and Time.get_ticks_msec()>5000:
 		screenshot_done=true
 		await RenderingServer.frame_post_draw

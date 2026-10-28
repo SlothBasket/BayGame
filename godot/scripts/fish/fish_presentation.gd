@@ -20,6 +20,11 @@ func position(kind: int,index: int,fallback: Vector2) -> Vector2:
 	var length: float=distances[low]-distances[low-1]
 	return path[low-1].lerp(path[low],clampf((travel-distances[low-1])/maxf(.0001,length),0,1))
 func publish(p,kind: int,index: int,before: Vector2,at: Vector2,simulated_dt: float):
+	if p.diagnostics.publishing_disabled: return
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_publish(p,kind,index,before,at,simulated_dt)
+	p.diagnostics.add("Visual publishing",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_publish(p,kind: int,index: int,before: Vector2,at: Vector2,simulated_dt: float):
 	if not records[kind].has(index): reset_record(kind,index,before)
 	var r: Dictionary=records[kind][index]
 	if Vector2(r.target).is_equal_approx(at): return

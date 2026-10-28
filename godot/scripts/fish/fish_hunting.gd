@@ -201,6 +201,12 @@ func abandon(actor: int,s: Dictionary,reason: String):
 	s.stage=Stage.SEARCH;s.kind=-1;s.target=-1;s.detect_at=p.elapsed+2;s.path=PackedVector2Array();s.cursor=0;s.search_failures+=1;s.erase("search_goal");s.search_wait_until=0
 	event(actor,s,reason)
 func step(actor: int,dt: float) -> bool:
+	if p.diagnostics.hunting_disabled: return false
+	var diagnostic_begin := Time.get_ticks_usec()
+	var result: bool=_measured_step(actor,dt)
+	p.diagnostics.add("Hunting",Time.get_ticks_usec()-diagnostic_begin)
+	return result
+func _measured_step(actor: int,dt: float) -> bool:
 	var s := state(actor);var r := profile(actor);var at := position(actor)
 	if actor>=0 and eco.pressure[zone(actor)]>.45 and eco.boldness[actor]<.8:
 		if s.stage!=Stage.SEARCH: s.stage=Stage.SEARCH;s.kind=-1;p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.decision_at[actor]=p.elapsed
@@ -295,6 +301,10 @@ func serialize() -> Dictionary:
 	return {"states":states,"events":events}
 
 func index_entity(kind: int,index: int):
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_index_entity(kind,index)
+	p.diagnostics.add("Spatial indexing",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_index_entity(kind: int,index: int):
 	if kind==2: spatial.move(kind,index,Vector2(web.bottom[index].x,web.bottom[index].y));return
 	if kind==1:
 		if eco.alive[index]==0: spatial.remove_key(kind*FishSpatialIndex.STRIDE+index)

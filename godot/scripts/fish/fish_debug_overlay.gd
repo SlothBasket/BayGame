@@ -63,6 +63,16 @@ const SPEEDS := [0.0,1.0,5.0,10.0,20.0]
 const HUNT_RANK := {5:10,6:9,8:8,3:7,2:6,1:4}
 const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25)]
 const BAIT_COLORS := [Color(.8,1,.9),Color(.35,.7,1),Color(1,.7,.4),Color(1,.9,.25),Color(1,.5,.7),Color(.8,.5,.3),Color(.55,1,.6),Color(.25,.8,.45)]
+var performance_label: Label
+var performance_box: VBoxContainer
+var diagnostic_clock := 0.0
+var diagnostic_report := ""
+var school_report := ""
+var school_report_at := -1000
+var school_report_index := -1
+var diagnostic_mode: OptionButton
+var saved_detail_enabled := true
+var diagnostic_mode_index := 0
 var diagnostic_shown := ""
 func available() -> bool:
 	var reason := "population not initialized" if main==null or main.fish==null else str(main.fish.initialization_problem())
@@ -121,8 +131,16 @@ func setup(game):
 	detail_controls.append(toggle_button(row,"Ranges",false,func(v): show_detail=v;queue_redraw()))
 	for control in detail_controls: control.hide()
 	button(row,"Inspector",func(): inspector_open=not inspector_open;panel.visible=enabled and inspector_open)
+	performance_box=VBoxContainer.new();controls.add_child(performance_box)
+	var diagnostic_row := HBoxContainer.new();performance_box.add_child(diagnostic_row)
+	diagnostic_mode=OptionButton.new()
+	for label in ["Diagnostics: Normal simulation","Diagnostics: Ecology disabled (time queues)","Diagnostics: Detailed hunting disabled","Diagnostics: Visual publishing disabled","Diagnostics: Distance optimization disabled"]: diagnostic_mode.add_item(label)
+	diagnostic_row.add_child(diagnostic_mode);diagnostic_mode.item_selected.connect(set_diagnostic_mode)
+	button(diagnostic_row,"Copy Diagnostics",func():
+		if available(): DisplayServer.clipboard_set(main.fish.diagnostics.report(main.fish)+school_diagnostics()))
+	performance_label=Label.new();performance_label.add_theme_font_size_override("font_size",13);performance_box.add_child(performance_label)
 	status=Label.new();status.custom_minimum_size.x=330;status.add_theme_font_size_override("font_size",16);row.add_child(status)
-	panel=PanelContainer.new();panel.position=Vector2(16,210);panel.custom_minimum_size=Vector2(390,660);panel.size=Vector2(390,660);panel.add_theme_stylebox_override("panel",style());canvas.add_child(panel)
+	panel=PanelContainer.new();panel.position=Vector2(16,390);panel.custom_minimum_size=Vector2(390,660);panel.size=Vector2(390,660);panel.add_theme_stylebox_override("panel",style());canvas.add_child(panel)
 	var column := VBoxContainer.new();column.add_theme_constant_override("separation",10);panel.add_child(column)
 	heading=Label.new();heading.add_theme_font_size_override("font_size",22);heading.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;heading.custom_minimum_size.x=365;column.add_child(heading)
 	column_indicator=ColumnIndicator.new();column_indicator.custom_minimum_size=Vector2(360,102);column.add_child(column_indicator);column_indicator.hide()
@@ -184,11 +202,23 @@ func center_selected():
 	if not valid_entity(entity,entity_index): return
 	var at := selected_position();main.camera.follow=false;main.camera.anchor=null;main.camera.geo=GeoPosition.new(at.x,at.y)
 func tick(dt: float):
+	if main==null or main.fish==null: return
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_tick(dt)
+	main.fish.diagnostics.add("Fish Lab UI",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_tick(dt: float):
 	real_time+=dt
 	if not enabled or not available(): return
 	if following and entity!=Entity.NONE:
 		var at := selected_position();var t := 1-exp(-10*minf(dt,.05))
 		main.camera.follow=false;main.camera.anchor=null;main.camera.geo.east=lerpf(main.camera.geo.east,at.x,t);main.camera.geo.south=lerpf(main.camera.geo.south,at.y,t)
+	diagnostic_clock+=dt
+	if diagnostic_clock>=1:
+		diagnostic_clock=0;diagnostic_report=main.fish.diagnostics.report(main.fish)
+		var lines: PackedStringArray=diagnostic_report.split("\n")
+		performance_label.text="\n".join(lines.slice(0,4))
+		for key in ["Frame wall","Simulation"]:
+			if main.fish.diagnostics.samples.has(key): performance_label.text+="\n"+key+": "+main.fish.diagnostics.stats(key)
 	refresh_clock+=dt;rate_clock+=dt
 	if rate_clock>=1:
 		actual_rate=maxf(0,(main.fish.completed_time()-prior_sim)/rate_clock);prior_sim=main.fish.completed_time();rate_clock=0
@@ -239,6 +269,7 @@ func refresh():
 	elif entity==Entity.BAIT:
 		var a: Dictionary=eco.forage[entity_index];heading.text="%s %s #%d" % [eco.FORAGE_NAMES[int(a.kind)],"individual" if a.get("individual",false) else "school",a.id]
 		text+="%.0f prey · %.1f in\n%s\nHunger %.0f%% · danger %.0f%%\nTarget habitat: %s\n\nRecent: %s\n" % [a.quantity,a.size_cm/2.54,a.get("activity","moving"),a.get("hunger",0)*100,a.get("fear",0)*100,a.get("preferred_area","searching"),a.get("last_event","")]
+		text+=school_diagnostics()
 		if not a.get("active",true): text+="Retired: "+str(a.activity)+"\n"
 		if a.get("temporary",false):
 			text+="\nEscapee #%d · parent school #%d\n%s\n" % [a.id,a.parent_id,a.activity]
@@ -351,6 +382,11 @@ func path_line(path: PackedVector2Array,cursor: int,start: Vector2,mpp: float,co
 	for i in range(cursor,path.size()): line.append(path[i]-origin)
 	if line.size()>1: draw_polyline(line,color,1.5*mpp,true)
 func _draw():
+	if main==null or main.fish==null: return
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_draw()
+	main.fish.diagnostics.add("Fish Lab draw",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_draw():
 	if not enabled or not available(): return
 	var p=main.fish;var eco=p.ecology;var mpp: float=main.camera.span/get_viewport_rect().size.y;var origin := Vector2(main.origin.east,main.origin.south)
 	if show_detail and p.simulation_detail!=null:
@@ -441,3 +477,42 @@ func selected_paths(at: Vector2,mpp: float):
 	elif entity==Entity.BAIT:
 		var a: Dictionary=p.ecology.forage[entity_index]
 		if a.has("natural_path"): path_line(a.natural_path,int(a.path_cursor),at,mpp,BAIT_COLORS[int(a.kind)])
+
+func set_diagnostic_mode(value: int):
+	if not available(): return
+	var p=main.fish
+	if diagnostic_mode_index==4: p.simulation_detail.enabled=saved_detail_enabled
+	diagnostic_mode_index=value
+	p.diagnostics.ecology_disabled=value==1;p.diagnostics.hunting_disabled=value==2;p.diagnostics.publishing_disabled=value==3
+	if value==4:
+		saved_detail_enabled=p.simulation_detail.enabled;p.simulation_detail.enabled=false
+func school_diagnostics() -> String:
+	if entity!=Entity.BAIT or not valid_entity(entity,entity_index): return ""
+	var now := Time.get_ticks_msec()
+	if school_report_index==entity_index and now-school_report_at<1000: return school_report
+	school_report_at=now;school_report_index=entity_index
+	var p=main.fish;var a: Dictionary=p.ecology.forage[entity_index]
+	var parent_id: int=int(a.get("parent_id",-1)) if a.get("temporary",false) else int(a.id)
+	var school_index: int=p.food_web.bait_slots.get(parent_id,-1)
+	if school_index<0: return "Parent school unavailable\n"
+	var school: Dictionary=p.ecology.forage[school_index]
+	var school_targets := 0;var escapee_targets := 0
+	for state in p.hunting.states:
+		var target_kind := school_target_kind(state,parent_id,school_index)
+		if target_kind==1: school_targets+=1
+		elif target_kind==2: escapee_targets+=1
+	for predator in p.ecology.predators:
+		if not predator.active: continue
+		var target_kind := school_target_kind(predator.get("hunt",{}),parent_id,school_index)
+		if target_kind==1: school_targets+=1
+		elif target_kind==2: escapee_targets+=1
+	school_report="\nSchool #%d: %.0f prey; detached %d\nFear %.2f; fleeing %s\nHunters targeting school %d / escapees %d\n" % [parent_id,school.quantity,school.get("escapees",0),school.fear,school.fear>.3,school_targets,escapee_targets]
+	return school_report
+func school_target_kind(state: Dictionary,parent_id: int,school_index: int) -> int:
+	if int(state.get("kind",-1))!=0 or int(state.get("stage",0)) not in [1,2,3,4,5]: return 0
+	var index: int=state.get("target",-1);var forage: Array=main.fish.ecology.forage
+	if index<0 or index>=forage.size(): return 0
+	var a: Dictionary=forage[index]
+	if not a.active or int(state.get("target_id",-1))!=int(a.id): return 0
+	if index==school_index: return 1
+	return 2 if a.get("temporary",false) and int(a.get("parent_id",-1))==parent_id else 0

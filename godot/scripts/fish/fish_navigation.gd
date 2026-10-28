@@ -1,5 +1,7 @@
 class_name FishNavigation
 extends RefCounted
+var diagnostics
+var worker_usec := 0
 var nodes: Dictionary = {}
 var route_cache: Dictionary = {}
 var route_pending := false
@@ -9,9 +11,15 @@ var queued_routes: Dictionary = {}
 var active_route := Vector3i(-1,-1,-1)
 var cache_order: Array[Vector3i] = []
 func process_routes():
+	if diagnostics==null: _measured_process_routes();return
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_process_routes()
+	diagnostics.add("Route completion",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_process_routes():
 	if route_worker.is_started():
 		if route_worker.is_alive(): return
 		var result: PackedVector2Array=route_worker.wait_to_finish()
+		if diagnostics!=null: diagnostics.add("Navigation worker",worker_usec)
 		route_cache[active_route]=result;cache_order.append(active_route);queued_routes.erase(active_route)
 		if cache_order.size()>512: route_cache.erase(cache_order.pop_front())
 	if not route_jobs.is_empty():
@@ -19,6 +27,11 @@ func process_routes():
 		var error := route_worker.start(compute_route.bind(active_route))
 		if error!=OK: queued_routes.erase(active_route)
 func compute_route(key: Vector3i) -> PackedVector2Array:
+	var begin := Time.get_ticks_usec()
+	var result := _compute_route(key)
+	worker_usec=Time.get_ticks_usec()-begin
+	return result
+func _compute_route(key: Vector3i) -> PackedVector2Array:
 	# Single worker owns all graph searches; node geometry and water mask are immutable.
 	graph.follow_edges=key.z==1
 	var raw := graph.get_point_path(key.x,key.y)
@@ -89,7 +102,7 @@ func clear(a: Vector2,b: Vector2) -> bool:
 		elif tx<ty: c.x+=sx;tx+=dx
 		else: c.y+=sy;ty+=dy
 	return false
-func nearest(p: Vector2,zone := -1,component := -1) -> int:
+func _measured_nearest(p: Vector2,zone := -1,component := -1) -> int:
 	var best := -1;var distance := INF;var key := Vector2i(floori(p.x/256),floori(p.y/256))
 	for ring in range(5):
 		for y in range(-ring,ring+1):
@@ -103,6 +116,12 @@ func nearest(p: Vector2,zone := -1,component := -1) -> int:
 		if best>=0 and distance<pow(maxi(1,ring)*256,2): break
 	return best
 func route(start: Vector2,target: Vector2,goal: int,follow_edge := false) -> PackedVector2Array:
+	if diagnostics==null: return _measured_route(start,target,goal,follow_edge)
+	var diagnostic_begin := Time.get_ticks_usec()
+	var result: PackedVector2Array=_measured_route(start,target,goal,follow_edge)
+	diagnostics.add("Route requests",Time.get_ticks_usec()-diagnostic_begin)
+	return result
+func _measured_route(start: Vector2,target: Vector2,goal: int,follow_edge := false) -> PackedVector2Array:
 	route_pending=false
 	if not follow_edge and clear(start,target): return PackedVector2Array([start,target])
 	var from := nearest(start)
@@ -136,3 +155,10 @@ func migration_anchor(p: Vector2,zone: int) -> int:
 		var d := p.distance_squared_to(point(id))
 		if d<distance: distance=d;best=id
 	return best
+
+func nearest(p: Vector2,zone := -1,component := -1) -> int:
+	if diagnostics==null: return _measured_nearest(p,zone,component)
+	var begin := Time.get_ticks_usec()
+	var result: int=_measured_nearest(p,zone,component)
+	diagnostics.add("Navigation nearest",Time.get_ticks_usec()-begin)
+	return result

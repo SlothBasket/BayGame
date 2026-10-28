@@ -238,6 +238,10 @@ func set_predator_ratio(value: float):
 				p.movement.plan_record(predators[-1],true)
 var pressure_pending := 0.0
 func tick(dt: float,_player: GeoPosition):
+	var begin := Time.get_ticks_usec()
+	_measured_tick(dt,_player)
+	population.diagnostics.add("World step startup",Time.get_ticks_usec()-begin)
+func _measured_tick(dt: float,_player: GeoPosition):
 	if population.food_web!=null and population.food_web.ready: population.food_web.tick(dt)
 	pressure_clock+=dt
 	if pressure_clock>=2:
@@ -254,6 +258,10 @@ func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 		var offset := delta.normalized()*travel;a.x+=offset.x;a.y+=offset.y
 	return true
 func update_forage(index: int,dt: float):
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_update_forage(index,dt)
+	population.diagnostics.add("Bait",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_update_forage(index: int,dt: float):
 	if population.food_web!=null and population.food_web.ready: population.food_web.update_bait(index,dt);return
 	var a: Dictionary=forage[index];var p=population;var z: int=a.zone
 	if a.quantity<=0: a.active=false;return
@@ -295,11 +303,15 @@ func consume_fish(i: int):
 	var p=population;var z: int=p.region[i];alive[i]=0;p.behavior[i]=6;p.destination[i]=-1
 	p.buckets[z].erase(i);p.zone_counts[z]-=1;p.zone_species_counts[z][p.species[i]]-=1;game_fish_consumed+=1
 func update_predator(a: Dictionary,dt: float):
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_update_predator(a,dt)
+	population.diagnostics.add("Predators",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_update_predator(a: Dictionary,dt: float):
 	var p=population;var z: int=a.zone;a.hunger=minf(1,a.hunger+dt*.000035)
 	if p.water_column!=null: p.water_column.update_actor(-int(a.id),dt)
 	pressure[z]=minf(1,pressure[z]+dt*.035)
 	for neighbor in p.zones[z].neighbors: pressure[neighbor]=minf(1,pressure[neighbor]+dt*.006)
-	if p.simulation_detail!=null and int(a.get("detail",2))==2: p.simulation_detail.coarse_hunt(-int(a.id),dt);return
+	if not p.diagnostics.hunting_disabled and p.simulation_detail!=null and int(a.get("detail",2))==2: p.simulation_detail.coarse_hunt(-int(a.id),dt);return
 	if p.hunting!=null and p.hunting.ready and p.hunting.step(-int(a.id),dt): return
 	if move_record(a,dt,1.8 if a.kind==3 else 1.1): return
 	if p.elapsed<a.next: return

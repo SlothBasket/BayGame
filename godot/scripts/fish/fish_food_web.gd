@@ -64,6 +64,11 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 	for a in eco.forage: initialize_bait(a)
 	ready=true;return true
 func spawn_bait(area: int) -> bool:
+	var diagnostic_begin := Time.get_ticks_usec()
+	var result: bool=_measured_spawn_bait(area)
+	p.diagnostics.add("Spawning",Time.get_ticks_usec()-diagnostic_begin)
+	return result
+func _measured_spawn_bait(area: int) -> bool:
 	if eco.forage.size()>=int(eco.config.get("bait_record_limit",24000)): return false
 	var habitat: Dictionary=areas[area]
 	var kinds: Array=[1,6,7]
@@ -232,6 +237,10 @@ func tick(dt: float):
 		recruitment_due+=batches*int(eco.config.get("bait_recruits_per_interval",12))
 	if clock>=10: recovery_due+=clock;clock=0
 func process_maintenance(deadline: int):
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_process_maintenance(deadline)
+	p.diagnostics.add("Maintenance",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_process_maintenance(deadline: int):
 	if recovery_dt<=0 and recovery_due>0: recovery_dt=recovery_due;recovery_due=0;recovery_cursor=0
 	while recovery_dt>0 and Time.get_ticks_usec()<deadline:
 		if recovery_cursor<nutrients.size(): nutrients[recovery_cursor]=move_toward(nutrients[recovery_cursor],1,recovery_dt*.00005)

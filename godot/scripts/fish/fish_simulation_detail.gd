@@ -21,7 +21,7 @@ func level(at: Vector2,previous: int,pinned := false) -> int:
 	if distance<=pow(detailed_m+(hysteresis_m if previous==0 else 0),2): return 0
 	if distance<=pow(intermediate_m+(hysteresis_m if previous<2 else 0),2): return 1
 	return 2
-func actor_level(actor: int) -> int:
+func _measured_actor_level(actor: int) -> int:
 	var s: Dictionary=p.hunting.state(actor)
 	var pursuing_selected: bool=s.kind==0 and int(s.target)==p.food_web.observed_bait and int(s.get("target_id",-1))==int(p.ecology.forage[s.target].id) if s.kind==0 and s.target>=0 and s.target<p.ecology.forage.size() else false
 	if s.kind==1 and int(s.target)==p.observed_fish: pursuing_selected=true
@@ -37,7 +37,7 @@ func actor_level(actor: int) -> int:
 	var a: Dictionary=p.ecology.predators[-actor-1]
 	a.detail=level(Vector2(a.x,a.y),int(a.get("detail",2)),-actor-1==selected_predator or pursuing_selected)
 	return int(a.detail)
-func bait_level(index: int) -> int:
+func _measured_bait_level(index: int) -> int:
 	var a: Dictionary=p.ecology.forage[index];var pinned: bool=index==p.food_web.observed_bait
 	if p.observed_fish>=0:
 		var s: Dictionary=p.hunting.state(p.observed_fish)
@@ -91,6 +91,10 @@ func coarse_hunt(actor: int,dt: float):
 			break
 		if checked>=12: break
 func coarse_bait(index: int,dt: float):
+	var diagnostic_begin := Time.get_ticks_usec()
+	_measured_coarse_bait(index,dt)
+	p.diagnostics.add("Bait coarse",Time.get_ticks_usec()-diagnostic_begin)
+func _measured_coarse_bait(index: int,dt: float):
 	var a: Dictionary=p.ecology.forage[index];var old_zone: int=a.zone
 	a.hunger=minf(1,float(a.hunger)+dt*.00015);a.fear=maxf(0,float(a.fear)-dt*.01)
 	var area: int=p.food_web.area_by_id.get(a.get("preferred_area",""),-1)
@@ -108,3 +112,15 @@ func coarse_bait(index: int,dt: float):
 		if a.path_cursor>=a.natural_path.size(): a.destination=-1;a.erase("natural_path")
 	if a.zone!=old_zone: p.ecology.forage_zones[old_zone].erase(index);p.ecology.forage_zones[int(a.zone)].append(index)
 	p.water_column.update_bait(a,dt);a.activity="background forage / shelter"
+
+func actor_level(actor: int) -> int:
+	var begin := Time.get_ticks_usec()
+	var result: int=_measured_actor_level(actor)
+	p.diagnostics.add("Detail assignment",Time.get_ticks_usec()-begin)
+	return result
+
+func bait_level(index: int) -> int:
+	var begin := Time.get_ticks_usec()
+	var result: int=_measured_bait_level(index)
+	p.diagnostics.add("Detail assignment",Time.get_ticks_usec()-begin)
+	return result
