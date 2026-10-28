@@ -10,6 +10,16 @@ var hysteresis_m := 150.0
 var intervals := [0.5,2.0,10.0]
 var fish_levels := PackedByteArray()
 var selected_predator := -1
+var revision := 0
+var prior_boat := Vector2.INF
+var prior_camera := Vector2.INF
+var prior_selection := Vector3i(-2,-2,-2)
+var prior_enabled := true
+func refresh_focus():
+	var selection := Vector3i(p.observed_fish,p.food_web.observed_bait,selected_predator)
+	if boat.distance_squared_to(prior_boat)>2500 or camera.distance_squared_to(prior_camera)>2500 or selection!=prior_selection or enabled!=prior_enabled:
+		revision+=1;prior_boat=boat;prior_camera=camera;prior_selection=selection;prior_enabled=enabled
+
 func setup(population):
 	p=population;fish_levels.resize(p.ids.size());fish_levels.fill(2)
 	var config: Dictionary=p.ecology.config.get("simulation_detail",{})
@@ -47,6 +57,10 @@ func _measured_bait_level(index: int) -> int:
 		pinned=pinned or (s.kind==0 and s.target==index and int(s.get("target_id",-1))==int(a.id))
 	a.detail=level(Vector2(a.x,a.y),int(a.get("detail",2)),pinned);return int(a.detail)
 func coarse_hunt(actor: int,dt: float):
+	var begin := Time.get_ticks_usec()
+	_timed_coarse_hunt(actor,dt)
+	p.diagnostics.add("Coarse hunt",Time.get_ticks_usec()-begin)
+func _timed_coarse_hunt(actor: int,dt: float):
 	var h=p.hunting;var s: Dictionary=h.state(actor);var r: Dictionary=h.profile(actor)
 	# Finish already-earned meals; changing detail never creates or discards them.
 	if s.stage in [6,8]: h.step(actor,dt);return
@@ -56,14 +70,12 @@ func coarse_hunt(actor: int,dt: float):
 	var at: Vector2=h.position(actor)
 	if p.elapsed>=float(s.get("coarse_plan_at",0)):
 		s.coarse_plan_at=p.elapsed+90
-		var node: int=p.movement.nav.nearest(at)
-		if node>=0:
-			var goal: Vector2=p.food_web.feature_destination(node,"resting" if p.ecology.pressure[h.zone(actor)]>.35 else "feeding",actor+int(p.elapsed/90))
-			var destination: int=p.movement.nav.nearest(goal)
-			if destination>=0:
-				var replacement: PackedVector2Array=p.movement.nav.route(at,goal,destination)
-				if not replacement.is_empty(): s.path=replacement;s.cursor=1
-				elif p.movement.nav.route_pending: s.coarse_plan_at=p.elapsed+1
+		if s.has("coarse_route_goal"):
+			var replacement: PackedVector2Array=p.movement.nav.route(at,s.coarse_route_target,int(s.coarse_route_goal))
+			if not replacement.is_empty(): s.path=replacement;s.cursor=1;s.erase("coarse_route_goal");s.erase("coarse_route_target")
+			elif p.movement.nav.route_pending: s.coarse_plan_at=p.elapsed+1
+			else: s.erase("coarse_route_goal");s.erase("coarse_route_target")
+		else: plan_coarse_route(actor,s,at)
 	var velocity: float=float(r.cruise_mph)*.44704
 	if not s.path.is_empty():
 		var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),velocity*dt,actor,s.heading,false)
@@ -71,6 +83,7 @@ func coarse_hunt(actor: int,dt: float):
 	if p.elapsed<float(s.get("coarse_encounter_at",0)): return
 	s.coarse_encounter_at=p.elapsed+30
 	# Aggregated distant encounter, charged against real records. No free zone nutrition.
+	var encounter_begin := Time.get_ticks_usec()
 	var checked := 0;var radius: float=minf(50,float(r.detect_ft)*.3048)
 	for code in h.spatial.query(h.position(actor),radius):
 		var kind := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
@@ -90,6 +103,7 @@ func coarse_hunt(actor: int,dt: float):
 			if actor<0: p.ecology.predator_meals+=1
 			break
 		if checked>=12: break
+	p.diagnostics.add("Coarse encounters",Time.get_ticks_usec()-encounter_begin)
 func coarse_bait(index: int,dt: float):
 	var diagnostic_begin := Time.get_ticks_usec()
 	_measured_coarse_bait(index,dt)
@@ -124,3 +138,14 @@ func bait_level(index: int) -> int:
 	var result: int=_measured_bait_level(index)
 	p.diagnostics.add("Detail assignment",Time.get_ticks_usec()-begin)
 	return result
+
+func plan_coarse_route(actor: int,s: Dictionary,at: Vector2):
+	var h=p.hunting
+	var node: int=p.movement.nav.nearest(at)
+	if node>=0:
+		var goal: Vector2=p.food_web.feature_destination(node,"resting" if p.ecology.pressure[h.zone(actor)]>.35 else "feeding",actor+int(p.elapsed/90))
+		var destination: int=p.movement.nav.nearest(goal)
+		if destination>=0:
+			var replacement: PackedVector2Array=p.movement.nav.route(at,goal,destination)
+			if not replacement.is_empty(): s.path=replacement;s.cursor=1
+			elif p.movement.nav.route_pending: s.coarse_plan_at=p.elapsed+1;s.coarse_route_goal=destination;s.coarse_route_target=goal

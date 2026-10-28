@@ -55,8 +55,16 @@ var rate_clock := 0.0
 var prior_sim := 0.0
 var actual_rate := 0.0
 var candidates: Array = []
+var overview_points: Array[PackedVector2Array] = []
+var overview_build: Array[PackedVector2Array] = []
+var overview_candidates: Array = []
+var overview_cursor := 0
+var overview_origin := Vector2.ZERO
+
 var visible_areas: Array[int] = []
 var view_bounds := Rect2()
+var cached_span := 0.0
+var cached_center := Vector2.INF
 var trail := PackedVector2Array()
 var event_seen: Dictionary = {}
 const SPEEDS := [0.0,1.0,5.0,10.0,20.0]
@@ -219,6 +227,9 @@ func _measured_tick(dt: float):
 		performance_label.text="\n".join(lines.slice(0,4))
 		for key in ["Frame wall","Simulation"]:
 			if main.fish.diagnostics.samples.has(key): performance_label.text+="\n"+key+": "+main.fish.diagnostics.stats(key)
+	var center := Vector2(main.camera.geo.east,main.camera.geo.south)
+	if cached_span<=0 or main.camera.span<cached_span*.8 or main.camera.span>cached_span*1.25 or center.distance_squared_to(cached_center)>pow(main.camera.span*.1,2):
+		cache_view()
 	refresh_clock+=dt;rate_clock+=dt
 	if rate_clock>=1:
 		actual_rate=maxf(0,(main.fish.completed_time()-prior_sim)/rate_clock);prior_sim=main.fish.completed_time();rate_clock=0
@@ -234,11 +245,13 @@ func _measured_tick(dt: float):
 			if not event_seen.has(key): event_seen[key]=real_time
 	for key in event_seen.keys():
 		if real_time-float(event_seen[key])>10: event_seen.erase(key)
+	if main.camera.span>3500: build_overview()
 	queue_redraw()
 func cache_view():
 	if not available(): return
 	var size := get_viewport_rect().size;var half: Vector2=Vector2(size.x/size.y,1)*main.camera.span*.5
-	view_bounds=Rect2(Vector2(main.camera.geo.east,main.camera.geo.south)-half,half*2).grow(250)
+	cached_span=main.camera.span;cached_center=Vector2(main.camera.geo.east,main.camera.geo.south)
+	view_bounds=Rect2(cached_center-half,half*2).grow(250)
 	candidates=main.fish.hunting.spatial.rectangle(view_bounds)
 	visible_areas.clear()
 	if show_areas or mode==4 or entity==Entity.AREA:
@@ -393,7 +406,9 @@ func _measured_draw():
 		for focus in [p.simulation_detail.boat,p.simulation_detail.camera]:
 			draw_circle(focus-origin,p.simulation_detail.detailed_m,Color(.4,1,.5,.4),false,mpp)
 			draw_circle(focus-origin,p.simulation_detail.intermediate_m,Color(1,.8,.4,.3),false,mpp)
-	for code in candidates:
+	var overview: bool=main.camera.span>3500
+	var dots: Array[PackedVector2Array]=overview_points
+	for code in ([] if overview else candidates):
 		var kind := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
 		if kind==1 and mode in [0,1]:
 			if eco.alive[index]==0 or (main.camera.span>15000 and index%4!=0 and selected!=index): continue
@@ -421,6 +436,9 @@ func _measured_draw():
 			if a.get("fear",0)>.2: draw_circle(pos,radius*(1+a.fear*.8),Color(1,.4,.5,.6),false,mpp)
 			var direction: Vector2=a.get("heading",Vector2.ZERO);draw_line(pos,pos+direction*(radius+8*mpp),color,1.5*mpp)
 			if main.camera.span<3500 or (entity==Entity.BAIT and entity_index==index): caption(pos,"%s #%d ≈%.0f" % [eco.FORAGE_NAMES[int(a.kind)],a.id,a.quantity],mpp,color)
+	if overview:
+		for n in range(dots.size()):
+			if not dots[n].is_empty(): draw_set_transform(overview_origin-origin);draw_multiline(dots[n],COLORS[n] if n<7 else (BAIT_COLORS[n-7] if n<15 else Color(1,.35,.85)),2*mpp);draw_set_transform(Vector2.ZERO)
 	if mode in [0,3]:
 		for i in range(eco.predators.size()):
 			var a: Dictionary=eco.predators[i];var at: Vector2=observed_position(2,i)
@@ -516,3 +534,28 @@ func school_target_kind(state: Dictionary,parent_id: int,school_index: int) -> i
 	if not a.active or int(state.get("target_id",-1))!=int(a.id): return 0
 	if index==school_index: return 1
 	return 2 if a.get("temporary",false) and int(a.get("parent_id",-1))==parent_id else 0
+
+
+func build_overview():
+	# Bay-wide movement is subpixel. Build a complete marker buffer incrementally,
+	# while the previous buffer remains visible; close views still interpolate every frame.
+	if overview_build.is_empty():
+		for n in range(16): overview_build.append(PackedVector2Array())
+		overview_candidates=candidates.duplicate();overview_cursor=0
+	var begin := Time.get_ticks_usec()
+	var p=main.fish;var mpp: float=main.camera.span/get_viewport_rect().size.y
+	while overview_cursor<overview_candidates.size() and Time.get_ticks_usec()-begin<1000:
+		var code: int=overview_candidates[overview_cursor];overview_cursor+=1
+		var kind := code/FishSpatialIndex.STRIDE;var index := code%FishSpatialIndex.STRIDE
+		var group := -1;var at := Vector2.ZERO
+		if kind==1 and mode in [0,1] and p.ecology.alive[index]!=0:
+			group=p.species[index];at=observed_position(0,index)
+		elif kind==0 and mode in [0,2]:
+			var a: Dictionary=p.ecology.forage[index]
+			if not a.get("active",true) or a.quantity<1: continue
+			group=15 if a.get("temporary",false) else 7+int(a.kind);at=observed_position(1,index)
+		if group>=0:
+			overview_build[group].append(at-Vector2(mpp,0));overview_build[group].append(at+Vector2(mpp,0))
+	if overview_cursor>=overview_candidates.size():
+		overview_points=overview_build;overview_build=[];overview_origin=Vector2.ZERO
+	p.diagnostics.add("Overview buffer",Time.get_ticks_usec()-begin)

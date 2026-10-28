@@ -172,6 +172,11 @@ func area_for_feature(feature: int,role: String) -> String:
 		if role in areas[int(value)].roles: return areas[int(value)].id
 	return areas[int(choices[0])].id if not choices.is_empty() else ""
 func sample(index: int,seed_value: int,component := -1) -> Vector2:
+	var begin := Time.get_ticks_usec()
+	var result: Vector2=_timed_sample(index,seed_value,component)
+	p.diagnostics.add("Habitat sampling",Time.get_ticks_usec()-begin)
+	return result
+func _timed_sample(index: int,seed_value: int,component := -1) -> Vector2:
 	var a: Dictionary=areas[index];var ids: PackedInt32Array=a.nodes
 	for trial in range(mini(20,ids.size()+8)):
 		var id: int=ids[posmod(seed_value+trial*137,ids.size())]
@@ -271,6 +276,10 @@ func flee(a: Dictionary,at: Vector2):
 	detach_escapees(a,at)
 	a.fear=1.0;a.scatter_until=p.elapsed+35;a.flee_from=at;a.next=p.elapsed;a.activity="scattering";a.last_event="escaped / scattered from nearby attack"
 func plan_bait(a: Dictionary):
+	var begin := Time.get_ticks_usec()
+	_timed_plan_bait(a)
+	p.diagnostics.add("Bait planning",Time.get_ticks_usec()-begin)
+func _timed_plan_bait(a: Dictionary):
 	if a.has("pending_route_target"):
 		var pending: PackedVector2Array=nav.route(Vector2(a.x,a.y),a.pending_route_target,int(a.pending_route_goal))
 		if not pending.is_empty():
@@ -294,6 +303,8 @@ func plan_bait(a: Dictionary):
 				if habitat.id==a.get("preferred_area","") and nutrients[index]>.3: v+=.7
 				if "shelter" in habitat.roles and a.kind in [0,2,3,4,5]: v+=.8
 				if a.kind>=6 and habitat.kind=="grass_flat_candidate": v+=1.0
+				# Depth only subtracts from v: a losing upper bound cannot win.
+				if v<=score: continue
 				var candidate := sample(index,int(a.id)+int(p.elapsed),int(nav.nodes[anchor].component));var id: int=nav.nearest(candidate)
 				if id<0 or nav.nodes[id].component!=nav.nodes[anchor].component: continue
 				v-=absf(float(nav.nodes[id].depth_m)-(1.5 if a.kind in [0,2,4,5,6] else 3.0))*.15

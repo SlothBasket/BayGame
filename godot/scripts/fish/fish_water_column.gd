@@ -63,6 +63,10 @@ func update_bait(a: Dictionary,dt: float):
 	var spread := 0.0 if a.get("individual",false) or a.kind in [4,5] else minf(bed*.2,.25+float(a.fear)*.6)
 	a.vertical_spread=move_toward(float(a.vertical_spread),spread,dt*.12)
 func update_actor(actor: int,dt: float):
+	var begin := Time.get_ticks_usec()
+	_timed_update_actor(actor,dt)
+	p.diagnostics.add("Fish depth",Time.get_ticks_usec()-begin)
+func _timed_update_actor(actor: int,dt: float):
 	var at: Vector2=p.hunting.position(actor);var bed := bottom_at(at,p.hunting.zone(actor))
 	var desired := holding_for(actor,bed);var old_hold: float=holding[actor] if actor>=0 else p.ecology.predators[-actor-1].holding_depth
 	var hold := within(move_toward(old_hold,desired,dt*.04),bed);var goal := hold

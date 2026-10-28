@@ -123,6 +123,11 @@ func update_region(i: int,z: int):
 		p.buckets[z].append(i);p.zone_counts[z]+=1;p.zone_species_counts[z][p.species[i]]+=1
 	p.region[i]=z;p.migrations+=1
 func advance(at: Vector2,path: PackedVector2Array,index: int,distance: float,seed_value: int,heading: Vector2,near: bool,arrival_radius := 2.0) -> Dictionary:
+	var begin := Time.get_ticks_usec()
+	var result: Dictionary=_timed_advance(at,path,index,distance,seed_value,heading,near,arrival_radius)
+	p.diagnostics.add("Movement advance",Time.get_ticks_usec()-begin)
+	return result
+func _timed_advance(at: Vector2,path: PackedVector2Array,index: int,distance: float,seed_value: int,heading: Vector2,near: bool,arrival_radius := 2.0) -> Dictionary:
 	var remaining := distance;var steps := 0
 	while index<path.size() and remaining>0 and steps<96:
 		steps+=1;var delta := path[index]-at;var length := delta.length()

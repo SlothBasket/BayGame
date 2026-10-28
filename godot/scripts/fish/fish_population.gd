@@ -61,6 +61,8 @@ var sim_phase := -1
 var sim_cursor := 0
 var maintenance_food_dt := 0.0
 var restored_pressure_pending := 0.0
+var fish_due := PackedFloat64Array()
+var fish_detail_revision := PackedInt32Array()
 var step_forage_count := 0
 var completed_steps := 0
 var simulation_budget_us := 12000
@@ -275,6 +277,10 @@ func _measured_tick_ecosystem(dt: float,_player: GeoPosition):
 	var budget: int=clampi(simulation_budget_us,1000,8000)
 	var finished_this_frame := 0
 	var step_segment := Time.get_ticks_usec()
+	simulation_detail.refresh_focus()
+	if fish_due.size()!=ids.size():
+		fish_due.resize(ids.size());fish_detail_revision.resize(ids.size());fish_detail_revision.fill(-1)
+		for i in range(ids.size()): fish_due[i]=WORLD_STEP*(1+i%20)
 	movement.nav.process_routes()
 	food_web.process_maintenance(mini(begin+budget,Time.get_ticks_usec()+750))
 	# Deterministic phases and a persistent cursor: frame budgets change throughput, not outcomes.
@@ -298,26 +304,36 @@ func _measured_tick_ecosystem(dt: float,_player: GeoPosition):
 			if sim_cursor>=step_forage_count: sim_phase=1;sim_cursor=0;continue
 			var a: Dictionary=ecology.forage[sim_cursor]
 			if not a.get("active",true): a.last=elapsed;sim_cursor+=1;continue
+			var due: float=a.get("update_due",WORLD_STEP*(1+int(a.id)%20))
+			if elapsed+.000001<due and int(a.get("detail_revision",-1))==simulation_detail.revision: sim_cursor+=1;continue
+			var old_tier: int=a.get("detail",2)
 			var tier: int=simulation_detail.bait_level(sim_cursor);var interval: float=simulation_detail.intervals[tier];var age: float=maxf(0,elapsed-float(a.last))
-			if age+.000001<interval: sim_cursor+=1;continue
+			a.detail_revision=simulation_detail.revision
+			if tier<old_tier: due=minf(due,float(a.last)+interval)
+			a.update_due=due
+			if elapsed+.000001<due: sim_cursor+=1;continue
 			var tier_begin := Time.get_ticks_usec()
 			var step := minf(interval,age);var before := Vector2(a.x,a.y)
 			if tier==2: simulation_detail.coarse_bait(sim_cursor,step)
 			else: ecology.update_forage(sim_cursor,step)
-			a.last=minf(elapsed,float(a.last)+step);hunting.index_entity(0,sim_cursor)
+			a.last=minf(elapsed,float(a.last)+step);a.update_due=float(a.last)+interval;hunting.index_entity(0,sim_cursor)
 			diagnostics.add(diagnostics.TIERS[tier],Time.get_ticks_usec()-tier_begin)
 			presentation.publish(self,1,sim_cursor,before,Vector2(a.x,a.y),step)
 			if age-step+.000001<interval or not a.active: sim_cursor+=1
 		elif sim_phase==1:
 			if sim_cursor>=ids.size(): sim_phase=2;sim_cursor=0;continue
 			if ecology.alive[sim_cursor]==0: last_update[sim_cursor]=elapsed;sim_cursor+=1;continue
+			if elapsed+.000001<fish_due[sim_cursor] and fish_detail_revision[sim_cursor]==simulation_detail.revision: sim_cursor+=1;continue
+			var old_tier: int=simulation_detail.fish_levels[sim_cursor]
 			var tier: int=simulation_detail.actor_level(sim_cursor);var interval: float=simulation_detail.intervals[tier];var age := maxf(0,elapsed-last_update[sim_cursor])
-			if age+.000001<interval: sim_cursor+=1;continue
+			fish_detail_revision[sim_cursor]=simulation_detail.revision
+			if tier<old_tier: fish_due[sim_cursor]=minf(fish_due[sim_cursor],last_update[sim_cursor]+interval)
+			if elapsed+.000001<fish_due[sim_cursor]: sim_cursor+=1;continue
 			var tier_begin := Time.get_ticks_usec()
 			var step := minf(interval,age);var before := Vector2(east[sim_cursor],south[sim_cursor]);update_fish(sim_cursor,step)
 			diagnostics.add(diagnostics.TIERS[tier],Time.get_ticks_usec()-tier_begin)
 			presentation.publish(self,0,sim_cursor,before,Vector2(east[sim_cursor],south[sim_cursor]),step)
-			last_update[sim_cursor]=minf(elapsed,last_update[sim_cursor]+step);hunting.index_entity(1,sim_cursor)
+			last_update[sim_cursor]=minf(elapsed,last_update[sim_cursor]+step);fish_due[sim_cursor]=last_update[sim_cursor]+interval;hunting.index_entity(1,sim_cursor)
 			if age-step+.000001<interval: sim_cursor+=1
 		else:
 			if sim_cursor>=ecology.predators.size():
@@ -329,13 +345,19 @@ func _measured_tick_ecosystem(dt: float,_player: GeoPosition):
 				continue
 			var a: Dictionary=ecology.predators[sim_cursor]
 			if not a.active: a.last=elapsed;sim_cursor+=1;continue
+			var due: float=a.get("update_due",WORLD_STEP*(1+int(a.id)%20))
+			if elapsed+.000001<due and int(a.get("detail_revision",-1))==simulation_detail.revision: sim_cursor+=1;continue
+			var old_tier: int=a.get("detail",2)
 			var tier: int=simulation_detail.actor_level(-sim_cursor-1);var interval: float=simulation_detail.intervals[tier];var age: float=maxf(0,elapsed-float(a.last))
-			if age+.000001<interval: sim_cursor+=1;continue
+			a.detail_revision=simulation_detail.revision
+			if tier<old_tier: due=minf(due,float(a.last)+interval)
+			a.update_due=due
+			if elapsed+.000001<due: sim_cursor+=1;continue
 			var tier_begin := Time.get_ticks_usec()
 			var step := minf(interval,age);var before := Vector2(a.x,a.y);ecology.update_predator(a,step)
 			diagnostics.add(diagnostics.TIERS[tier],Time.get_ticks_usec()-tier_begin)
 			presentation.publish(self,2,sim_cursor,before,Vector2(a.x,a.y),step)
-			a.last=minf(elapsed,float(a.last)+step)
+			a.last=minf(elapsed,float(a.last)+step);a.update_due=float(a.last)+interval
 			if age-step+.000001<interval: sim_cursor+=1
 	if sim_phase>=0: diagnostics.step_cpu+=Time.get_ticks_usec()-step_segment
 	update_ms=(Time.get_ticks_usec()-begin)/1000.0

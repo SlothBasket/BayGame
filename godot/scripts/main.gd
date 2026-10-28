@@ -51,6 +51,9 @@ func _ready():
 		camera.geo=boat.geo.copy();camera.span=20;camera.target_span=20;camera.follow=true;capture_name="close-boat.png"
 	if "--view=chart" in OS.get_cmdline_user_args():
 		camera.geo=GeoPosition.new(26360,65500);camera.span=2000;camera.target_span=2000;renderer.chart=true;capture_name="chart.png"
+	fish.diagnostics.begin_session()
+	# Population/asset construction is startup, not elapsed gameplay time.
+	previous_frame_usec=Time.get_ticks_usec()
 func view_alafia():
 	camera.follow=false;camera.anchor=null;camera.geo=GeoPosition.new(63682,37503);camera.span=1500;camera.target_span=1500;camera.index=4
 func apply_visual_mode():

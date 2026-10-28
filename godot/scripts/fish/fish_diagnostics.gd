@@ -54,9 +54,14 @@ func report(p) -> String:
 	var costly := "none";var cost := 0.0
 	for key in samples:
 		if key in ["Frame wall","Main process","Simulation","World step wall","World step CPU","Navigation worker"]: continue
-		var peak: float=samples[key].max()
+		var peak := 0.0
+		for value in samples[key]: peak=maxf(peak,value)
 		if peak>cost: cost=peak;costly=key
 	var text := "BayGame diagnostics | FPS %.1f | requested %.0fx achieved %.2fx\nQueued %.2f s + in-flight %.2f s | phase %d cursor %d\nD/I/B animals %d / %d / %d (last assigned) | bait records %d escapees %d\nRoutes pending %d | largest recent subsystem %s %.2f ms\nFrames >50/100/250/500ms: %s (session, overlapping)\nDisabled: ecology=%s hunting=%s publishing=%s distance=%s\n" % [Engine.get_frames_per_second(),p.time_scale,achieved,p.time_debt,p.WORLD_STEP if p.sim_phase>=0 else 0.0,p.sim_phase,p.sim_cursor,levels[0],levels[1],levels[2],bait,escapees,p.movement.nav.queued_routes.size(),costly,cost,str(spikes),ecology_disabled,hunting_disabled,publishing_disabled,not p.simulation_detail.enabled]
 	text+="Recent %d frames; timings ms/frame, nested (do not sum); call maxima/counts session. Worker time is off-thread.\n" % mini(frames,WINDOW)
 	for key in samples: text+=key+": "+stats(key)+"\n"
 	return text
+
+func begin_session():
+	samples.clear();current.clear();peaks.clear();calls.clear();cursor=0;frames=0
+	spikes.fill(0);last_frame=0;real_seconds=0;rate_at=0;rate_completed=0
