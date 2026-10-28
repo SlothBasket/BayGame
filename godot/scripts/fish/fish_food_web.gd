@@ -12,6 +12,7 @@ var bottom_zones: Dictionary = {}
 var nutrients := PackedFloat32Array()
 var clock := 0.0
 var threats: Dictionary = {}
+var disturbances: Array = []
 var split_count := 0
 var merge_count := 0
 var events: Array = []
@@ -215,6 +216,7 @@ func formation(index: int,dt: float):
 	var shifted := at+separation.limit_length(.6)
 	if nav.clear(at,shifted): a.x=shifted.x;a.y=shifted.y
 func tick(dt: float):
+	while not disturbances.is_empty() and disturbances[0].until<p.elapsed: disturbances.pop_front()
 	clock+=dt;recruitment_clock+=dt
 	if recruitment_clock>=float(eco.config.get("bait_recruitment_seconds",300)):
 		recruitment_clock=0
@@ -225,6 +227,15 @@ func tick(dt: float):
 		clock=0
 	for key in threats.keys():
 		if threats[key].until<p.elapsed: threats.erase(key)
+func feeding_disturbance(actor: int,at: Vector2):
+	# Bounded short-lived acoustic/visual cues, not omniscient prey locations.
+	disturbances.append({"actor":actor,"position":at,"until":p.elapsed+15})
+	if disturbances.size()>48: disturbances.pop_front()
+func nearby_disturbance(at: Vector2,radius: float) -> Vector2:
+	for i in range(disturbances.size()-1,-1,-1):
+		var d: Dictionary=disturbances[i]
+		if d.until>=p.elapsed and at.distance_squared_to(d.position)<=radius*radius: return d.position
+	return Vector2.INF
 func threaten(key: int,at: Vector2,radius: float):
 	threats[key]={"position":at,"radius":radius,"until":p.elapsed+8}
 func flee(a: Dictionary,at: Vector2):

@@ -126,6 +126,7 @@ func event(actor: int,s: Dictionary,text: String):
 	events.append({"time":p.elapsed,"actor":actor,"position":position(actor),"kind":s.kind,"target":s.target,"text":text})
 	if events.size()>80: events.pop_front()
 func scare(actor: int,s: Dictionary):
+	web.feeding_disturbance(actor,position(actor))
 	web.threaten(actor,position(actor),35 if actor>=0 else 80)
 	if s.kind==0 and s.target>=0 and s.target<eco.forage.size(): web.flee(eco.forage[s.target],position(actor))
 	if s.kind==1 and s.target>=0 and eco.alive[s.target]==1:
@@ -171,6 +172,9 @@ func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
 					if alternative>=0: feature=alternative
 		if feature<0: s.activity="searching for reachable habitat";return
 		var goal: Vector2=web.feature_destination(feature,"feeding",actor+int(p.elapsed/15))
+		var cue: Vector2=web.nearby_disturbance(at,float(r.detect_ft)*.3048)
+		if cue!=Vector2.INF and hunger(actor)>.4 and p.rng.randf()<(.65 if r.style in ["chase","travel","dolphin"] else .2) and nav.clear(at,cue):
+			goal=cue;s.activity="investigating nearby feeding disturbance";s.detect_at=p.elapsed
 		# Only locations witnessed during actual detection become learned traffic sites.
 		if waiting and p.elapsed-float(s.get("traffic_seen",-1000))<180 and s.search_failures<12:
 			var learned: int=nav.nearest(s.traffic_position)
@@ -278,7 +282,7 @@ func step(actor: int,dt: float) -> bool:
 	move_hunter(actor,s,intercept,dt,r,fast)
 	if fast: web.threaten(actor,position(actor),20 if actor>=0 else 65)
 	if p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)<=reach:
-		s.energy=maxf(0,s.energy-.025);s.stage=Stage.STRIKE;s.until=p.elapsed+.25;s.activity="rapid surface strike" if actor>=0 and p.species[actor]==2 and p.size_cm[actor]<45 else "strike"
+		s.energy=maxf(0,s.energy-.025);web.feeding_disturbance(actor,position(actor));s.stage=Stage.STRIKE;s.until=p.elapsed+.25;s.activity="rapid surface strike" if actor>=0 and p.species[actor]==2 and p.size_cm[actor]<45 else "strike"
 		event(actor,s,s.activity)
 	return true
 func serialize() -> Dictionary:
