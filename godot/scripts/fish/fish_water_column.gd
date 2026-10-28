@@ -36,6 +36,7 @@ func holding_for(actor: int,bed: float) -> float:
 			3: ratio=.92
 			4: ratio=.2
 			5: ratio=.35
+			7: ratio=.85 if p.size_cm[actor]>=43.18 else .65
 			6: return within(bed-.05,bed)
 	else: ratio=.9 if p.ecology.predators[-actor-1].kind==2 else .4
 	if p.ecology.pressure[p.hunting.zone(actor)]>.4: ratio=minf(.96,ratio+.15*(1-personality))

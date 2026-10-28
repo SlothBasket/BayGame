@@ -70,7 +70,8 @@ func _timed_coarse_hunt(actor: int,dt: float):
 		if r.style in ["ambush","bottom_ambush","intercept"]: return
 	s.stage=0;s.kind=-1;s.target=-1;s.activity="background habitat patrol"
 	var at: Vector2=h.position(actor)
-	if p.elapsed>=float(s.get("coarse_plan_at",0)):
+	if r.get("rock_resident",false): h.search_habitat(actor,s,r,dt)
+	if not r.get("rock_resident",false) and p.elapsed>=float(s.get("coarse_plan_at",0)):
 		s.coarse_plan_at=p.elapsed+90
 		if s.has("coarse_route_goal"):
 			var replacement: PackedVector2Array=p.movement.nav.route(at,s.coarse_route_target,int(s.coarse_route_goal))
@@ -79,7 +80,7 @@ func _timed_coarse_hunt(actor: int,dt: float):
 			else: s.erase("coarse_route_goal");s.erase("coarse_route_target")
 		else: plan_coarse_route(actor,s,at)
 	var velocity: float=float(r.cruise_mph)*.44704
-	if not s.path.is_empty():
+	if not r.get("rock_resident",false) and not s.path.is_empty():
 		var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),velocity*dt,actor,s.heading,false)
 		s.cursor=moved.cursor;s.heading=moved.heading;h.set_position(actor,moved.position,moved.heading);s.energy=maxf(0,s.energy-dt*.00015)
 	if h.hunger(actor)<.08 or s.energy<.20: return

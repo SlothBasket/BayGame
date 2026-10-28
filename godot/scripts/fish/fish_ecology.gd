@@ -85,9 +85,9 @@ func initialize_individuals():
 		var chance: float=profile(i).school_probability
 		if p.species[i]==0: chance=.8 if p.size_cm[i]<45 else .2
 		if p.rng.randf()<chance:
-			var key: int=(home[i]*7+int(p.species[i]))*5+mini(4,int(p.size_cm[i]/40))
+			var key: int=(home[i]*p.SPECIES.size()+int(p.species[i]))*5+mini(4,int(p.size_cm[i]/40))
 			for neighbor_home in local_range(home[i],2):
-				var candidate_key: int=(neighbor_home*7+int(p.species[i]))*5+mini(4,int(p.size_cm[i]/40))
+				var candidate_key: int=(neighbor_home*p.SPECIES.size()+int(p.species[i]))*5+mini(4,int(p.size_cm[i]/40))
 				if schools.has(candidate_key) and schools[candidate_key].size()<12:
 					key=candidate_key;var leader: int=schools[key][0];home[i]=home[leader];feeding[i]=feeding[leader];resting[i]=resting[leader];break
 			school[i]=key

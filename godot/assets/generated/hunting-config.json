@@ -119,6 +119,23 @@
       "sense": "vision / vibration",
       "activity": "bottom_ambush",
       "attack_cooldown_seconds": 6
+    },
+    {
+      "name": "Mangrove snapper",
+      "style": "ambush",
+      "detect_ft": 90,
+      "strike_ft": 1.5,
+      "lunge_ft": 35,
+      "cruise_mph": 1.2,
+      "burst_mph": 9,
+      "capture_chance": 0.6,
+      "recovery_seconds": 18,
+      "consume_seconds": 2,
+      "wait_seconds": 45,
+      "gape": 0.38,
+      "sense": "vision / vibration",
+      "activity": "ambush",
+      "attack_cooldown_seconds": 1.5
     }
   ],
   "predators": [

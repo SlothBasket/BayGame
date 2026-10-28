@@ -334,6 +334,48 @@
       ],
       "preserve_trophy_in": 22,
       "size_source": "https://myfwc.com/wildlifehabitats/profiles/saltwater/flounder/gulf-flounder/"
+    },
+    {
+      "name": "Mangrove snapper",
+      "depth_m": 2.5,
+      "size_min_cm": 15.24,
+      "size_max_cm": 60.96,
+      "speed_mps": 0.55,
+      "school_probability": 0.98,
+      "habitats": [
+        "mapped_structure",
+        "mangrove_edge_candidate",
+        "oyster_bar_candidate",
+        "rock_pile"
+      ],
+      "style": "ambush",
+      "max_prey_ratio": 0.38,
+      "home_radius_hops": 1,
+      "size_bands_in": [
+        {
+          "weight": 0.82,
+          "min": 6,
+          "mode": 7.5,
+          "max": 10,
+          "cohort": "small schooling fish"
+        },
+        {
+          "weight": 0.14,
+          "min": 10,
+          "mode": 12,
+          "max": 15,
+          "cohort": "school adult"
+        },
+        {
+          "weight": 0.04,
+          "min": 17,
+          "mode": 19,
+          "max": 24,
+          "cohort": "deep rock resident"
+        }
+      ],
+      "preserve_trophy_in": 20,
+      "size_source": "User-requested gameplay distribution; not a measured local size frequency."
     }
   ],
   "size_distribution_version": 1,
@@ -351,5 +393,115 @@
     "hysteresis_m": 150,
     "intermediate_seconds": 2,
     "background_seconds": 10
-  }
+  },
+  "feeding_sites": [
+    {
+      "id": "authored-oyster_bar_candidate-1",
+      "kind": "oyster_bar_candidate",
+      "node": 20055,
+      "radius_ft": 78.74015748031496,
+      "bottom_capacity": 180,
+      "bait_attraction": 0.8,
+      "label": "Oyster feeding bed"
+    },
+    {
+      "id": "authored-oyster_bar_candidate-2",
+      "kind": "oyster_bar_candidate",
+      "node": 19322,
+      "radius_ft": 78.74015748031496,
+      "bottom_capacity": 180,
+      "bait_attraction": 0.8,
+      "label": "Oyster feeding bed"
+    },
+    {
+      "id": "authored-oyster_bar_candidate-3",
+      "kind": "oyster_bar_candidate",
+      "node": 20753,
+      "radius_ft": 78.74015748031496,
+      "bottom_capacity": 180,
+      "bait_attraction": 0.8,
+      "label": "Oyster feeding bed"
+    },
+    {
+      "id": "authored-oyster_bar_candidate-4",
+      "kind": "oyster_bar_candidate",
+      "node": 19312,
+      "radius_ft": 78.74015748031496,
+      "bottom_capacity": 180,
+      "bait_attraction": 0.8,
+      "label": "Oyster feeding bed"
+    },
+    {
+      "id": "authored-mapped_structure-1",
+      "kind": "mapped_structure",
+      "node": 20546,
+      "radius_ft": 59.055118110236215,
+      "bottom_capacity": 70,
+      "bait_attraction": 1.3,
+      "label": "Bait-holding structure"
+    },
+    {
+      "id": "authored-mapped_structure-2",
+      "kind": "mapped_structure",
+      "node": 19976,
+      "radius_ft": 59.055118110236215,
+      "bottom_capacity": 70,
+      "bait_attraction": 1.3,
+      "label": "Bait-holding structure"
+    },
+    {
+      "id": "authored-mapped_structure-3",
+      "kind": "mapped_structure",
+      "node": 21190,
+      "radius_ft": 59.055118110236215,
+      "bottom_capacity": 70,
+      "bait_attraction": 1.3,
+      "label": "Bait-holding structure"
+    },
+    {
+      "id": "authored-mapped_structure-4",
+      "kind": "mapped_structure",
+      "node": 21514,
+      "radius_ft": 59.055118110236215,
+      "bottom_capacity": 70,
+      "bait_attraction": 1.3,
+      "label": "Bait-holding structure"
+    },
+    {
+      "id": "authored-rock_pile-1",
+      "kind": "rock_pile",
+      "node": 20881,
+      "radius_ft": 72.17847769028872,
+      "bottom_capacity": 70,
+      "bait_attraction": 0.8,
+      "label": "Deep snapper rocks"
+    },
+    {
+      "id": "authored-rock_pile-2",
+      "kind": "rock_pile",
+      "node": 21602,
+      "radius_ft": 72.17847769028872,
+      "bottom_capacity": 70,
+      "bait_attraction": 0.8,
+      "label": "Deep snapper rocks"
+    },
+    {
+      "id": "authored-rock_pile-3",
+      "kind": "rock_pile",
+      "node": 20453,
+      "radius_ft": 72.17847769028872,
+      "bottom_capacity": 70,
+      "bait_attraction": 0.8,
+      "label": "Deep snapper rocks"
+    },
+    {
+      "id": "authored-rock_pile-4",
+      "kind": "rock_pile",
+      "node": 22086,
+      "radius_ft": 72.17847769028872,
+      "bottom_capacity": 70,
+      "bait_attraction": 0.8,
+      "label": "Deep snapper rocks"
+    }
+  ]
 }

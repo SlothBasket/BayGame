@@ -71,7 +71,7 @@ var trail := PackedVector2Array()
 var event_seen: Dictionary = {}
 const SPEEDS := [0.0,1.0,5.0,10.0,20.0]
 const HUNT_RANK := {5:10,6:9,8:8,3:7,2:6,1:4}
-const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25)]
+const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25),Color(.95,.35,.48)]
 const BAIT_COLORS := [Color(.8,1,.9),Color(.35,.7,1),Color(1,.7,.4),Color(1,.9,.25),Color(1,.5,.7),Color(.8,.5,.3),Color(.55,1,.6),Color(.25,.8,.45)]
 var performance_label: Label
 var performance_box: VBoxContainer
@@ -264,6 +264,7 @@ func cache_view():
 	view_bounds=Rect2(cached_center-half,half*2).grow(250)
 	candidates=main.fish.hunting.spatial.rectangle(view_bounds)
 	visible_areas.clear()
+	for site in main.fish.food_web.site_areas: visible_areas.append(site)
 	if show_areas or mode==4 or entity==Entity.AREA:
 		for index in range(main.fish.food_web.areas.size()):
 			var b: Array=main.fish.food_web.areas[index].bounds
@@ -303,11 +304,11 @@ func refresh():
 		text+="%.1f in · hunger %.0f%% (100 = starving)\n" % [a.size_cm/2.54,a.hunger*100];text+=hunt_text(-int(a.id))
 		if a.pod>=0: text+="\nDolphin pod %d" % a.pod
 	else:
-		var a: Dictionary=web.areas[entity_index];heading.text=str(a.kind).replace("_"," ")
+		var a: Dictionary=web.areas[entity_index];heading.text=a.get("label",str(a.kind).replace("_"," "))
 		var stock := 0.0
 		for b in web.bottom:
 			if b.area==a.id: stock+=b.quantity
-		text="%s\n\nFunctions: %s\nExtent %.0f × %.0f ft\nBottom prey %.0f / %.0f capacity\nNutrients %.0f%%; replenishes gradually\n" % ["Inferred habitat" if a.inferred else "Mapped evidence; inferred opportunity boundary",", ".join(a.roles),(a.bounds[2]-a.bounds[0])/.3048,(a.bounds[3]-a.bounds[1])/.3048,stock,a.bottom_capacity,web.nutrients[entity_index]*100]
+		text="%s\n\nFunctions: %s\nExtent %.0f × %.0f ft\nBottom prey %.0f / %.0f capacity\nNutrients %.0f%%; replenishes gradually\n" % ["Authored gameplay site (not a surveyed feature)" if a.get("authored",false) else ("Inferred habitat" if a.inferred else "Mapped evidence; inferred opportunity boundary"),", ".join(a.roles),(a.bounds[2]-a.bounds[0])/.3048,(a.bounds[3]-a.bounds[1])/.3048,stock,a.bottom_capacity,web.nutrients[entity_index]*100]
 		if advanced: text+="\nEvidence: "+", ".join(a.evidence)+"\n"+a.id
 	if p.simulation_detail!=null:
 		var tier: int=p.simulation_detail.actor_level(entity_index) if entity==Entity.FISH else (p.simulation_detail.bait_level(entity_index) if entity==Entity.BAIT else (p.simulation_detail.actor_level(-entity_index-1) if entity==Entity.PREDATOR else -1))
@@ -392,7 +393,7 @@ func select_at(geo: GeoPosition,mpp: float):
 	if found>=0: select_entity(kind,found);return
 	var area_size := INF
 	for index in visible_areas:
-		if not show_areas and mode!=4 and not (entity==Entity.AREA and entity_index==index): continue
+		if not show_areas and mode!=4 and not p.food_web.areas[index].get("authored",false) and not (entity==Entity.AREA and entity_index==index): continue
 		if p.food_web.contains(index,at) and p.food_web.areas[index].area_m2<area_size:
 			area_size=p.food_web.areas[index].area_m2;found=index
 	if found>=0: select_entity(Entity.AREA,found)
@@ -448,7 +449,7 @@ func _measured_draw():
 			if main.camera.span<3500 or (entity==Entity.BAIT and entity_index==index): caption(pos,"%s #%d ≈%.0f" % [eco.FORAGE_NAMES[int(a.kind)],a.id,a.quantity],mpp,color)
 	if overview:
 		for n in range(dots.size()):
-			if not dots[n].is_empty(): draw_set_transform(overview_origin-origin);draw_multiline(dots[n],COLORS[n] if n<7 else (BAIT_COLORS[n-7] if n<15 else Color(1,.35,.85)),2*mpp);draw_set_transform(Vector2.ZERO)
+			if not dots[n].is_empty(): draw_set_transform(overview_origin-origin);draw_multiline(dots[n],COLORS[n] if n<COLORS.size() else (BAIT_COLORS[n-COLORS.size()] if n<COLORS.size()+8 else Color(1,.35,.85)),2*mpp);draw_set_transform(Vector2.ZERO)
 	if mode in [0,3]:
 		for i in range(eco.predators.size()):
 			var a: Dictionary=eco.predators[i];var at: Vector2=observed_position(2,i)
@@ -457,6 +458,12 @@ func _measured_draw():
 				var hunt: Dictionary=p.hunting.state(-i-1)
 				if hunt.kind==0 and hunt.target==entity_index and int(hunt.get("target_id",-1))==int(eco.forage[entity_index].id): draw_line(at-origin,observed_position(1,entity_index)-origin,Color(1,.4,.2,.65),mpp)
 			var pos := at-origin;var r := 7*mpp;draw_colored_polygon(PackedVector2Array([pos+Vector2(0,-r),pos+Vector2(r,r),pos+Vector2(-r,r)]),Color(.35,.9,1) if a.kind==3 else Color(1,.3,.2))
+	for site in p.food_web.site_areas:
+		var area: Dictionary=p.food_web.areas[site];var at: Vector2=p.movement.nav.point(int(area.nodes[0]))
+		if not view_bounds.has_point(at): continue
+		var color := Color(.85,.7,.35) if area.kind=="oyster_bar_candidate" else Color(.65,.65,.75)
+		draw_rect(Rect2(at-origin-Vector2.ONE*5*mpp,Vector2.ONE*10*mpp),color,false,mpp)
+		if main.camera.span<3500: caption(at-origin,area.label,mpp,color)
 	if show_grid:
 		for z in p.zones:
 			var at := Vector2(z.x,z.y)
@@ -550,7 +557,7 @@ func build_overview():
 	# Bay-wide movement is subpixel. Build a complete marker buffer incrementally,
 	# while the previous buffer remains visible; close views still interpolate every frame.
 	if overview_build.is_empty():
-		for n in range(16): overview_build.append(PackedVector2Array())
+		for n in range(COLORS.size()+9): overview_build.append(PackedVector2Array())
 		overview_candidates=candidates.duplicate();overview_cursor=0
 	var begin := Time.get_ticks_usec()
 	var p=main.fish;var mpp: float=main.camera.span/get_viewport_rect().size.y
@@ -563,7 +570,7 @@ func build_overview():
 		elif kind==0 and mode in [0,2]:
 			var a: Dictionary=p.ecology.forage[index]
 			if not a.get("active",true) or a.quantity<1: continue
-			group=15 if a.get("temporary",false) else 7+int(a.kind);at=observed_position(1,index)
+			group=COLORS.size()+8 if a.get("temporary",false) else COLORS.size()+int(a.kind);at=observed_position(1,index)
 		if group>=0:
 			overview_build[group].append(at-Vector2(mpp,0));overview_build[group].append(at+Vector2(mpp,0))
 	if overview_cursor>=overview_candidates.size():

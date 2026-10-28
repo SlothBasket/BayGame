@@ -53,7 +53,7 @@ func set_hunger(actor: int,value: float):
 	if actor>=0: p.hunger[actor]=clampf(value,0,1)
 	else: eco.predators[-actor-1].hunger=clampf(value,0,1)
 func profile(actor: int) -> Dictionary:
-	var band := 0 if length_cm(actor)<45 else (1 if length_cm(actor)<55 else 2)
+	var band := 3 if actor>=0 and p.species[actor]==7 and length_cm(actor)>=43.18 else (0 if length_cm(actor)<45 else (1 if length_cm(actor)<55 else 2))
 	if profile_cache.has(actor) and profile_cache[actor]._band==band: return profile_cache[actor]
 	var r: Dictionary=rules.game_fish[int(p.species[actor])].duplicate() if actor>=0 else rules.predators[int(eco.predators[-actor-1].kind)].duplicate()
 	if actor>=0:
@@ -61,6 +61,8 @@ func profile(actor: int) -> Dictionary:
 		if p.species[actor]==0: r.style="bottom" if size<45 else "patrol"
 		if p.species[actor]==1 and size>55: r.style="intercept"
 		if p.species[actor]==2 and size<45: r.detect_ft*=.7;r.activity="juvenile cover ambush / surface strike"
+		if p.species[actor]==7:
+			r.style="ambush" if size>=43.18 else "chase";r.rock_resident=size>=43.18;r.cruise_mph=.8 if size>=43.18 else 1.1
 		r.gape=float(eco.profile(actor).max_prey_ratio)
 	r._band=band;profile_cache[actor]=r
 	return r
@@ -161,6 +163,11 @@ func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionar
 	s.energy=maxf(0,s.energy-dt*(.0015 if fast else .00015))
 func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
 	var at := position(actor)
+	if r.get("rock_resident",false) and web.resident_site.has(actor):
+		var home: Vector2=web.sample(int(web.resident_site[actor]),actor*7919)
+		if at.distance_to(home)>2: move_hunter(actor,s,home,dt,r,false);s.activity="returning to deep rocks"
+		else: s.activity="holding at rocks; watching passing bait";s.energy=minf(1,s.energy+dt*.005)
+		return
 	var waiting: bool=r.style in ["ambush","bottom_ambush","intercept"]
 	if waiting and p.elapsed<float(s.get("search_wait_until",0)):
 		s.activity="waiting in ambush";s.energy=minf(1,s.energy+dt*.001);return
@@ -177,6 +184,15 @@ func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
 					var alternative: int=p.movement.habitat(actor,zone(actor),int(nav.nodes[anchor].component),actor+int(p.elapsed/30))
 					if alternative>=0: feature=alternative
 		if feature<0: s.activity="searching for reachable habitat";return
+		if actor>=0 and web.resident_site.has(actor):
+			var site := int(web.resident_site[actor])
+			# Redfish work a connected local circuit of oyster beds, not a single food coordinate.
+			if p.species[actor]==0 and s.search_failures>=3:
+				var options: Array[int]=[]
+				for other in web.site_areas:
+					if web.areas[other].kind=="oyster_bar_candidate" and nav.nodes[int(web.areas[other].nodes[0])].component==nav.nodes[feature].component and nav.point(int(web.areas[other].nodes[0])).distance_to(at)<4000: options.append(other)
+				if not options.is_empty(): site=options[posmod(actor+int(p.elapsed/90),options.size())]
+			feature=int(web.areas[site].nodes[0])
 		var goal: Vector2=web.feature_destination(feature,"feeding",actor+int(p.elapsed/15))
 		var cue: Vector2=web.nearby_disturbance(at,float(r.detect_ft)*.3048)
 		if cue!=Vector2.INF and hunger(actor)>.4 and p.rng.randf()<(.65 if r.style in ["chase","travel","dolphin"] else .2) and nav.clear(at,cue):
@@ -208,10 +224,14 @@ func step(actor: int,dt: float) -> bool:
 	return result
 func _measured_step(actor: int,dt: float) -> bool:
 	var s := state(actor);var r := profile(actor);var at := position(actor)
+	if evade(actor,s,r,dt): return true
 	if actor>=0 and eco.pressure[zone(actor)]>.45 and eco.boldness[actor]<.8:
 		if s.stage!=Stage.SEARCH: s.stage=Stage.SEARCH;s.kind=-1;p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.decision_at[actor]=p.elapsed
 		return false
-	if evade(actor,s,r,dt): return true
+	if s.get("return_home",false) and s.stage not in [Stage.CAPTURE,Stage.CONSUME]:
+		var home: Vector2=web.sample(int(web.resident_site[actor]),actor*7919)
+		if at.distance_to(home)>2: move_hunter(actor,s,home,dt,r,false);s.activity="returning to rocks after attack";return true
+		s.return_home=false
 	if s.stage==Stage.RECOVER:
 		s.energy=minf(1,s.energy+dt*.025)
 		recovery_activity(actor,s,r,dt)
@@ -233,6 +253,8 @@ func _measured_step(actor: int,dt: float) -> bool:
 			else: s.stage=Stage.RECOVER;s.until=p.elapsed+float(r.recovery_seconds)
 		return true
 	if s.stage==Stage.MISS:
+		if r.get("rock_resident",false) and web.resident_site.has(actor):
+			abandon(actor,s,"missed lunge; returning to rock cover");s.return_home=true;s.detect_at=p.elapsed+5;return true
 		if s.energy<.12: s.stage=Stage.RECOVER;s.until=p.elapsed+3;return true
 		var escaped := tracked_prey(s)
 		if escaped.is_empty(): abandon(actor,s,"prey lost; looking for another target");s.detect_at=p.elapsed;return true
@@ -266,10 +288,15 @@ func _measured_step(actor: int,dt: float) -> bool:
 				elif s.kind==1: eco.consume_fish(s.target)
 				else: web.bottom[s.target].quantity-=1;eco.forage_consumed+=1
 				s.capture_depth=p.water_column.prey_depth(actor,int(s.kind),int(s.target),data);s.capture_position=target;s.capture_time=p.elapsed;s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE
+				if r.get("rock_resident",false) and web.resident_site.has(actor): s.return_home=true
 				if actor<0: eco.predator_meals+=1
 				scare(actor,s);event(actor,s,"capture: "+data.label);return true
 		s.misses+=1;s.energy=maxf(0,s.energy-.08);set_hunger(actor,hunger(actor)+.02);s.stage=Stage.MISS;s.until=p.elapsed+attack_cooldown(r)
 		scare(actor,s);event(actor,s,"miss / prey escape");return true
+	if r.get("rock_resident",false) and web.resident_site.has(actor) and s.get("committed_pursuit",false):
+		var home_node: int=web.areas[int(web.resident_site[actor])].nodes[0]
+		if at.distance_to(nav.point(home_node))>25:
+			abandon(actor,s,"shot missed; returning to rock cover");s.return_home=true;return true
 	if distance<float(s.get("best_distance",INF))-1:
 		s.best_distance=distance;s.progress_at=p.elapsed
 	if not s.has("hunt_until"): s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed
@@ -281,6 +308,7 @@ func _measured_step(actor: int,dt: float) -> bool:
 		if p.elapsed<s.until: return true
 		s.stage=Stage.APPROACH;s.activity="stalking detected prey"
 	if not s.get("committed_pursuit",false) and r.style in ["ambush","bottom_ambush","intercept"] and distance>float(r.lunge_ft)*.3048:
+		if r.get("rock_resident",false): s.stage=Stage.AMBUSH;s.activity="watching bait outside lunge range";return true
 		if not s.has("ambush_until"): s.ambush_until=p.elapsed+12
 		var approaching: bool=Vector2(data.heading).dot((at-target).normalized())>.3
 		if approaching and p.elapsed<s.ambush_until:
@@ -322,9 +350,12 @@ func _measured_index_entity(kind: int,index: int):
 	else: spatial.move(kind,index,Vector2(a.x,a.y))
 
 func recovery_activity(actor: int,s: Dictionary,r: Dictionary,dt: float):
+	if r.get("rock_resident",false) and web.resident_site.has(actor): search_habitat(actor,s,r,dt);return
 	if r.style in ["bottom_ambush","ambush","intercept"]:
 		s.activity="holding cover; watching for prey";return
-	var cruise: Dictionary=r.duplicate();cruise.cruise_mph=float(r.cruise_mph)*(.65 if actor>=0 and p.species[actor]==5 else .35)
+	if not r.has("recovery_profile"):
+		var slower: Dictionary=r.duplicate();slower.cruise_mph=float(r.cruise_mph)*(.65 if actor>=0 and p.species[actor]==5 else .35);r.recovery_profile=slower
+	var cruise: Dictionary=r.recovery_profile
 	search_habitat(actor,s,cruise,dt);s.activity="slow patrol; recovering energy and watching for prey"
 func react_to_pursuit(actor: int,s: Dictionary):
 	if int(s.kind)!=1 or int(s.target)<0 or eco.alive[int(s.target)]==0: return

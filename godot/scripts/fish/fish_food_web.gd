@@ -20,6 +20,8 @@ var ready := false
 var last_error := ""
 func fail(reason: String) -> bool:
 	last_error=reason;return false
+var site_areas: Array[int] = []
+var resident_site: Dictionary = {}
 var observed_bait := -1
 var recruitment_clock := 0.0
 var recruitment_due := 0
@@ -37,7 +39,7 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 	var data=JSON.parse_string(FileAccess.get_file_as_string(root+"habitat-areas.json"))
 	if not data is Dictionary: return fail("invalid habitat-areas.json")
 	if data.navigation_fingerprint!=nav.fingerprint: return fail("habitat navigation fingerprint differs from navigation")
-	areas=data.areas;feature_areas=data.feature_areas;zone_areas=data.zone_areas;nutrients.resize(areas.size());nutrients.fill(.8)
+	areas=data.areas;feature_areas=data.feature_areas;zone_areas=data.zone_areas;append_feeding_sites();nutrients.resize(areas.size());nutrients.fill(.8)
 	for z in range(p.zones.size()): bottom_zones[z]=[]
 	for index in range(areas.size()):
 		var a: Dictionary=areas[index];a.zone=int(a.zone);a.nodes=PackedInt32Array(a.nodes);area_by_id[a.id]=index
@@ -72,7 +74,8 @@ func _measured_spawn_bait(area: int) -> bool:
 	if eco.forage.size()>=int(eco.config.get("bait_record_limit",24000)): return false
 	var habitat: Dictionary=areas[area]
 	var kinds: Array=[1,6,7]
-	if habitat.kind in ["grass_flat_candidate","pothole_candidate"]: kinds=[0,1,2,3,3,4,5,6]
+	if habitat.kind=="rock_pile": kinds=[1,2,3,4]
+	elif habitat.kind in ["grass_flat_candidate","pothole_candidate"]: kinds=[0,1,2,3,3,4,5,6]
 	elif habitat.kind in ["oyster_bar_candidate","mapped_structure"]: kinds=[2,3,4,5,5]
 	elif "shelter" in habitat.roles or habitat.kind in ["mangrove_edge_candidate","shoreline_edge","creek_mouth_candidate"]: kinds=[0,0,2,3,4,5,6]
 	var kind: int=kinds[p.rng.randi_range(0,kinds.size()-1)]
@@ -304,6 +307,7 @@ func _timed_plan_bait(a: Dictionary):
 				if "shelter" in habitat.roles and a.kind in [0,2,3,4,5]: v+=.8
 				if a.kind>=6 and habitat.kind=="grass_flat_candidate": v+=1.0
 				# Depth only subtracts from v: a losing upper bound cannot win.
+				v+=float(habitat.get("bait_attraction",0))
 				if v<=score: continue
 				var candidate := sample(index,int(a.id)+int(p.elapsed),int(nav.nodes[anchor].component));var id: int=nav.nearest(candidate)
 				if id<0 or nav.nodes[id].component!=nav.nodes[anchor].component: continue
@@ -379,3 +383,63 @@ func spawn_single(kind: int,at: Vector2) -> int:
 	if index>=0:
 		p.water_column.initialize_record(a,false);a.detail=0;a.update_due=p.elapsed;a.activity="foraging alone";a.last_event="placed from Fish Lab"
 	return index
+
+func append_feeding_sites():
+	for spec in eco.config.get("feeding_sites",[]):
+		var node := int(spec.node)
+		if not nav.nodes.has(node): continue
+		var center: Vector2=nav.point(node);var radius: float=float(spec.radius_ft)*.3048
+		var ring: Array=[]
+		for trial in range(6):
+			ring.clear()
+			for k in range(8):
+				var at := center+Vector2.from_angle(TAU*k/8)*radius;ring.append([at.x,at.y])
+			var valid := true
+			for k in range(8):
+				var a := Vector2(ring[k][0],ring[k][1]);var b := Vector2(ring[(k+1)%8][0],ring[(k+1)%8][1])
+				if not nav.clear(center,a) or not nav.clear(a,b): valid=false;break
+			if valid: break
+			radius*=.5
+		var zone: int=nav.nodes[node].zone;var index := areas.size()
+		areas.append({"id":spec.id,"kind":spec.kind,"label":spec.label,"zone":zone,"nodes":[node],"roles":["shelter","resting","feeding","hunting"],"bounds":[center.x-radius,center.y-radius,center.x+radius,center.y+radius],"polygons":[{"outer":ring,"holes":[]}],"inferred":true,"authored":true,"evidence":["Authored gameplay habitat on existing water/depth data"],"area_m2":PI*radius*radius,"bottom_capacity":spec.bottom_capacity,"bait_attraction":spec.bait_attraction})
+		zone_areas[zone].append(index);site_areas.append(index)
+		var key := str(node)
+		if not feature_areas.has(key): feature_areas[key]=[]
+		feature_areas[key].push_front(index)
+		if spec.kind not in nav.nodes[node].tags: nav.nodes[node].tags.append(spec.kind)
+func bind_site_fish():
+	var shallow: Array[int]=[];var deep: Array[int]=[];var oysters: Array[int]=[]
+	for index in site_areas:
+		if areas[index].kind=="rock_pile": deep.append(index)
+		elif areas[index].kind=="oyster_bar_candidate": oysters.append(index);shallow.append(index)
+		else: shallow.append(index)
+	var small_count := 0;var large_count := 0
+	for i in range(p.ids.size()):
+		var site := -1
+		if p.species[i]==7:
+			var large: bool=p.size_cm[i]>=43.18
+			var choices: Array[int]=deep if large else shallow
+			if choices.is_empty(): continue
+			var number: int=large_count if large else small_count
+			site=choices[(number/(6 if large else 24))%choices.size()]
+			if eco.school[i]>=0: eco.schools[eco.school[i]].erase(i)
+			var school_id: int=10000000+number/(6 if large else 24)+(1000 if large else 0)
+			eco.school[i]=school_id
+			if not eco.schools.has(school_id): eco.schools[school_id]=[]
+			eco.schools[school_id].append(i)
+			if not large and number%24==0: p.size_cm[i]=p.rng.randf_range(14,15)*2.54
+			if large: large_count+=1
+			else: small_count+=1
+		elif p.species[i] in [0,3]:
+			var distance := 2250.0*2250.0;var at := Vector2(p.east[i],p.south[i]);var anchor: int=nav.nearest(at)
+			for index in oysters:
+				var node: int=areas[index].nodes[0]
+				if anchor<0 or nav.nodes[anchor].component!=nav.nodes[node].component: continue
+				var candidate := at.distance_squared_to(nav.point(node))
+				if candidate<distance: site=index;distance=candidate
+		if site<0: continue
+		resident_site[i]=site
+		var node: int=areas[site].nodes[0];var at := sample(site,i*7919,int(nav.nodes[node].component))
+		p.east[i]=at.x;p.south[i]=at.y;p.movement.preferred_feed[i]=node;p.movement.preferred_rest[i]=node
+		p.movement.update_region(i,int(areas[site].zone));eco.home[i]=areas[site].zone;eco.feeding[i]=areas[site].zone;eco.resting[i]=areas[site].zone
+		if p.species[i]==7: p.preferred_depth[i]=nav.nodes[node].depth_m

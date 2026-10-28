@@ -50,7 +50,7 @@ var cursor := 0
 var near_cursor := 0
 var update_ms := 0.0
 var near_region := -1
-const SPECIES := ["Redfish","Speckled trout","Snook","Sheepshead","Tarpon","Jack crevalle","Flounder"]
+const SPECIES := ["Redfish","Speckled trout","Snook","Sheepshead","Tarpon","Jack crevalle","Flounder","Mangrove snapper"]
 var ecology: FishEcology
 var pending_ecology: Dictionary = {}
 var restored_rng_state := 0
@@ -196,12 +196,12 @@ func configure_zones(data: Dictionary,count: int):
 	species.resize(count);size_cm.resize(count);preferred_depth.resize(count);hunger.resize(count);behavior.resize(count);destination.resize(count);decision_at.resize(count);speed.resize(count)
 	food.resize(zones.size());zone_counts.resize(zones.size());zone_counts.fill(0);zone_species_counts.resize(zones.size());buckets.clear();spatial.clear()
 	for z in range(zones.size()):
-		buckets[z]=[];zone_species_counts[z]=PackedInt32Array([0,0,0,0,0,0,0]);food[z]=float(zones[z].food_capacity)*rng.randf_range(.4,1)
+		buckets[z]=[];zone_species_counts[z]=empty_species_counts();food[z]=float(zones[z].food_capacity)*rng.randf_range(.4,1)
 		var key := Vector2i(floori(float(zones[z].x)/750),floori(float(zones[z].y)/750))
 		spatial[key]=z
 	for i in range(count):
 		ids[i]=i+1;species[i]=i%SPECIES.size();size_cm[i]=rng.randf_range(25,95)
-		preferred_depth[i]=[2.0,3.0,4.5,2.0,4.0,4.0,2.5][species[i]]*rng.randf_range(.55,1.6)
+		preferred_depth[i]=[2.0,3.0,4.5,2.0,4.0,4.0,2.5,2.5][species[i]]*rng.randf_range(.55,1.6)
 		hunger[i]=rng.randf_range(.15,.95);speed[i]=rng.randf_range(.35,.85)*(size_cm[i]/60.0)
 		var z := rng.randi_range(0,zones.size()-1)
 		for _attempt in range(5):
@@ -419,7 +419,7 @@ func load_ecosystem(path: String) -> Error:
 	migration_backup_needed=int(d.version)<6
 	elapsed=d.elapsed;zone_clock=d.zone_clock;rng.state=d.rng_state;cursor=int(d.cursor)%count;migrations=d.migrations;decisions=d.decisions
 	buckets.clear()
-	for z in range(zones.size()): buckets[z]=[];zone_counts[z]=0;zone_species_counts[z]=PackedInt32Array([0,0,0,0,0,0,0])
+	for z in range(zones.size()): buckets[z]=[];zone_counts[z]=0;zone_species_counts[z]=empty_species_counts()
 	for i in range(count): buckets[region[i]].append(i);zone_counts[region[i]]+=1;zone_species_counts[region[i]][species[i]]+=1
 	return OK
 
@@ -465,6 +465,7 @@ func dispose():
 func setup_food_web(root: String) -> bool:
 	food_web=FishFoodWeb.new()
 	if not food_web.setup(self,root,ecology.pending_food_web): return false
+	if fresh_population: food_web.bind_site_fish()
 	hunting=FishHunting.new()
 	var valid := hunting.setup(self,root,ecology.pending_hunting)
 	if valid:
@@ -489,3 +490,6 @@ func size_cohort(i: int) -> String:
 	for band in ecology.config.species[species[i]].get("size_bands_in",[]):
 		if inches>=float(band.min) and inches<=float(band.max): return str(band.cohort)
 	return "legacy / exceptional individual"
+
+func empty_species_counts() -> PackedInt32Array:
+	var counts := PackedInt32Array();counts.resize(SPECIES.size());counts.fill(0);return counts
