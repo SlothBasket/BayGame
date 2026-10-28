@@ -46,3 +46,7 @@ func snapshot(p):
 					if not path.is_empty(): bends[kind][i]=path
 		previous[kind]=start;current[kind]=targets[kind]
 	interval=maxf(since_snapshot,.5/maxf(1,p.time_scale));since_snapshot=0;alpha=0
+
+func reset_record(kind: int,index: int,at: Vector2):
+	if index<current[kind].size():
+		current[kind][index]=at;previous[kind][index]=at;bends[kind].erase(index)

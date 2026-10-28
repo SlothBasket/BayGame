@@ -55,7 +55,7 @@ func update_bait(a: Dictionary,dt: float):
 	var bed := bottom_at(Vector2(a.x,a.y),int(a.zone));a.bottom_depth=bed
 	a.holding_depth=move_toward(float(a.holding_depth),bait_holding(a,bed),dt*.08)
 	a.target_depth=within(float(a.holding_depth),bed)
-	var school_index := int(a.get("school_id",-1))-1
+	var school_index: int=p.food_web.bait_slots.get(int(a.get("return_school",a.get("school_id",-1))),-1)
 	if school_index>=0 and school_index<p.ecology.forage.size() and p.ecology.forage[school_index].active and a.fear<.3:
 		a.target_depth=within(float(p.ecology.forage[school_index].swim_depth)+sin(float(a.id))*.1,bed)
 	var rate := .04 if a.kind in [4,5] else .12+float(a.fear)*.35

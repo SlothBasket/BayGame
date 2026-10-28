@@ -69,7 +69,7 @@ func prey(kind: int,index: int) -> Dictionary:
 		if index<0 or index>=eco.forage.size(): return {}
 		var a: Dictionary=eco.forage[index]
 		if not a.get("active",true) or a.quantity<1: return {}
-		return {"position":Vector2(a.x,a.y),"size":a.size_cm,"heading":a.get("heading",Vector2.ZERO),"speed":1.3 if a.fear>.3 else .3,"cover":.25 if a.kind in [0,2,3,4,5] else .05,"bottom":a.kind in [4,5],"label":eco.FORAGE_NAMES[int(a.kind)],"zone":int(a.zone)}
+		return {"position":Vector2(a.x,a.y),"size":a.size_cm,"heading":a.get("heading",Vector2.ZERO),"speed":float(a.get("speed_mps",1.3 if a.fear>.3 else .3)),"cover":.25 if a.kind in [0,2,3,4,5] else .05,"bottom":a.kind in [4,5],"label":eco.FORAGE_NAMES[int(a.kind)],"zone":int(a.zone)}
 	if kind==1:
 		if index<0 or index>=p.ids.size() or eco.alive[index]==0: return {}
 		return {"position":Vector2(p.east[index],p.south[index]),"size":p.size_cm[index],"heading":p.movement.headings[index],"speed":p.speed[index],"cover":.25 if p.species[index] in [2,3,6] else .05,"bottom":false,"label":"Fish #"+str(p.ids[index]),"zone":int(p.region[index])}
@@ -119,7 +119,7 @@ func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 				if other.kind==3 and other.pod==eco.predators[-actor-1].pod and other.has("hunt") and other.hunt.kind==candidate.x and other.hunt.target==candidate.y: score+=.7;break
 		if score>best: best=score;selected_kind=candidate.x;selected_id=candidate.y
 	if selected_kind<0: s.search_failures+=1;return false
-	s.traffic_position=prey(selected_kind,selected_id).position;s.traffic_seen=p.elapsed;s.kind=selected_kind;s.target=selected_id;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
+	s.traffic_position=prey(selected_kind,selected_id).position;s.traffic_seen=p.elapsed;s.kind=selected_kind;s.target=selected_id;s.target_id=eco.forage[selected_id].id if selected_kind==0 else -1;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
 	event(actor,s,"detected "+prey(selected_kind,selected_id).label);return true
 func event(actor: int,s: Dictionary,text: String):
 	s.last_event=text
@@ -229,7 +229,8 @@ func step(actor: int,dt: float) -> bool:
 				return true
 		search_habitat(actor,s,r,dt);return true
 	var data := prey(int(s.kind),int(s.target))
-	if data.is_empty(): abandon(actor,s,"prey escaped; resuming search");return true
+	if data.is_empty() or (s.kind==0 and int(s.get("target_id",-1))!=int(eco.forage[s.target].id)):
+		abandon(actor,s,"prey lost or consumed by another hunter");return true
 	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance: float=p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)
 	var reach: float=maxf(.35,minf(2.5,float(r.strike_ft)*.3048+length_cm(actor)*.003))
 	if s.stage==Stage.STRIKE:
