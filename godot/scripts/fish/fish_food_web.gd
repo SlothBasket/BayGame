@@ -68,7 +68,7 @@ func spawn_bait(area: int) -> bool:
 	if node<0 or not nav.wet(at): return false
 	if float(nav.nodes[node].depth_m)>6 and kind in [0,2,3,4,5]: return false
 	var individual: bool=kind in [0,2,3,4,5] and p.rng.randf()<float(eco.config.get("bait_solitary_fraction",.55))
-	var quantity := 1 if individual else (p.rng.randi_range(70,240) if kind in [1,6,7] else p.rng.randi_range(4,18))
+	var quantity: int = 1 if individual else (p.rng.randi_range(70,240) if kind in [1,6,7] else p.rng.randi_range(4,18))
 	var a := {"id":0,"kind":kind,"individual":individual,"zone":int(nav.nodes[node].zone),"destination":-1,"x":at.x,"y":at.y,"quantity":float(quantity),"capacity":float(quantity),"size_cm":eco.FORAGE_SIZES[kind]*p.rng.randf_range(.65,1.15),"last":p.elapsed,"next":p.elapsed+p.rng.randf_range(1,30),"jump_at":p.elapsed+p.rng.randf_range(20,120),"jump_until":0.0,"scatter_until":0.0,"preferred_area":habitat.id}
 	if p.water_column!=null: p.water_column.initialize_record(a,false)
 	initialize_bait(a)
