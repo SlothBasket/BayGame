@@ -79,6 +79,10 @@ func prey(kind: int,index: int) -> Dictionary:
 		if b.quantity<1: return {}
 		return {"position":Vector2(b.x,b.y),"size":b.size_cm,"heading":Vector2.ZERO,"speed":0.0,"cover":.1,"bottom":true,"label":b.kind,"zone":int(b.zone)}
 	return {}
+func tracked_prey(s: Dictionary) -> Dictionary:
+	var data := prey(int(s.kind),int(s.target))
+	if s.kind==0 and not data.is_empty() and int(s.get("target_id",-1))!=int(eco.forage[s.target].id): return {}
+	return data
 func school_radius(index: int) -> float:
 	# Physical aggregate footprint in metres, independent of map zoom or UI marker size.
 	return clampf(sqrt(maxf(1,eco.forage[index].quantity))*.35,1.0,12.0)
@@ -150,7 +154,7 @@ func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionar
 		if goal>=0: s.path=nav.route(at,target,goal);s.cursor=1
 		s.replan_at=p.elapsed+2;s.planned_target=target
 	if s.path.is_empty(): return
-	var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),s.velocity*dt,actor+90000,s.heading,true,.12)
+	var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),s.velocity*dt,actor+90000,s.heading,p.simulation_detail==null or p.simulation_detail.actor_level(actor)==0,.12)
 	s.cursor=moved.cursor;s.heading=moved.heading;set_position(actor,moved.position,moved.heading)
 	s.energy=maxf(0,s.energy-dt*(.0015 if fast else .00015))
 func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
@@ -227,12 +231,12 @@ func step(actor: int,dt: float) -> bool:
 		s.stage=Stage.RECOVER;s.until=p.elapsed+20;s.kind=-1;s.activity="resting; satisfied or tired";return true
 	if s.stage==Stage.SEARCH:
 		if p.elapsed>=s.detect_at:
-			s.detect_at=p.elapsed+5
+			s.detect_at=p.elapsed+(10 if p.simulation_detail!=null and p.simulation_detail.actor_level(actor)>0 else 5)
 			if detect(actor,s,r):
 				if actor>=0: p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.destination[actor]=-1
 				return true
 		search_habitat(actor,s,r,dt);return true
-	var data := prey(int(s.kind),int(s.target))
+	var data := tracked_prey(s)
 	if data.is_empty() or (s.kind==0 and int(s.get("target_id",-1))!=int(eco.forage[s.target].id)):
 		abandon(actor,s,"prey lost or consumed by another hunter");return true
 	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance: float=p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)

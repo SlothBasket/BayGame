@@ -67,6 +67,7 @@ func pause_simulation():
 func completed_time() -> float:
 	return elapsed-(WORLD_STEP if sim_phase>=0 else 0.0)
 var presentation := FishPresentation.new()
+var simulation_detail
 var water_column
 var hunting: FishHunting
 var food_web: FishFoodWeb
@@ -233,6 +234,7 @@ func update_fish(i: int,dt: float):
 	if ecology!=null:
 		if water_column!=null: water_column.update_actor(i,dt)
 		ecology.interact(i,dt)
+		if simulation_detail!=null and simulation_detail.fish_levels[i]==2: simulation_detail.coarse_hunt(i,dt);return
 		if hunting!=null and hunting.ready and hunting.step(i,dt): return
 		if movement!=null and movement.ready:
 			movement.tick_fish(i,dt);return
@@ -269,27 +271,34 @@ func tick_ecosystem(dt: float,_player: GeoPosition):
 			sim_phase=0;sim_cursor=0;step_forage_count=ecology.forage.size()
 		if sim_phase==0:
 			if sim_cursor>=step_forage_count: sim_phase=1;sim_cursor=0;continue
-			var a: Dictionary=ecology.forage[sim_cursor];var age: float=maxf(0,elapsed-float(a.last));var step := minf(WORLD_STEP,age)
-			if step>0 and a.get("active",true): ecology.update_forage(sim_cursor,step)
-			a.last=minf(elapsed,float(a.last)+step)
-			if hunting!=null: hunting.index_entity(0,sim_cursor)
-			if age<=WORLD_STEP+.000001 or not a.get("active",true): a.last=elapsed;sim_cursor+=1
+			var a: Dictionary=ecology.forage[sim_cursor]
+			if not a.get("active",true): a.last=elapsed;sim_cursor+=1;continue
+			var tier: int=simulation_detail.bait_level(sim_cursor);var interval: float=simulation_detail.intervals[tier];var age: float=maxf(0,elapsed-float(a.last))
+			if age+.000001<interval: sim_cursor+=1;continue
+			var step := minf(interval,age)
+			if tier==2: simulation_detail.coarse_bait(sim_cursor,step)
+			else: ecology.update_forage(sim_cursor,step)
+			a.last=minf(elapsed,float(a.last)+step);hunting.index_entity(0,sim_cursor)
+			if age-step+.000001<interval or not a.active: sim_cursor+=1
 		elif sim_phase==1:
 			if sim_cursor>=ids.size(): sim_phase=2;sim_cursor=0;continue
-			var age := maxf(0,elapsed-last_update[sim_cursor]);var step := minf(WORLD_STEP,age)
-			if step>0: update_fish(sim_cursor,step)
-			last_update[sim_cursor]=minf(elapsed,last_update[sim_cursor]+step)
-			if hunting!=null: hunting.index_entity(1,sim_cursor)
-			if age<=WORLD_STEP+.000001: sim_cursor+=1
+			if ecology.alive[sim_cursor]==0: last_update[sim_cursor]=elapsed;sim_cursor+=1;continue
+			var tier: int=simulation_detail.actor_level(sim_cursor);var interval: float=simulation_detail.intervals[tier];var age := maxf(0,elapsed-last_update[sim_cursor])
+			if age+.000001<interval: sim_cursor+=1;continue
+			var step := minf(interval,age);update_fish(sim_cursor,step)
+			last_update[sim_cursor]=minf(elapsed,last_update[sim_cursor]+step);hunting.index_entity(1,sim_cursor)
+			if age-step+.000001<interval: sim_cursor+=1
 		else:
 			if sim_cursor>=ecology.predators.size():
 				sim_phase=-1;sim_cursor=0;completed_steps+=1
 				presentation.snapshot(self)
 				continue
-			var a: Dictionary=ecology.predators[sim_cursor];var age: float=maxf(0,elapsed-float(a.last));var step := minf(WORLD_STEP,age)
-			if step>0 and a.active: ecology.update_predator(a,step)
-			a.last=minf(elapsed,float(a.last)+step)
-			if age<=WORLD_STEP+.000001 or not a.active: a.last=elapsed;sim_cursor+=1
+			var a: Dictionary=ecology.predators[sim_cursor]
+			if not a.active: a.last=elapsed;sim_cursor+=1;continue
+			var tier: int=simulation_detail.actor_level(-sim_cursor-1);var interval: float=simulation_detail.intervals[tier];var age: float=maxf(0,elapsed-float(a.last))
+			if age+.000001<interval: sim_cursor+=1;continue
+			var step := minf(interval,age);ecology.update_predator(a,step);a.last=minf(elapsed,float(a.last)+step)
+			if age-step+.000001<interval: sim_cursor+=1
 	update_ms=(Time.get_ticks_usec()-begin)/1000.0
 func displayed(kind: int,index: int) -> Vector2:
 	var at := Vector2(east[index],south[index]) if kind==0 else Vector2.ZERO
@@ -375,6 +384,7 @@ func setup_movement(root: String) -> bool:
 	return movement.setup(self,root,ecology.pending_movement)
 
 func dispose():
+	if simulation_detail!=null: simulation_detail.p=null;simulation_detail=null
 	if water_column!=null: water_column.p=null;water_column=null
 	if hunting!=null: hunting.p=null;hunting.eco=null;hunting.web=null
 	hunting=null
@@ -391,6 +401,7 @@ func setup_food_web(root: String) -> bool:
 	var valid := hunting.setup(self,root,ecology.pending_hunting)
 	if valid:
 		water_column=preload("res://scripts/fish/fish_water_column.gd").new();water_column.setup(self)
+		simulation_detail=preload("res://scripts/fish/fish_simulation_detail.gd").new();simulation_detail.setup(self)
 	presentation.snapshot(self)
 	return valid
 

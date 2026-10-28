@@ -299,6 +299,7 @@ func update_predator(a: Dictionary,dt: float):
 	if p.water_column!=null: p.water_column.update_actor(-int(a.id),dt)
 	pressure[z]=minf(1,pressure[z]+dt*.035)
 	for neighbor in p.zones[z].neighbors: pressure[neighbor]=minf(1,pressure[neighbor]+dt*.006)
+	if p.simulation_detail!=null and int(a.get("detail",2))==2: p.simulation_detail.coarse_hunt(-int(a.id),dt);return
 	if p.hunting!=null and p.hunting.ready and p.hunting.step(-int(a.id),dt): return
 	if move_record(a,dt,1.8 if a.kind==3 else 1.1): return
 	if p.elapsed<a.next: return

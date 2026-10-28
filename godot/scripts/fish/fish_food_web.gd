@@ -103,12 +103,13 @@ func consume_bait(index: int) -> bool:
 	if a.quantity<1: retire_bait(index,"consumed permanently")
 	return true
 func detach_escapees(school: Dictionary,threat: Vector2):
+	if p.simulation_detail!=null and p.simulation_detail.bait_level(int(bait_slots[school.id]))>0: return
 	if school.get("individual",false) or school.quantity<=1 or p.elapsed<float(school.get("detach_at",0)): return
 	school.detach_at=p.elapsed+4
 	var limit: int=int(eco.config.get("escapees_per_school",6))-int(school.get("escapees",0))
 	for n in range(mini(2,limit)):
 		if school.quantity<=1: break
-		var a: Dictionary=school.duplicate(true);a.erase("natural_path")
+		var a: Dictionary=school.duplicate();a.erase("natural_path")
 		a.parent_id=school.id;a.quantity=1.0;a.capacity=1.0;a.individual=true;a.escapees=0;a.school_id=-1;a.fear=1.0;a.flee_from=threat;a.next=p.elapsed;a.turn_at=0;a.last=p.elapsed;a.path_cursor=0;a.destination=-1;a.return_at=p.elapsed+25;a.speed_mps=1.2;a.vertical_spread=0.0;a.activity="escapee fleeing"
 		var at := Vector2(school.x,school.y);var offset := member_offset(school,next_bait_id*613,p.hunting.school_radius(int(bait_slots[school.id])))
 		if nav.clear(at,at+offset): at+=offset
@@ -293,7 +294,7 @@ func update_bait(index: int,dt: float):
 	var velocity := (1.8 if a.kind>=6 else 1.0) if a.fear>.3 else (.45 if a.kind>=6 else (.05 if a.kind in [4,5] else .3))
 	if a.get("temporary",false): velocity=1.2 if a.fear>.3 else .45
 	a.speed_mps=velocity
-	formation(index,dt)
+	if int(a.get("detail",0))==0 and not a.get("temporary",false): formation(index,dt)
 	p.movement.move_record(a,dt,velocity)
 	if p.water_column!=null: p.water_column.update_bait(a,dt)
 	if a.zone!=z: eco.forage_zones[z].erase(index);eco.forage_zones[int(a.zone)].append(index)
@@ -307,11 +308,11 @@ func update_bait(index: int,dt: float):
 		events.append({"time":p.elapsed,"kind":"split","id":a.id,"other":child.id,"position":Vector2(a.x,a.y)})
 		if events.size()>40: events.pop_front()
 		split_count+=1;a.last_event="school split; individuals conserved"
-	if not a.get("individual",false) and a.fear<.1 and p.elapsed>=a.merge_after:
+	if not a.get("individual",false) and int(a.get("escapees",0))==0 and a.fear<.1 and p.elapsed>=a.merge_after:
 		for other_index in eco.forage_zones[int(a.zone)].duplicate():
 			if other_index==index: continue
 			var other: Dictionary=eco.forage[other_index]
-			if other.get("individual",false) or not other.active or other.kind!=a.kind or other.fear>.1 or other.quantity+a.quantity>160: continue
+			if int(other.get("escapees",0))>0 or other.get("individual",false) or not other.active or other.kind!=a.kind or other.fear>.1 or other.quantity+a.quantity>160: continue
 			if Vector2(a.x-other.x,a.y-other.y).length()>12 or not nav.clear(Vector2(a.x,a.y),Vector2(other.x,other.y)): continue
 			other.quantity+=a.quantity;other.capacity+=a.capacity;other.merge_after=p.elapsed+60;other.last_event="school regrouped / merged"
 			a.quantity=0;a.active=false;a.merged_into=other.id;a.activity="merged";events.append({"time":p.elapsed,"kind":"merge","id":a.id,"other":other.id,"position":Vector2(a.x,a.y)});eco.forage_zones[int(a.zone)].erase(index);merge_count+=1;break

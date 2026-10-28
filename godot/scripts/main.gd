@@ -101,6 +101,7 @@ func _process(dt):
 			store.request(GeoPosition.new(boat.geo.east+x*store.manifest.chunk_m,boat.geo.south+y*store.manifest.chunk_m).key(0,store.manifest.chunk_m))
 	renderer.tick(camera,origin);imagery.tick(camera,origin,not renderer.chart);store.evict();overlay.tick(wall_dt,self);hud.tick(dt)
 	if fish!=null and fish.startup_ready and not hud.menu.visible:
+		fish.simulation_detail.boat=Vector2(boat.geo.east,boat.geo.south);fish.simulation_detail.camera=Vector2(camera.geo.east,camera.geo.south)
 		fish.tick(wall_dt,boat.geo,depth)
 	if fish_overlay!=null: fish_overlay.tick(wall_dt)
 	queue_redraw()

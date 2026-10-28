@@ -68,7 +68,7 @@ func update_actor(actor: int,dt: float):
 	var hold := within(move_toward(old_hold,desired,dt*.04),bed);var goal := hold
 	var s: Dictionary=p.hunting.state(actor)
 	if s.stage in [1,2,3,4,5]:
-		var prey: Dictionary=p.hunting.prey(int(s.kind),int(s.target))
+		var prey: Dictionary=p.hunting.tracked_prey(s)
 		if not prey.is_empty(): goal=within(prey_depth(actor,int(s.kind),int(s.target),prey),bed)
 	var rate := clampf(.04+p.hunting.length_cm(actor)*.0015,.06,.55)
 	if actor>=0 and p.species[actor] in [3,6]: rate=minf(rate,.12)

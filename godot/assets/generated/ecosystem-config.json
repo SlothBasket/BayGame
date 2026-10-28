@@ -342,5 +342,14 @@
   "bait_solitary_fraction": 0.55,
   "bait_record_limit": 24000,
   "bait_recruitment_seconds": 300,
-  "bait_recruits_per_interval": 12
+  "bait_recruits_per_interval": 12,
+  "escapees_per_school": 6,
+  "simulation_detail": {
+    "enabled": true,
+    "detailed_m": 700,
+    "intermediate_m": 2200,
+    "hysteresis_m": 150,
+    "intermediate_seconds": 2,
+    "background_seconds": 10
+  }
 }
