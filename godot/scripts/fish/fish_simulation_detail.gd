@@ -60,7 +60,10 @@ func coarse_hunt(actor: int,dt: float):
 		if node>=0:
 			var goal: Vector2=p.food_web.feature_destination(node,"resting" if p.ecology.pressure[h.zone(actor)]>.35 else "feeding",actor+int(p.elapsed/90))
 			var destination: int=p.movement.nav.nearest(goal)
-			if destination>=0: s.path=p.movement.nav.route(at,goal,destination);s.cursor=1
+			if destination>=0:
+				var replacement: PackedVector2Array=p.movement.nav.route(at,goal,destination)
+				if not replacement.is_empty(): s.path=replacement;s.cursor=1
+				elif p.movement.nav.route_pending: s.coarse_plan_at=p.elapsed+1
 	var velocity: float=float(r.cruise_mph)*.44704
 	if not s.path.is_empty():
 		var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),velocity*dt,actor,s.heading,false)
@@ -95,7 +98,7 @@ func coarse_bait(index: int,dt: float):
 		var grazed: float=minf(p.food_web.nutrients[area],dt*.0004*a.hunger)
 		p.food_web.nutrients[area]-=grazed;a.hunger=maxf(0,a.hunger-grazed*5)
 	if p.food_web.return_escapee(index): return
-	if p.elapsed>=float(a.next): p.food_web.plan_bait(a);a.next=p.elapsed+90
+	if p.elapsed>=float(a.next): p.food_web.plan_bait(a);a.next=p.elapsed+(1 if a.has("pending_route_target") else 90)
 	var speed: float=.04 if a.kind in [4,5] else (.45 if a.kind>=6 else .3)
 	if a.has("natural_path"):
 		var moved: Dictionary=p.movement.advance(Vector2(a.x,a.y),a.natural_path,int(a.path_cursor),speed*dt,int(a.id),a.get("heading",Vector2.ZERO),false)

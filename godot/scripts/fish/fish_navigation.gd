@@ -2,6 +2,38 @@ class_name FishNavigation
 extends RefCounted
 var nodes: Dictionary = {}
 var route_cache: Dictionary = {}
+var route_pending := false
+var route_worker := Thread.new()
+var route_jobs: Array[Vector3i] = []
+var queued_routes: Dictionary = {}
+var active_route := Vector3i(-1,-1,-1)
+var cache_order: Array[Vector3i] = []
+func process_routes():
+	if route_worker.is_started():
+		if route_worker.is_alive(): return
+		var result: PackedVector2Array=route_worker.wait_to_finish()
+		route_cache[active_route]=result;cache_order.append(active_route);queued_routes.erase(active_route)
+		if cache_order.size()>512: route_cache.erase(cache_order.pop_front())
+	if not route_jobs.is_empty():
+		active_route=route_jobs.pop_front()
+		var error := route_worker.start(compute_route.bind(active_route))
+		if error!=OK: queued_routes.erase(active_route)
+func compute_route(key: Vector3i) -> PackedVector2Array:
+	# Single worker owns all graph searches; node geometry and water mask are immutable.
+	graph.follow_edges=key.z==1
+	var raw := graph.get_point_path(key.x,key.y)
+	graph.follow_edges=false
+	if raw.is_empty(): return raw
+	var result := PackedVector2Array([raw[0]]);var index := 0
+	while index<raw.size()-1:
+		var next := index+1
+		for candidate in range(index+2,mini(raw.size(),index+(3 if key.z==1 else 10))):
+			if clear(raw[index],raw[candidate]): next=candidate
+		result.append(raw[next]);index=next
+	return result
+func shutdown():
+	if route_worker.is_started(): route_worker.wait_to_finish()
+	route_jobs.clear();queued_routes.clear()
 var zone_nodes: Array = []
 var spatial: Dictionary = {}
 class WaterGraph extends AStar2D:
@@ -71,29 +103,22 @@ func nearest(p: Vector2,zone := -1,component := -1) -> int:
 		if best>=0 and distance<pow(maxi(1,ring)*256,2): break
 	return best
 func route(start: Vector2,target: Vector2,goal: int,follow_edge := false) -> PackedVector2Array:
+	route_pending=false
 	if not follow_edge and clear(start,target): return PackedVector2Array([start,target])
 	var from := nearest(start)
 	if from<0 or not nodes.has(goal) or nodes[from].component!=nodes[goal].component: return PackedVector2Array()
-	graph.follow_edges=follow_edge and float(nodes[from].shore_m)<250 and float(nodes[goal].shore_m)<250
-	var coastal := graph.follow_edges
+	var coastal := follow_edge and float(nodes[from].shore_m)<250 and float(nodes[goal].shore_m)<250
 	var cache_key := Vector3i(from,goal,1 if coastal else 0)
-	var raw: PackedVector2Array
-	if route_cache.has(cache_key): raw=route_cache[cache_key].duplicate()
-	else:
-		raw=graph.get_point_path(from,goal)
-		if route_cache.size()>=512: route_cache.erase(route_cache.keys()[0])
-		route_cache[cache_key]=raw.duplicate()
-	graph.follow_edges=false
+	if not route_cache.has(cache_key):
+		route_pending=true
+		if not queued_routes.has(cache_key) and route_jobs.size()<128:
+			route_jobs.append(cache_key);queued_routes[cache_key]=true
+		return PackedVector2Array()
+	var raw: PackedVector2Array=route_cache[cache_key].duplicate()
 	if raw.is_empty(): return raw
 	raw.insert(0,start);raw.append(target)
-	# Visibility smoothing removes triangulation zigzags; steering supplies natural curvature.
-	var result := PackedVector2Array([start]);var index := 0
-	while index<raw.size()-1:
-		var next := index+1
-		for candidate in range(index+2,mini(raw.size(),index+(3 if coastal else 10))):
-			if clear(raw[index],raw[candidate]): next=candidate
-		result.append(raw[next]);index=next
-	return result
+	return raw
+
 func offset(id: int,seed_value: int,radius: float) -> Vector2:
 	var center := point(id)
 	for attempt in range(8):

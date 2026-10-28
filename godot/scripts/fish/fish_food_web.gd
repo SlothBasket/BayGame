@@ -22,6 +22,13 @@ func fail(reason: String) -> bool:
 	last_error=reason;return false
 var observed_bait := -1
 var recruitment_clock := 0.0
+var recruitment_due := 0
+var recovery_due := 0.0
+var recovery_dt := 0.0
+var recovery_cursor := 0
+var cleanup_at := 0.0
+var cleanup_keys: Array = []
+var cleanup_cursor := 0
 var next_bait_id := 1
 var bait_slots: Dictionary = {}
 var retired_escapees: Array[int] = []
@@ -219,15 +226,27 @@ func formation(index: int,dt: float):
 func tick(dt: float):
 	while not disturbances.is_empty() and disturbances[0].until<p.elapsed: disturbances.pop_front()
 	clock+=dt;recruitment_clock+=dt
-	if recruitment_clock>=float(eco.config.get("bait_recruitment_seconds",300)):
-		recruitment_clock=0
-		for recruit in range(int(eco.config.get("bait_recruits_per_interval",12))): spawn_bait(p.rng.randi_range(0,areas.size()-1))
-	if clock>=10:
-		for index in range(nutrients.size()): nutrients[index]=move_toward(nutrients[index],1,clock*.00005)
-		for b in bottom: b.quantity=move_toward(b.quantity,b.capacity,clock*float(b.capacity)*.000025)
-		clock=0
-	for key in threats.keys():
-		if threats[key].until<p.elapsed: threats.erase(key)
+	var recruitment_interval: float=maxf(1,eco.config.get("bait_recruitment_seconds",300))
+	if recruitment_clock>=recruitment_interval:
+		var batches := floori(recruitment_clock/recruitment_interval);recruitment_clock-=batches*recruitment_interval
+		recruitment_due+=batches*int(eco.config.get("bait_recruits_per_interval",12))
+	if clock>=10: recovery_due+=clock;clock=0
+func process_maintenance(deadline: int):
+	if recovery_dt<=0 and recovery_due>0: recovery_dt=recovery_due;recovery_due=0;recovery_cursor=0
+	while recovery_dt>0 and Time.get_ticks_usec()<deadline:
+		if recovery_cursor<nutrients.size(): nutrients[recovery_cursor]=move_toward(nutrients[recovery_cursor],1,recovery_dt*.00005)
+		elif recovery_cursor<nutrients.size()+bottom.size():
+			var b: Dictionary=bottom[recovery_cursor-nutrients.size()];b.quantity=move_toward(b.quantity,b.capacity,recovery_dt*float(b.capacity)*.000025)
+		else: recovery_dt=0;break
+		recovery_cursor+=1
+	if cleanup_cursor>=cleanup_keys.size() and p.elapsed>=cleanup_at:
+		cleanup_keys=threats.keys();cleanup_cursor=0;cleanup_at=p.elapsed+2
+	while cleanup_cursor<cleanup_keys.size() and Time.get_ticks_usec()<deadline:
+		var key=cleanup_keys[cleanup_cursor];cleanup_cursor+=1
+		if threats.has(key) and threats[key].until<p.elapsed: threats.erase(key)
+	if recruitment_due>0 and Time.get_ticks_usec()<deadline:
+		spawn_bait(p.rng.randi_range(0,areas.size()-1));recruitment_due-=1
+
 func feeding_disturbance(actor: int,at: Vector2):
 	# Bounded short-lived acoustic/visual cues, not omniscient prey locations.
 	disturbances.append({"actor":actor,"position":at,"until":p.elapsed+15})
@@ -243,6 +262,12 @@ func flee(a: Dictionary,at: Vector2):
 	detach_escapees(a,at)
 	a.fear=1.0;a.scatter_until=p.elapsed+35;a.flee_from=at;a.next=p.elapsed;a.activity="scattering";a.last_event="escaped / scattered from nearby attack"
 func plan_bait(a: Dictionary):
+	if a.has("pending_route_target"):
+		var pending: PackedVector2Array=nav.route(Vector2(a.x,a.y),a.pending_route_target,int(a.pending_route_goal))
+		if not pending.is_empty():
+			a.natural_path=pending;a.path_cursor=1;a.destination=nav.nodes[int(a.pending_route_goal)].zone;a.erase("pending_route_target");a.erase("pending_route_goal")
+		elif not nav.route_pending: a.erase("pending_route_target");a.erase("pending_route_goal")
+		return
 	var at := Vector2(a.x,a.y);var anchor: int=nav.nearest(at)
 	if anchor<0: return
 	var target := at;var chosen := -1;var score := -INF
@@ -266,7 +291,9 @@ func plan_bait(a: Dictionary):
 				if v>score: score=v;target=candidate;chosen=id;a.preferred_area=habitat.id
 	if chosen<0: return
 	var path: PackedVector2Array=nav.route(at,target,chosen)
-	if path.is_empty(): return
+	if path.is_empty():
+		if nav.route_pending: a.pending_route_target=target;a.pending_route_goal=chosen
+		return
 	a.natural_path=path;a.path_cursor=1;a.destination=nav.nodes[chosen].zone;a.goal_feature=chosen;a.turn_at=p.elapsed+10
 func update_bait(index: int,dt: float):
 	var a: Dictionary=eco.forage[index]
@@ -289,7 +316,7 @@ func update_bait(index: int,dt: float):
 		a.jump_until=p.elapsed+2;a.jump_at=p.elapsed+p.rng.randf_range(40,180);eco.jumps+=1;a.last_event="mullet jump"
 	if a.fear>.3: a.activity="fleeing / scattered"
 	if p.elapsed>=float(a.next) or (a.fear>.3 and p.elapsed>=a.turn_at):
-		plan_bait(a);a.next=p.elapsed+p.rng.randf_range(30,100)
+		plan_bait(a);a.next=p.elapsed+(1 if a.has("pending_route_target") else p.rng.randf_range(30,100))
 	if return_escapee(index): return
 	var velocity := (1.8 if a.kind>=6 else 1.0) if a.fear>.3 else (.45 if a.kind>=6 else (.05 if a.kind in [4,5] else .3))
 	if a.get("temporary",false): velocity=1.2 if a.fear>.3 else .45

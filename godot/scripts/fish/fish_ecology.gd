@@ -236,12 +236,12 @@ func set_predator_ratio(value: float):
 			if anchor>=0:
 				var at: Vector2=nav.offset(anchor,index+700,30);predators[-1].x=at.x;predators[-1].y=at.y
 				p.movement.plan_record(predators[-1],true)
+var pressure_pending := 0.0
 func tick(dt: float,_player: GeoPosition):
 	if population.food_web!=null and population.food_web.ready: population.food_web.tick(dt)
 	pressure_clock+=dt
 	if pressure_clock>=2:
-		for z in range(pressure.size()): pressure[z]*=exp(-pressure_clock/120.0)
-		pressure_clock=0
+		pressure_pending+=pressure_clock;pressure_clock=0
 func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 	if population.movement!=null and population.movement.ready: return population.movement.move_record(a,dt,velocity)
 	if a.destination<0: return false

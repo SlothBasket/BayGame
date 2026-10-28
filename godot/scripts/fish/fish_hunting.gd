@@ -151,7 +151,9 @@ func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionar
 		s.path=PackedVector2Array([at,target]);s.cursor=1
 	elif s.path.is_empty() or (s.cursor>=s.path.size() and at.distance_squared_to(target)>.25) or (p.elapsed>=s.replan_at and target.distance_squared_to(s.get("planned_target",Vector2.INF))>9):
 		var goal: int=nav.nearest(target)
-		if goal>=0: s.path=nav.route(at,target,goal);s.cursor=1
+		if goal>=0:
+			var replacement: PackedVector2Array=nav.route(at,target,goal)
+			if not replacement.is_empty(): s.path=replacement;s.cursor=1
 		s.replan_at=p.elapsed+2;s.planned_target=target
 	if s.path.is_empty(): return
 	var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),s.velocity*dt,actor+90000,s.heading,p.simulation_detail==null or p.simulation_detail.actor_level(actor)==0,.12)

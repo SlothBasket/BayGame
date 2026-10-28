@@ -187,7 +187,7 @@ func tick(dt: float):
 	real_time+=dt
 	if not enabled or not available(): return
 	if following and entity!=Entity.NONE:
-		var at := selected_position();var t := 1-exp(-10*dt)
+		var at := selected_position();var t := 1-exp(-10*minf(dt,.05))
 		main.camera.follow=false;main.camera.anchor=null;main.camera.geo.east=lerpf(main.camera.geo.east,at.x,t);main.camera.geo.south=lerpf(main.camera.geo.south,at.y,t)
 	refresh_clock+=dt;rate_clock+=dt
 	if rate_clock>=1:

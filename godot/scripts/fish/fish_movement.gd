@@ -9,6 +9,7 @@ var targets := PackedInt32Array()
 var cursors := PackedInt32Array()
 var headings := PackedVector2Array()
 var routes: Array = []
+var pending_routes: Dictionary = {}
 var ready := false
 var last_error := ""
 func fail(reason: String) -> bool:
@@ -76,6 +77,15 @@ func feature_score(i: int,id: int) -> float:
 	value-=absf(float(n.depth_m)+eco.tide_level_m-p.preferred_depth[i])/maxf(1,p.preferred_depth[i])
 	return value
 func choose(i: int):
+	if pending_routes.has(i):
+		var request: Dictionary=pending_routes[i]
+		var pending: PackedVector2Array=nav.route(Vector2(p.east[i],p.south[i]),request.target,int(request.goal),bool(request.coastal))
+		if pending.is_empty():
+			p.decision_at[i]=p.elapsed+1
+			if not nav.route_pending: pending_routes.erase(i)
+			return
+		targets[i]=int(request.goal);routes[i]=pending;cursors[i]=1;p.destination[i]=int(nav.nodes[targets[i]].zone)
+		pending_routes.erase(i);p.decisions+=1;eco.on_decision(i);return
 	var at := Vector2(p.east[i],p.south[i]);var anchor := nav.nearest(at)
 	if anchor<0: p.decision_at[i]=p.elapsed+30;return
 	var component: int=nav.nodes[anchor].component;var goal: int=preferred_feed[i] if eco.routine_goal(i)==eco.feeding[i] else preferred_rest[i]
@@ -99,7 +109,9 @@ func choose(i: int):
 	var area_goal := nav.nearest(target)
 	if area_goal>=0: goal=area_goal
 	var path := nav.route(at,target,goal,"shoreline_edge" in eco.profile(i).habitats or "mangrove_edge_candidate" in eco.profile(i).habitats)
-	if path.is_empty(): p.decision_at[i]=p.elapsed+30;return
+	if path.is_empty():
+		if nav.route_pending: pending_routes[i]={"target":target,"goal":goal,"coastal":"shoreline_edge" in eco.profile(i).habitats or "mangrove_edge_candidate" in eco.profile(i).habitats}
+		p.decision_at[i]=p.elapsed+(1 if nav.route_pending else 30);return
 	targets[i]=goal;routes[i]=path;cursors[i]=1;p.destination[i]=int(nav.nodes[goal].zone)
 	p.decisions+=1;eco.on_decision(i)
 	p.behavior[i]=5 if eco.pressure[p.region[i]]>.35 else (4 if p.hunger[i]>.4 and eco.profile(i).style in ["chase","hunt","travel"] else 1)
@@ -156,6 +168,12 @@ func tick_fish(i: int,dt: float):
 		p.destination[i]=-1;eco.on_arrival(i);eco.choose_state(i)
 		p.decision_at[i]=maxf(p.decision_at[i],p.elapsed+p.rng.randf_range(15,90))
 func plan_record(a: Dictionary,predator: bool):
+	if a.has("pending_route_target"):
+		var pending: PackedVector2Array=nav.route(Vector2(a.x,a.y),a.pending_route_target,int(a.pending_route_goal))
+		if not pending.is_empty():
+			a.natural_path=pending;a.path_cursor=1;a.destination=nav.nodes[int(a.pending_route_goal)].zone;a.erase("pending_route_target");a.erase("pending_route_goal")
+		elif not nav.route_pending: a.erase("pending_route_target");a.erase("pending_route_goal")
+		a.next=p.elapsed+1;return
 	var at := Vector2(a.x,a.y);var anchor := nav.nearest(at)
 	if anchor<0: return
 	var zone: int=a.destination if a.destination>=0 else a.zone
@@ -171,7 +189,10 @@ func plan_record(a: Dictionary,predator: bool):
 			if v>score: score=v;goal=id
 	var target := nav.offset(goal,int(a.id)+int(p.elapsed),35)
 	var path := nav.route(at,target,goal)
-	if path.is_empty(): a.destination=-1;return
+	if path.is_empty():
+		if nav.route_pending: a.pending_route_target=target;a.pending_route_goal=goal;a.next=p.elapsed+1
+		else: a.destination=-1
+		return
 	a.natural_path=path;a.path_cursor=1;a.heading=Vector2.ZERO;a.destination=nav.nodes[goal].zone;a.goal_feature=goal;a.replan_at=p.elapsed+30
 func move_record(a: Dictionary,dt: float,velocity: float) -> bool:
 	if not a.has("natural_path") or int(a.get("path_cursor",0))>=a.natural_path.size():
