@@ -75,6 +75,8 @@ func _unhandled_input(e):
 	if e.is_action_pressed("fish_debug",false,true): fish_overlay.toggle();return
 	if fish_overlay.enabled and e is InputEventMouseButton and e.button_index==MOUSE_BUTTON_LEFT and e.pressed:
 		fish_overlay.select_at(camera.world_at(e.position),camera.span/get_viewport_rect().size.y);return
+	if e is InputEventMouseButton and e.button_index==MOUSE_BUTTON_RIGHT and e.pressed and fish_overlay.open_bait_menu(e.position):
+		get_viewport().set_input_as_handled();return
 	camera.event(e,boat)
 	if e.is_action_pressed("teleport_boat_to_cursor",false,true):
 		teleport_to(camera.world_at(camera.reticle if camera.targeting else get_viewport().get_mouse_position()))

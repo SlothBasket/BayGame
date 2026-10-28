@@ -22,6 +22,8 @@ class ColumnIndicator extends Control:
 		draw_string(ThemeDB.fallback_font,Vector2(90,65),"Green: holding   Gold: target",HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color.WHITE)
 		draw_string(ThemeDB.fallback_font,Vector2(90,89),"Bottom %.1f ft" % (bed_m/.3048),HORIZONTAL_ALIGNMENT_LEFT,-1,14,Color(.7,.6,.35))
 var column_indicator: ColumnIndicator
+var bait_menu: PopupMenu
+var bait_spawn_at := Vector2.ZERO
 var main
 var enabled := false
 var entity := Entity.NONE
@@ -116,7 +118,15 @@ func toggle_button(body: Control,text: String,value: bool,fn: Callable) -> Check
 func button(body: Control,text: String,fn: Callable):
 	var b := Button.new();b.text=text;b.pressed.connect(fn);body.add_child(b)
 func setup(game):
-	main=game;z_index=5;canvas=CanvasLayer.new();canvas.layer=9;add_child(canvas)
+	main=game
+	bait_menu=PopupMenu.new();add_child(bait_menu)
+	for kind in range(FishEcology.FORAGE_NAMES.size()): bait_menu.add_item("Spawn one "+FishEcology.FORAGE_NAMES[kind],kind)
+	bait_menu.id_pressed.connect(func(kind):
+		if not available(): return
+		var index: int=main.fish.food_web.spawn_single(kind,bait_spawn_at)
+		main.hud.tell("Placed one "+FishEcology.FORAGE_NAMES[kind] if index>=0 else "Bait requires navigable water and an available record slot.")
+		cache_view();queue_redraw())
+	z_index=5;canvas=CanvasLayer.new();canvas.layer=9;add_child(canvas)
 	toolbar=PanelContainer.new();toolbar.position=Vector2(16,110);toolbar.add_theme_stylebox_override("panel",style());canvas.add_child(toolbar)
 	var controls := VBoxContainer.new();toolbar.add_child(controls)
 	var row := HBoxContainer.new();row.add_theme_constant_override("separation",10);controls.add_child(row)
@@ -559,3 +569,9 @@ func build_overview():
 	if overview_cursor>=overview_candidates.size():
 		overview_points=overview_build;overview_build=[];overview_origin=Vector2.ZERO
 	p.diagnostics.add("Overview buffer",Time.get_ticks_usec()-begin)
+
+func open_bait_menu(screen: Vector2) -> bool:
+	if not enabled or entity!=Entity.NONE or not available(): return false
+	var geo: GeoPosition=main.camera.world_at(screen);bait_spawn_at=Vector2(geo.east,geo.south)
+	bait_menu.position=Vector2i(get_viewport().get_screen_transform()*screen);bait_menu.popup()
+	return true

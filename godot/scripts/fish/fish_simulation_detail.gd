@@ -62,10 +62,12 @@ func coarse_hunt(actor: int,dt: float):
 	p.diagnostics.add("Coarse hunt",Time.get_ticks_usec()-begin)
 func _timed_coarse_hunt(actor: int,dt: float):
 	var h=p.hunting;var s: Dictionary=h.state(actor);var r: Dictionary=h.profile(actor)
+	if h.evade(actor,s,r,dt): return
 	# Finish already-earned meals; changing detail never creates or discards them.
 	if s.stage in [6,8]: h.step(actor,dt);return
-	if h.hunger(actor)<.35 or s.energy<.2:
-		s.energy=minf(1,s.energy+dt*.015);s.activity="background resting";s.stage=9;return
+	if h.hunger(actor)<.08 or s.energy<.12:
+		s.energy=minf(1,s.energy+dt*.025);s.activity="background slow recovery patrol";s.stage=9
+		if r.style in ["ambush","bottom_ambush","intercept"]: return
 	s.stage=0;s.kind=-1;s.target=-1;s.activity="background habitat patrol"
 	var at: Vector2=h.position(actor)
 	if p.elapsed>=float(s.get("coarse_plan_at",0)):
@@ -80,6 +82,7 @@ func _timed_coarse_hunt(actor: int,dt: float):
 	if not s.path.is_empty():
 		var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),velocity*dt,actor,s.heading,false)
 		s.cursor=moved.cursor;s.heading=moved.heading;h.set_position(actor,moved.position,moved.heading);s.energy=maxf(0,s.energy-dt*.00015)
+	if h.hunger(actor)<.08 or s.energy<.20: return
 	if p.elapsed<float(s.get("coarse_encounter_at",0)): return
 	s.coarse_encounter_at=p.elapsed+30
 	# Aggregated distant encounter, charged against real records. No free zone nutrition.

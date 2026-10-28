@@ -123,7 +123,7 @@ func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 				if other.kind==3 and other.pod==eco.predators[-actor-1].pod and other.has("hunt") and other.hunt.kind==candidate.x and other.hunt.target==candidate.y: score+=.7;break
 		if score>best: best=score;selected_kind=candidate.x;selected_id=candidate.y
 	if selected_kind<0: s.search_failures+=1;return false
-	s.traffic_position=prey(selected_kind,selected_id).position;s.traffic_seen=p.elapsed;s.kind=selected_kind;s.target=selected_id;s.target_id=eco.forage[selected_id].id if selected_kind==0 else -1;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
+	s.committed_pursuit=false;s.traffic_position=prey(selected_kind,selected_id).position;s.traffic_seen=p.elapsed;s.kind=selected_kind;s.target=selected_id;s.target_id=eco.forage[selected_id].id if selected_kind==0 else -1;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
 	event(actor,s,"detected "+prey(selected_kind,selected_id).label);return true
 func event(actor: int,s: Dictionary,text: String):
 	s.last_event=text
@@ -211,35 +211,41 @@ func _measured_step(actor: int,dt: float) -> bool:
 	if actor>=0 and eco.pressure[zone(actor)]>.45 and eco.boldness[actor]<.8:
 		if s.stage!=Stage.SEARCH: s.stage=Stage.SEARCH;s.kind=-1;p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.decision_at[actor]=p.elapsed
 		return false
+	if evade(actor,s,r,dt): return true
 	if s.stage==Stage.RECOVER:
-		s.energy=minf(1,s.energy+dt*.015);s.activity="recovering / resting"
-		if p.elapsed>=s.until and s.energy>=.65 and hunger(actor)>=.40+float(posmod(actor,11))*.008: s.stage=Stage.SEARCH;s.kind=-1;s.detect_at=p.elapsed+2
-		if actor>=0: p.behavior[actor]=0
+		s.energy=minf(1,s.energy+dt*.025)
+		recovery_activity(actor,s,r,dt)
+		# Hunger is deficit (0=full): nearby prey remains interesting well before starvation.
+		if s.energy>=.30 and hunger(actor)>=.10:
+			s.stage=Stage.SEARCH;s.kind=-1;s.detect_at=p.elapsed;s.search_wait_until=0
 		return true
 	if s.stage==Stage.CAPTURE:
 		s.stage=Stage.CONSUME;s.until=p.elapsed+float(r.consume_seconds);return true
 	if s.stage==Stage.CONSUME:
+		if r.style in ["chase","travel","shark","dolphin"]: recovery_activity(actor,s,r,dt)
 		if p.elapsed>=s.until:
 			set_hunger(actor,hunger(actor)-s.meal)
 			if actor>=0:
 				p.size_cm[actor]=maxf(p.size_cm[actor],minf(float(eco.profile(actor).size_max_cm),p.size_cm[actor]+minf(.02,s.prey_cm*.002)))
 			s.activity="fed; digesting";event(actor,s,"consumed captured prey")
-			if hunger(actor)>.35 and s.energy>.25:
+			if hunger(actor)>.10 and s.energy>.20:
 				abandon(actor,s,"still hungry; resuming patrol");s.detect_at=p.elapsed+attack_cooldown(r)
 			else: s.stage=Stage.RECOVER;s.until=p.elapsed+float(r.recovery_seconds)
 		return true
 	if s.stage==Stage.MISS:
-		if s.energy<.15: s.stage=Stage.RECOVER;s.until=p.elapsed+10;return true
-		s.activity="repositioning after missed strike"
-		search_habitat(actor,s,r,dt)
-		if p.elapsed>=s.until:
-			s.member=int(s.get("member",0))+1;abandon(actor,s,"retrying another prey member");s.detect_at=p.elapsed
+		if s.energy<.12: s.stage=Stage.RECOVER;s.until=p.elapsed+3;return true
+		var escaped := tracked_prey(s)
+		if escaped.is_empty(): abandon(actor,s,"prey lost; looking for another target");s.detect_at=p.elapsed;return true
+		s.activity="tracking escaped prey during attack cooldown";s.committed_pursuit=true
+		react_to_pursuit(actor,s)
+		move_hunter(actor,s,prey_position(actor,int(s.kind),int(s.target),escaped),dt,r,false)
+		if p.elapsed>=s.until: s.stage=Stage.PURSUE;s.progress_at=p.elapsed;s.best_distance=INF
 		return true
-	if hunger(actor)<.25 or s.energy<.15:
-		s.stage=Stage.RECOVER;s.until=p.elapsed+20;s.kind=-1;s.activity="resting; satisfied or tired";return true
+	if hunger(actor)<.08 or s.energy<.12:
+		s.stage=Stage.RECOVER;s.until=p.elapsed+3;s.kind=-1;recovery_activity(actor,s,r,dt);return true
 	if s.stage==Stage.SEARCH:
 		if p.elapsed>=s.detect_at:
-			s.detect_at=p.elapsed+(10 if p.simulation_detail!=null and p.simulation_detail.actor_level(actor)>0 else 5)
+			s.detect_at=p.elapsed+(2 if p.simulation_detail!=null and p.simulation_detail.actor_level(actor)>0 else 1)
 			if detect(actor,s,r):
 				if actor>=0: p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.destination[actor]=-1
 				return true
@@ -247,6 +253,7 @@ func _measured_step(actor: int,dt: float) -> bool:
 	var data := tracked_prey(s)
 	if data.is_empty() or (s.kind==0 and int(s.get("target_id",-1))!=int(eco.forage[s.target].id)):
 		abandon(actor,s,"prey lost or consumed by another hunter");return true
+	react_to_pursuit(actor,s)
 	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance: float=p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)
 	var reach: float=maxf(.35,minf(2.5,float(r.strike_ft)*.3048+length_cm(actor)*.003))
 	if s.stage==Stage.STRIKE:
@@ -273,7 +280,7 @@ func _measured_step(actor: int,dt: float) -> bool:
 	if s.stage==Stage.DETECT:
 		if p.elapsed<s.until: return true
 		s.stage=Stage.APPROACH;s.activity="stalking detected prey"
-	if r.style in ["ambush","bottom_ambush","intercept"] and distance>float(r.lunge_ft)*.3048:
+	if not s.get("committed_pursuit",false) and r.style in ["ambush","bottom_ambush","intercept"] and distance>float(r.lunge_ft)*.3048:
 		if not s.has("ambush_until"): s.ambush_until=p.elapsed+12
 		var approaching: bool=Vector2(data.heading).dot((at-target).normalized())>.3
 		if approaching and p.elapsed<s.ambush_until:
@@ -281,7 +288,7 @@ func _measured_step(actor: int,dt: float) -> bool:
 		# Out-of-range or receding prey requires a new intercept, never indefinite waiting.
 		s.stage=Stage.APPROACH;s.activity="repositioning to intercept"
 		move_hunter(actor,s,target,dt,r,false);return true
-	var fast: bool=distance<float(r.lunge_ft)*.3048 or r.style in ["chase","travel","shark","dolphin"]
+	var fast: bool=s.get("committed_pursuit",false) or distance<float(r.lunge_ft)*.3048 or r.style in ["chase","travel","shark","dolphin"]
 	s.stage=Stage.PURSUE if fast else Stage.APPROACH
 	s.activity="tailing / bottom foraging" if actor>=0 and p.species[actor]==0 and s.kind==2 and eco.depth_at(zone(actor))<1.2 else ("coordinated pursuit" if r.style in ["chase","dolphin"] else LABELS[s.stage])
 	if actor>=0: p.behavior[actor]=4
@@ -294,7 +301,7 @@ func _measured_step(actor: int,dt: float) -> bool:
 	move_hunter(actor,s,intercept,dt,r,fast)
 	if fast: web.threaten(actor,position(actor),20 if actor>=0 else 65)
 	if p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)<=reach:
-		s.energy=maxf(0,s.energy-.025);web.feeding_disturbance(actor,position(actor));s.stage=Stage.STRIKE;s.until=p.elapsed+.25;s.activity="rapid surface strike" if actor>=0 and p.species[actor]==2 and p.size_cm[actor]<45 else "strike"
+		s.committed_pursuit=true;s.energy=maxf(0,s.energy-.025);web.feeding_disturbance(actor,position(actor));s.stage=Stage.STRIKE;s.until=p.elapsed+.25;s.activity="rapid surface strike" if actor>=0 and p.species[actor]==2 and p.size_cm[actor]<45 else "strike"
 		event(actor,s,s.activity)
 	return true
 func serialize() -> Dictionary:
@@ -313,3 +320,27 @@ func _measured_index_entity(kind: int,index: int):
 	var a: Dictionary=eco.forage[index]
 	if not a.get("active",true) or a.quantity<1: spatial.remove_key(index)
 	else: spatial.move(kind,index,Vector2(a.x,a.y))
+
+func recovery_activity(actor: int,s: Dictionary,r: Dictionary,dt: float):
+	if r.style in ["bottom_ambush","ambush","intercept"]:
+		s.activity="holding cover; watching for prey";return
+	var cruise: Dictionary=r.duplicate();cruise.cruise_mph=float(r.cruise_mph)*(.65 if actor>=0 and p.species[actor]==5 else .35)
+	search_habitat(actor,s,cruise,dt);s.activity="slow patrol; recovering energy and watching for prey"
+func react_to_pursuit(actor: int,s: Dictionary):
+	if int(s.kind)!=1 or int(s.target)<0 or eco.alive[int(s.target)]==0: return
+	var victim := int(s.target);var distance := position(actor).distance_to(position(victim))
+	if distance>maxf(12,float(profile(victim).detect_ft)*.3048): return
+	var prey_state := state(victim);prey_state.threat_from=position(actor);prey_state.threat_until=p.elapsed+6;prey_state.threat_actor=actor
+	p.behavior[victim]=5
+func evade(actor: int,s: Dictionary,r: Dictionary,dt: float) -> bool:
+	if p.elapsed>=float(s.get("threat_until",0)): return false
+	var at := position(actor);var away := (at-Vector2(s.threat_from)).normalized()
+	if away==Vector2.ZERO: away=Vector2.from_angle(float(actor))
+	var goal := at+away*15
+	if not nav.clear(at,goal):
+		goal=at+away.rotated(.8)*8
+		if not nav.clear(at,goal): goal=at+away.rotated(-.8)*8
+	if nav.clear(at,goal): move_hunter(actor,s,goal,dt,r,true)
+	s.kind=-1;s.target=-1;s.stage=Stage.SEARCH;s.detect_at=p.elapsed+1;s.activity="fleeing pursuing fish #%s" % str(s.get("threat_actor",-1));s.search_wait_until=0
+	if actor>=0: p.behavior[actor]=5
+	return true

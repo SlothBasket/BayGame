@@ -368,3 +368,14 @@ func update_bait(index: int,dt: float):
 func serialize() -> Dictionary:
 	return {"threats":threats,"events":events,"nutrients":nutrients,"bottom":bottom,"clock":clock,"split_count":split_count,"merge_count":merge_count,"next_bait_id":next_bait_id}
 
+
+func spawn_single(kind: int,at: Vector2) -> int:
+	if kind<0 or kind>=eco.FORAGE_NAMES.size() or not nav.wet(at): return -1
+	var node: int=nav.nearest(at)
+	if node<0: return -1
+	var a := {"id":0,"kind":kind,"individual":true,"zone":int(nav.nodes[node].zone),"destination":-1,"x":at.x,"y":at.y,"quantity":1.0,"capacity":1.0,"size_cm":float(eco.FORAGE_SIZES[kind]),"last":p.elapsed,"next":p.elapsed,"jump_at":p.elapsed+30,"jump_until":0.0,"scatter_until":0.0,"preferred_area":area_for_feature(node,"feeding")}
+	initialize_bait(a)
+	var index := register_bait(a)
+	if index>=0:
+		p.water_column.initialize_record(a,false);a.detail=0;a.update_due=p.elapsed;a.activity="foraging alone";a.last_event="placed from Fish Lab"
+	return index

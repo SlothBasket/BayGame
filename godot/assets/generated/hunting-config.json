@@ -50,7 +50,7 @@
       "gape": 0.3,
       "sense": "vision / vibration",
       "activity": "ambush",
-      "attack_cooldown_seconds": 4
+      "attack_cooldown_seconds": 1.5
     },
     {
       "name": "Sheepshead",
@@ -92,7 +92,7 @@
       "detect_ft": 220,
       "strike_ft": 2,
       "lunge_ft": 60,
-      "cruise_mph": 1.5,
+      "cruise_mph": 3.5,
       "burst_mph": 20,
       "capture_chance": 0.6,
       "recovery_seconds": 18,
