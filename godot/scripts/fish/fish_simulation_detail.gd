@@ -42,10 +42,10 @@ func _measured_actor_level(actor: int) -> int:
 		var selected_hunt: Dictionary=p.hunting.state(-selected_predator-1)
 		pursuing_selected=pursuing_selected or (selected_hunt.kind==1 and selected_hunt.target==actor)
 	if actor>=0:
-		fish_levels[actor]=level(Vector2(p.east[actor],p.south[actor]),fish_levels[actor],actor==p.observed_fish or pursuing_selected)
+		fish_levels[actor]=level(p.background.position(actor,p.elapsed),fish_levels[actor],actor==p.observed_fish or pursuing_selected)
 		return fish_levels[actor]
 	var a: Dictionary=p.ecology.predators[-actor-1]
-	a.detail=level(Vector2(a.x,a.y),int(a.get("detail",2)),-actor-1==selected_predator or pursuing_selected)
+	a.detail=level(p.background.position(2000000-actor-1,p.elapsed),int(a.get("detail",2)),-actor-1==selected_predator or pursuing_selected)
 	return int(a.detail)
 func _measured_bait_level(index: int) -> int:
 	var a: Dictionary=p.ecology.forage[index];var pinned: bool=index==p.food_web.observed_bait
@@ -55,7 +55,7 @@ func _measured_bait_level(index: int) -> int:
 	if selected_predator>=0:
 		var s: Dictionary=p.hunting.state(-selected_predator-1)
 		pinned=pinned or (s.kind==0 and s.target==index and int(s.get("target_id",-1))==int(a.id))
-	a.detail=level(Vector2(a.x,a.y),int(a.get("detail",2)),pinned);return int(a.detail)
+	a.detail=level(p.background.position(1000000+index,p.elapsed),int(a.get("detail",2)),pinned);return int(a.detail)
 func coarse_hunt(actor: int,dt: float):
 	var begin := Time.get_ticks_usec()
 	_timed_coarse_hunt(actor,dt)

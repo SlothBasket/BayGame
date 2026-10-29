@@ -139,6 +139,14 @@ func install(code: int,path: PackedVector2Array,velocity: float):
 	# Strip older history: at most one prior segment set is retained for presentation.
 	var history: Dictionary={}
 	if not previous.is_empty(): history={"path":previous.path,"lengths":previous.lengths,"started":previous.started,"speed":previous.speed}
+	elif p.presentation.simulation_clock<p.elapsed:
+		var bridge: PackedVector2Array=p.presentation.remaining_path(code/STRIDE,code%STRIDE,path[0])
+		# Retain the existing water-valid visual route, including its unfinished corners.
+		if not bridge[-1].is_equal_approx(path[0]) and p.movement.nav.clear(bridge[-1],path[0]): bridge.append(path[0])
+		if bridge[-1].is_equal_approx(path[0]):
+			var distances := PackedFloat32Array();distances.resize(bridge.size())
+			for n in range(1,bridge.size()): distances[n]=distances[n-1]+bridge[n-1].distance_to(bridge[n])
+			history={"path":bridge,"lengths":distances,"started":p.presentation.simulation_clock,"speed":float(distances[-1])/maxf(.001,p.elapsed-p.presentation.simulation_clock)}
 	var lengths := PackedFloat32Array();lengths.resize(path.size())
 	for n in range(1,path.size()): lengths[n]=lengths[n-1]+path[n-1].distance_to(path[n])
 	var r := {"path":path,"lengths":lengths,"started":p.elapsed,"speed":velocity,"synced":p.elapsed,"depth_time":p.elapsed,"region_at":previous.get("region_at",path[0])}

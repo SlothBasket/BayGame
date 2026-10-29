@@ -388,6 +388,9 @@ func recovery_activity(actor: int,s: Dictionary,r: Dictionary,dt: float):
 	var cruise: Dictionary=r.recovery_profile
 	search_habitat(actor,s,cruise,dt);s.activity="slow patrol; recovering energy and watching for prey"
 func react_to_pursuit(actor: int,s: Dictionary):
+	if current_detail(actor)==0 and int(s.target)>=0:
+		if int(s.kind)==1: p.schedule.promote(int(s.target))
+		elif int(s.kind)==0: p.schedule.promote(1000000+int(s.target))
 	if int(s.kind)!=1 or int(s.target)<0 or eco.alive[int(s.target)]==0: return
 	var victim := int(s.target);var distance := position(actor).distance_to(position(victim))
 	if distance>maxf(12,float(profile(victim).detect_ft)*.3048): return

@@ -53,3 +53,13 @@ func _measured_publish(p,kind: int,index: int,before: Vector2,at: Vector2,simula
 	r.path=path;r.distances=distances;r.started=clock;r.duration=duration;r.target=at
 func reset_record(kind: int,index: int,at: Vector2):
 	records[kind][index]={"path":PackedVector2Array([at]),"distances":PackedFloat32Array([0]),"started":clock,"duration":.5,"target":at}
+
+func remaining_path(kind: int,index: int,fallback: Vector2) -> PackedVector2Array:
+	var path := PackedVector2Array([position(kind,index,fallback)])
+	if not records[kind].has(index): return path
+	var r: Dictionary=records[kind][index]
+	var fraction := clampf((clock-float(r.started))/maxf(.016,float(r.duration)),0,1)
+	var distance: float=r.distances[-1]*fraction
+	for i in range(1,r.path.size()):
+		if float(r.distances[i])>distance: path.append(r.path[i])
+	return path

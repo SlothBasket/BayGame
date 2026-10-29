@@ -14,6 +14,8 @@ var focus_cursor := 0
 var focus_revision := -1
 var force_cursor := -1
 var pinned: Dictionary = {}
+var urgent: Dictionary = {}
+var next_focus_scan := 0.0
 func setup(population):
 	p=population;ready=true
 	for i in range(p.ids.size()): register(0,i)
@@ -26,7 +28,7 @@ func alive(code: int) -> bool:
 	return i<records.size() and records[i].get("active",true)
 func level(code: int) -> int:
 	var kind := code/STRIDE;var i := code%STRIDE
-	if pinned.has(code):
+	if pinned.has(code) or float(urgent.get(code,0))>p.elapsed:
 		if kind==0: p.simulation_detail.fish_levels[i]=0
 		elif kind==1: p.ecology.forage[i].detail=0
 		else: p.ecology.predators[i].detail=0
@@ -77,6 +79,10 @@ func last_time(code: int) -> float:
 	var kind := code/STRIDE;var i := code%STRIDE
 	if kind==0: return p.last_update[i]
 	return float((p.ecology.forage if kind==1 else p.ecology.predators)[i].last)
+func promote(code: int):
+	if not alive(code): return
+	urgent[code]=p.elapsed+6
+	wake(code)
 func wake(code: int):
 	if not alive(code): cancel(code);return
 	var detail := level(code)
@@ -92,6 +98,8 @@ func pin(code: int):
 	if code<0 or not alive(code): return
 	pinned[code]=true;wake(code)
 func update_pins():
+	for code in urgent.keys():
+		if float(urgent[code])<=p.elapsed or not alive(code): urgent.erase(code)
 	pinned.clear()
 	if p.observed_fish>=0: pin(p.observed_fish);pin_target(p.hunting.state(p.observed_fish))
 	if p.food_web.observed_bait>=0: pin(STRIDE+p.food_web.observed_bait)
@@ -104,7 +112,8 @@ func pin_target(state: Dictionary):
 	elif kind==0 and index<p.ecology.forage.size() and int(state.get("target_id",-1))==int(p.ecology.forage[index].id): pin(STRIDE+index)
 func refresh_focus(deadline: int):
 	p.simulation_detail.refresh_focus();update_pins()
-	if focus_revision!=p.simulation_detail.revision:
+	if focus_revision!=p.simulation_detail.revision or (p.simulation_detail.enabled and focus_rects.is_empty() and focus_cursor>=focus_members.size() and p.elapsed>=next_focus_scan):
+		next_focus_scan=p.elapsed+1
 		focus_revision=p.simulation_detail.revision;focus_rects.clear();focus_members=[];focus_cursor=0
 		if not p.simulation_detail.enabled: force_cursor=0
 		else:
