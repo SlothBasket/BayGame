@@ -160,9 +160,15 @@ func install(code: int,path: PackedVector2Array,velocity: float):
 			bounds=bounds.expand(path[n])
 		p.hunting.spatial.cover(1 if kind==0 else 0,i,bounds.grow(1))
 func next_event(code: int,tier: int) -> float:
-	var delay := 30.0 if tier==2 else 2.0
+	var delay: float=p.simulation_detail.intervals[tier]
 	if travel.has(code):
 		var r: Dictionary=travel[code];var length: float=r.lengths[-1]
+		# Wake before the route could cross into a higher-detail radius, even with a stationary camera.
+		if float(r.speed)>0 and p.simulation_detail.enabled:
+			var at := position(code,p.elapsed)
+			var distance: float=minf(at.distance_to(p.simulation_detail.boat),at.distance_to(p.simulation_detail.camera))
+			var radius: float=p.simulation_detail.intermediate_m if tier==2 else p.simulation_detail.detailed_m
+			delay=minf(delay,maxf(.5,(distance-radius)/float(r.speed)))
 		if float(r.speed)>0 and length>0: delay=minf(delay,maxf(.5,float(r.started)+length/float(r.speed)-p.elapsed))
 	var kind := code/STRIDE;var i := code%STRIDE
 	if kind==1: delay=minf(delay,maxf(.5,float(p.ecology.forage[i].next)-p.elapsed))

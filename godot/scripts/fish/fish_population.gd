@@ -305,7 +305,6 @@ func dispatch_event(code: int):
 	if not schedule.alive(code): return
 	var kind := code/1000000;var index := code%1000000
 	# Classify at the current route position, not its last ecological event location.
-	if background.travel.has(code): background.synchronize(code)
 	var tier: int=schedule.level(code);var interval: float=simulation_detail.intervals[tier]
 	if tier>0:
 		var begin := Time.get_ticks_usec();background.event(code)
@@ -327,8 +326,7 @@ func dispatch_event(code: int):
 		at=Vector2(east[index],south[index]);hunting.index_entity(1,index)
 	elif kind==1:
 		var a: Dictionary=ecology.forage[index];before=Vector2(a.x,a.y)
-		if tier==2: simulation_detail.coarse_bait(index,step)
-		else: ecology.update_forage(index,step)
+		ecology.update_forage(index,step)
 		a.last=float(a.last)+step;at=Vector2(a.x,a.y);hunting.index_entity(0,index)
 	else:
 		var a: Dictionary=ecology.predators[index];before=Vector2(a.x,a.y);ecology.update_predator(a,step)

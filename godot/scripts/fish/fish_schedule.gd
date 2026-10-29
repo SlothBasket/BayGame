@@ -15,7 +15,6 @@ var focus_revision := -1
 var force_cursor := -1
 var pinned: Dictionary = {}
 var urgent: Dictionary = {}
-var next_focus_scan := 0.0
 func setup(population):
 	p=population;ready=true
 	for i in range(p.ids.size()): register(0,i)
@@ -85,6 +84,7 @@ func promote(code: int):
 	wake(code)
 func wake(code: int):
 	if not alive(code): cancel(code);return
+	if due.has(code) and float(due[code])<=p.elapsed+.5: return
 	var detail := level(code)
 	var at: float=maxf(p.elapsed,last_time(code)+float(p.simulation_detail.intervals[detail]))
 	if not due.has(code) or at<float(due[code]): put(code,at,detail)
@@ -112,8 +112,7 @@ func pin_target(state: Dictionary):
 	elif kind==0 and index<p.ecology.forage.size() and int(state.get("target_id",-1))==int(p.ecology.forage[index].id): pin(STRIDE+index)
 func refresh_focus(deadline: int):
 	p.simulation_detail.refresh_focus();update_pins()
-	if focus_revision!=p.simulation_detail.revision or (p.simulation_detail.enabled and focus_rects.is_empty() and focus_cursor>=focus_members.size() and p.elapsed>=next_focus_scan):
-		next_focus_scan=p.elapsed+1
+	if focus_revision!=p.simulation_detail.revision:
 		focus_revision=p.simulation_detail.revision;focus_rects.clear();focus_members=[];focus_cursor=0
 		if not p.simulation_detail.enabled: force_cursor=0
 		else:

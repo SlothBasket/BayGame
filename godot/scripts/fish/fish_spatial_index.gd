@@ -8,37 +8,39 @@ var covered: Dictionary = {}
 var covered_bounds: Dictionary = {}
 var revision := 0
 var query_cache: Dictionary = {}
+func membership(key: int) -> Rect2i:
+	if covered_bounds.has(key): return covered_bounds[key]
+	if locations.has(key): return Rect2i(locations[key],Vector2i.ONE)
+	return Rect2i()
+func update_bounds(key: int,bounds: Rect2i):
+	var old := membership(key)
+	if old==bounds: return
+	for y in range(old.position.y,old.end.y):
+		for x in range(old.position.x,old.end.x):
+			var cell := Vector2i(x,y)
+			if bounds.has_point(cell): continue
+			cells[cell].erase(key)
+			if cells[cell].is_empty(): cells.erase(cell)
+	for y in range(bounds.position.y,bounds.end.y):
+		for x in range(bounds.position.x,bounds.end.x):
+			var cell := Vector2i(x,y)
+			if old.has_point(cell): continue
+			if not cells.has(cell): cells[cell]=[]
+			cells[cell].append(key)
+	revision+=1
 func move(kind: int,index: int,at: Vector2):
 	var key := kind*STRIDE+index;var cell := Vector2i(floori(at.x/CELL),floori(at.y/CELL))
-	if not covered.has(key) and locations.get(key,Vector2i(-99999,-99999))==cell: return
-	remove_key(key)
-	if not cells.has(cell): cells[cell]=[]
-	cells[cell].append(key);locations[key]=cell;revision+=1
+	update_bounds(key,Rect2i(cell,Vector2i.ONE))
+	covered.erase(key);covered_bounds.erase(key);locations[key]=cell
 func cover(kind: int,index: int,bounds: Rect2):
 	var key := kind*STRIDE+index
 	var lo := Vector2i(floori(bounds.position.x/CELL),floori(bounds.position.y/CELL));var hi := Vector2i(floori(bounds.end.x/CELL),floori(bounds.end.y/CELL))
 	var bounds_key := Rect2i(lo,hi-lo+Vector2i.ONE)
-	if covered_bounds.get(key,Rect2i())==bounds_key: return
-	remove_key(key);covered_bounds[key]=bounds_key;revision+=1
-	var occupied: Array[Vector2i]=[]
-	for y in range(lo.y,hi.y+1):
-		for x in range(lo.x,hi.x+1):
-			var cell := Vector2i(x,y)
-			if not cells.has(cell): cells[cell]=[]
-			cells[cell].append(key);occupied.append(cell)
-	covered[key]=occupied
+	update_bounds(key,bounds_key)
+	locations.erase(key);covered[key]=true;covered_bounds[key]=bounds_key
 func remove_key(key: int):
-	if covered.has(key):
-		revision+=1;covered_bounds.erase(key)
-		for cell in covered[key]:
-			cells[cell].erase(key)
-			if cells[cell].is_empty(): cells.erase(cell)
-		covered.erase(key)
-	if not locations.has(key): return
-	revision+=1
-	var cell: Vector2i=locations[key];cells[cell].erase(key)
-	if cells[cell].is_empty(): cells.erase(cell)
-	locations.erase(key)
+	update_bounds(key,Rect2i())
+	locations.erase(key);covered.erase(key);covered_bounds.erase(key)
 func query(at: Vector2,radius: float) -> Array:
 	return rectangle(Rect2(at-Vector2.ONE*radius,Vector2.ONE*radius*2))
 func rectangle(rect: Rect2) -> Array:
@@ -51,9 +53,15 @@ func rectangle(rect: Rect2) -> Array:
 	else:
 		for y in range(lo.y,hi.y+1):
 			for x in range(lo.x,hi.x+1): result.append_array(cells.get(Vector2i(x,y),[]))
-	var unique: Dictionary={}
-	for code in result: unique[code]=true
-	var values: Array=unique.keys()
+	var values: Array=result
+	if not covered.is_empty() and lo!=hi:
+		var unique: Dictionary={}
+		values=[]
+		for code in result:
+			if covered.has(code):
+				if unique.has(code): continue
+				unique[code]=true
+			values.append(code)
 	if query_cache.size()>=256: query_cache.clear()
 	query_cache[key]={"revision":revision,"members":values}
 	return values
