@@ -124,6 +124,7 @@ func consume_bait(index: int) -> bool:
 	if a.quantity<1: retire_bait(index,"consumed permanently")
 	return true
 func detach_escapees(school: Dictionary,threat: Vector2):
+	if not school.get("active",false) or not bait_slots.has(int(school.id)): return
 	if p.simulation_detail!=null and p.simulation_detail.bait_level(int(bait_slots[school.id]))>0: return
 	if school.get("individual",false) or school.quantity<=1 or p.elapsed<float(school.get("detach_at",0)): return
 	school.detach_at=p.elapsed+4
@@ -271,6 +272,10 @@ func _measured_process_maintenance(deadline: int):
 		spawn_bait(p.rng.randi_range(0,areas.size()-1));recruitment_due-=1
 
 func feeding_disturbance(actor: int,at: Vector2):
+	# Refresh an existing encounter cue instead of appending duplicates.
+	for cue in disturbances:
+		if int(cue.actor)==actor and float(cue.until)>p.elapsed:
+			cue.position=at;cue.until=p.elapsed+15;return
 	# Bounded short-lived acoustic/visual cues, not omniscient prey locations.
 	disturbances.append({"actor":actor,"position":at,"until":p.elapsed+15})
 	if disturbances.size()>48: disturbances.pop_front()

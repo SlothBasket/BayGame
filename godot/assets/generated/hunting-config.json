@@ -207,5 +207,11 @@
       "activity": "dolphin",
       "attack_cooldown_seconds": 2
     }
-  ]
+  ],
+  "attack_resolution": {
+    "minimum": 0.15,
+    "maximum": 0.95,
+    "energy_weight": 0.18,
+    "cover_weight": 0.18
+  }
 }

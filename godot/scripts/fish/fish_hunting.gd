@@ -151,7 +151,7 @@ func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 		if score<=best or not nav.clear(at,target): continue
 		best=score;selected_kind=kind;selected_id=index
 	if selected_kind<0: s.search_failures+=1;return false
-	s.committed_pursuit=false;s.traffic_position=prey(selected_kind,selected_id).position;s.traffic_seen=p.elapsed;s.kind=selected_kind;s.target=selected_id;s.target_id=eco.forage[selected_id].id if selected_kind==0 else -1;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
+	s.pursuit_started=p.elapsed;s.committed_pursuit=false;s.traffic_position=prey(selected_kind,selected_id).position;s.traffic_seen=p.elapsed;s.kind=selected_kind;s.target=selected_id;s.target_id=eco.forage[selected_id].id if selected_kind==0 else -1;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
 	event(actor,s,"detected "+prey(selected_kind,selected_id).label);return true
 func event(actor: int,s: Dictionary,text: String):
 	s.last_event=text
@@ -160,7 +160,7 @@ func event(actor: int,s: Dictionary,text: String):
 func scare(actor: int,s: Dictionary):
 	web.feeding_disturbance(actor,position(actor))
 	web.threaten(actor,position(actor),35 if actor>=0 else 80)
-	if s.kind==0 and s.target>=0 and s.target<eco.forage.size(): web.flee(eco.forage[s.target],position(actor))
+	if s.kind==0 and s.target>=0 and s.target<eco.forage.size() and eco.forage[s.target].active: web.flee(eco.forage[s.target],position(actor))
 	if s.kind==1 and s.target>=0 and eco.alive[s.target]==1:
 		p.behavior[s.target]=5;p.decision_at[s.target]=p.elapsed;eco.pressure[p.region[s.target]]=maxf(.5,eco.pressure[p.region[s.target]])
 func set_position(actor: int,at: Vector2,heading: Vector2):
@@ -308,20 +308,10 @@ func _measured_step(actor: int,dt: float) -> bool:
 	var target := prey_position(actor,int(s.kind),int(s.target),data);var distance: float=p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)
 	var reach: float=maxf(.35,minf(2.5,float(r.strike_ft)*.3048+length_cm(actor)*.003))
 	if s.stage==Stage.STRIKE:
-		if p.elapsed<s.until: return true
-		# No region-based exception: both near and distant captures require physical contact.
-		if distance<=reach and p.water_column.separation(actor,int(s.kind),int(s.target),data)<=reach and nav.clear(at,target):
-			var chance: float=clampf(float(r.capture_chance)+s.energy*.08-float(data.speed)*.08,.1,.95)
-			if p.rng.randf()<chance:
-				if s.kind==0: web.consume_bait(int(s.target))
-				elif s.kind==1: eco.consume_fish(s.target)
-				else: web.bottom[s.target].quantity-=1;eco.forage_consumed+=1
-				s.capture_depth=p.water_column.prey_depth(actor,int(s.kind),int(s.target),data);s.capture_position=target;s.capture_time=p.elapsed;s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE
-				if r.get("rock_resident",false) and web.resident_site.has(actor): s.return_home=true
-				if actor<0: eco.predator_meals+=1
-				scare(actor,s);event(actor,s,"capture: "+data.label);return true
-		s.misses+=1;s.energy=maxf(0,s.energy-.08);set_hunger(actor,hunger(actor)+.02);s.stage=Stage.MISS;s.until=p.elapsed+attack_cooldown(r)
-		scare(actor,s);event(actor,s,"miss / prey escape");return true
+		# Resolve only a current numerical opportunity; expired opportunities are not misses.
+		if distance<=reach and p.elapsed>=float(s.get("attack_ready_at",0)): resolve_attack(actor,s,r,data,target,reach)
+		else: s.stage=Stage.PURSUE
+		return true
 	if r.get("rock_resident",false) and web.resident_site.has(actor) and s.get("committed_pursuit",false):
 		var home_node: int=web.areas[int(web.resident_site[actor])].nodes[0]
 		if at.distance_to(nav.point(home_node))>25:
@@ -357,10 +347,43 @@ func _measured_step(actor: int,dt: float) -> bool:
 	if not nav.clear(target,intercept): intercept=target
 	move_hunter(actor,s,intercept,dt,r,fast)
 	if fast: web.threaten(actor,position(actor),20 if actor>=0 else 65)
-	if p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)<=reach:
-		s.committed_pursuit=true;s.energy=maxf(0,s.energy-.025);web.feeding_disturbance(actor,position(actor));s.stage=Stage.STRIKE;s.until=p.elapsed+.25;s.activity="rapid surface strike" if actor>=0 and p.species[actor]==2 and p.size_cm[actor]<45 else "strike"
-		event(actor,s,s.activity)
+	if p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),data)<=reach and p.elapsed>=float(s.get("attack_ready_at",0)):
+		s.committed_pursuit=true
+		resolve_attack(actor,s,r,data,prey_position(actor,int(s.kind),int(s.target),data),reach)
 	return true
+func attack_probability(actor: int,s: Dictionary,r: Dictionary,data: Dictionary,reach: float) -> float:
+	var tuning: Dictionary=rules.get("attack_resolution",{})
+	var fear := 0.0
+	if int(s.kind)==0: fear=float(eco.forage[int(s.target)].get("fear",0))
+	elif int(s.kind)==1: fear=1.0 if p.behavior[int(s.target)]==5 else .1
+	var ratio: float=clampf(float(data.size)/maxf(1,length_cm(actor)),0,1)
+	var ambush: bool=r.style in ["ambush","bottom_ambush","intercept"]
+	var pursuit: float=maxf(0,p.elapsed-float(s.get("pursuit_started",p.elapsed)))
+	var vertical: float=p.water_column.separation(actor,int(s.kind),int(s.target),data)/maxf(.1,reach)
+	var toward := (prey_position(actor,int(s.kind),int(s.target),data)-position(actor)).normalized()
+	var alignment: float=Vector2(s.heading).dot(toward)
+	var chance: float=float(r.capture_chance)+(.22 if ambush else .06)*(1-fear)
+	chance+=float(tuning.get("energy_weight",.18))*(float(s.energy)-.5)+.12*(.35-ratio)
+	chance-=float(tuning.get("cover_weight",.18))*float(data.cover)+.10*fear+.06*clampf(float(data.speed)/maxf(.1,float(r.burst_mph)*.44704),0,1)
+	chance+=minf(.12,pursuit*.003)-.10*vertical+.04*alignment
+	return clampf(chance,float(tuning.get("minimum",.15)),float(tuning.get("maximum",.95)))
+func resolve_attack(actor: int,s: Dictionary,r: Dictionary,data: Dictionary,target: Vector2,reach: float):
+	# Target identity was validated this update; consumption is single-threaded and atomic.
+	s.attempts=int(s.get("attempts",0))+1;s.opportunities=int(s.get("opportunities",0))+1
+	s.attack_ready_at=p.elapsed+attack_cooldown(r);s.energy=maxf(0,float(s.energy)-.025)
+	var probability := attack_probability(actor,s,r,data,reach);s.last_hit_probability=probability
+	if p.rng.randf()<probability:
+		var consumed := false
+		if s.kind==0: consumed=web.consume_bait(int(s.target))
+		elif s.kind==1 and eco.alive[int(s.target)]!=0: eco.consume_fish(int(s.target));consumed=true
+		elif s.kind==2 and web.bottom[int(s.target)].quantity>=1: web.bottom[int(s.target)].quantity-=1;eco.forage_consumed+=1;consumed=true
+		if not consumed: abandon(actor,s,"prey already consumed");return
+		s.capture_depth=p.water_column.prey_depth(actor,int(s.kind),int(s.target),data);s.capture_position=target;s.capture_time=p.elapsed;s.captures+=1;s.prey_cm=data.size;s.meal=clampf(.10+float(data.size)/length_cm(actor)*1.3,.10,.75);s.stage=Stage.CAPTURE
+		if r.get("rock_resident",false) and web.resident_site.has(actor): s.return_home=true
+		if actor<0: eco.predator_meals+=1
+		scare(actor,s);event(actor,s,"capture: "+data.label);return
+	s.misses+=1;s.energy=maxf(0,float(s.energy)-.035);set_hunger(actor,hunger(actor)+.01);s.stage=Stage.MISS;s.until=s.attack_ready_at
+	scare(actor,s);event(actor,s,"miss / prey escape")
 func serialize() -> Dictionary:
 	return {"states":states,"events":events}
 
