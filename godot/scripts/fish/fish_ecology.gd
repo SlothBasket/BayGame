@@ -300,6 +300,7 @@ func interact(i: int,_dt: float):
 	# All nutrition now comes exclusively from the physical hunting/capture sequence.
 func consume_fish(i: int):
 	if alive[i]==0: return
+	population.schedule.cancel(i)
 	var p=population;var z: int=p.region[i];alive[i]=0;p.behavior[i]=6;p.destination[i]=-1
 	p.buckets[z].erase(i);p.zone_counts[z]-=1;p.zone_species_counts[z][p.species[i]]-=1;game_fish_consumed+=1
 func update_predator(a: Dictionary,dt: float):
