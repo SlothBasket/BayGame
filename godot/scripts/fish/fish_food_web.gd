@@ -72,7 +72,7 @@ func spawn_bait(area: int) -> bool:
 	p.diagnostics.add("Spawning",Time.get_ticks_usec()-diagnostic_begin)
 	return result
 func _measured_spawn_bait(area: int) -> bool:
-	if eco.forage.size()>=int(eco.config.get("bait_record_limit",24000)): return false
+	if retired_escapees.is_empty() and eco.forage.size()>=int(eco.config.get("bait_record_limit",24000)): return false
 	var habitat: Dictionary=areas[area]
 	var kinds: Array=[1,6,7]
 	if habitat.kind=="rock_pile": kinds=[1,2,3,4]
@@ -91,9 +91,8 @@ func _measured_spawn_bait(area: int) -> bool:
 	return register_bait(a)>=0
 func register_bait(a: Dictionary,temporary := false) -> int:
 	var index := -1
-	if temporary:
-		for n in range(retired_escapees.size()-1,-1,-1):
-			if retired_escapees[n]!=observed_bait: index=retired_escapees[n];retired_escapees.remove_at(n);break
+	for n in range(retired_escapees.size()-1,-1,-1):
+		if retired_escapees[n]!=observed_bait: index=retired_escapees[n];retired_escapees.remove_at(n);break
 	if index<0:
 		if eco.forage.size()>=int(eco.config.get("bait_record_limit",24000)): return -1
 		index=eco.forage.size();eco.forage.append(a)
@@ -115,7 +114,9 @@ func retire_bait(index: int,reason: String):
 	if a.get("temporary",false):
 		var parent: int=bait_slots.get(int(a.parent_id),-1)
 		if parent>=0: eco.forage[parent].escapees=maxi(0,int(eco.forage[parent].get("escapees",0))-1)
-		bait_slots.erase(int(a.id));retired_escapees.append(index)
+	bait_slots.erase(int(a.id));retired_escapees.append(index)
+	p.schedule.urgent.erase(1000000+index);p.schedule.pinned.erase(1000000+index)
+	p.presentation.records[1].erase(index)
 func consume_bait(index: int) -> bool:
 	var a: Dictionary=eco.forage[index]
 	if not a.active or a.quantity<1: return false
@@ -281,9 +282,19 @@ func nearby_disturbance(at: Vector2,radius: float) -> Vector2:
 func threaten(key: int,at: Vector2,radius: float):
 	threats[key]={"position":at,"radius":radius,"until":p.elapsed+8}
 	threat_index.cover(0,key,Rect2(at-Vector2.ONE*radius,Vector2.ONE*radius*2))
-func flee(a: Dictionary,at: Vector2):
+func flee(a: Dictionary,at: Vector2,attack := true):
 	detach_escapees(a,at)
-	a.fear=1.0;a.scatter_until=p.elapsed+35;a.flee_from=at;a.next=p.elapsed;a.activity="scattering";a.last_event="escaped / scattered from nearby attack"
+	var individual: bool=a.get("individual",false)
+	var elapsed_since: float=p.elapsed-float(a.get("disturbed_at",-100))
+	var disturbance: float=maxf(0,float(a.get("disturbance",0))-elapsed_since*.15)
+	if attack: disturbance+=1
+	a.disturbance=disturbance;a.disturbed_at=p.elapsed
+	var panic: bool=individual or disturbance>=3
+	a.fear=maxf(a.fear,1.0 if panic else .4);a.scatter_until=p.elapsed+(20 if panic else 6);a.flee_from=at
+	if p.elapsed>=float(a.get("shift_after",0)):
+		a.next=p.elapsed;a.shift_after=p.elapsed+5
+	a.activity="fleeing / scattered" if panic else "tightening / shifting from threat"
+	a.last_event="attack scatter" if attack else "nearby predator; vulnerable members detached"
 func plan_bait(a: Dictionary):
 	var begin := Time.get_ticks_usec()
 	_timed_plan_bait(a)
@@ -302,7 +313,10 @@ func _timed_plan_bait(a: Dictionary):
 		var away := (at-Vector2(a.flee_from)).normalized()
 		if away==Vector2.ZERO: away=Vector2.from_angle(float(a.id))
 		away=away.rotated(float(posmod(int(a.id),5)-2)*.2)
-		var escape: int=nav.nearest(at+away*160)
+		var shift: float=160.0 if a.fear>.75 or a.get("temporary",false) else 12.0
+		if shift<20 and nav.clear(at,at+away*shift):
+			a.natural_path=PackedVector2Array([at,at+away*shift]);a.path_cursor=1;a.turn_at=p.elapsed+10;return
+		var escape: int=nav.nearest(at+away*shift)
 		if escape>=0 and nav.nodes[escape].component==nav.nodes[anchor].component: target=nav.point(escape);chosen=escape
 	if chosen<0:
 		for z in [int(a.zone)]+p.zones[int(a.zone)].neighbors:
@@ -334,7 +348,7 @@ func update_bait(index: int,dt: float):
 		var threat: Dictionary=threats.get(key,{})
 		if threat.is_empty() or float(threat.until)<p.elapsed: continue
 		if Vector2(a.x,a.y).distance_squared_to(threat.position)<float(threat.radius)*float(threat.radius): danger+=Vector2(threat.position);nearby_threats+=1
-	if nearby_threats>0: flee(a,danger/nearby_threats)
+	if nearby_threats>0: flee(a,danger/nearby_threats,false)
 	if eco.pressure[z]>.4: a.fear=maxf(a.fear,eco.pressure[z]);a.scatter_until=p.elapsed+15
 	var local: Array=zone_areas[z]
 	for value in local:
@@ -357,16 +371,6 @@ func update_bait(index: int,dt: float):
 	p.movement.move_record(a,dt,velocity)
 	if p.water_column!=null: p.water_column.update_bait(a,dt)
 	if a.zone!=z: eco.forage_zones[z].erase(index);eco.forage_zones[int(a.zone)].append(index)
-	if not a.get("individual",false) and a.quantity>=4 and (a.fear>.6 or p.rng.randf()<dt*.0002) and p.elapsed>=a.split_after and eco.forage.size()<int(eco.config.get("bait_record_limit",24000)):
-		var split_quantity := floorf(a.quantity*.4) if a.fear>.6 else 1.0
-		a.quantity-=split_quantity;a.capacity=maxf(a.quantity,a.capacity-split_quantity);a.split_after=p.elapsed+300;a.merge_after=p.elapsed+80
-		var child: Dictionary=a.duplicate(true);child.individual=split_quantity==1
-		if child.individual: child.vertical_spread=0.0
-		child.quantity=split_quantity;child.capacity=split_quantity;child.id=0;child.escapees=0;child.parent_id=a.id;child.last=p.elapsed;child.next=p.elapsed;child.turn_at=p.elapsed;child.heading=Vector2.from_angle(float(child.id));child.erase("natural_path")
-		if register_bait(child)<0: a.quantity+=split_quantity;return
-		events.append({"time":p.elapsed,"kind":"split","id":a.id,"other":child.id,"position":Vector2(a.x,a.y)})
-		if events.size()>40: events.pop_front()
-		split_count+=1;a.last_event="school split; individuals conserved"
 	if not a.get("individual",false) and int(a.get("escapees",0))==0 and a.fear<.1 and p.elapsed>=a.merge_after:
 		for other_index in eco.forage_zones[int(a.zone)].duplicate():
 			if other_index==index: continue
@@ -374,7 +378,7 @@ func update_bait(index: int,dt: float):
 			if int(other.get("escapees",0))>0 or other.get("individual",false) or not other.active or other.kind!=a.kind or other.fear>.1 or other.quantity+a.quantity>160: continue
 			if Vector2(a.x-other.x,a.y-other.y).length()>12 or not nav.clear(Vector2(a.x,a.y),Vector2(other.x,other.y)): continue
 			other.quantity+=a.quantity;other.capacity+=a.capacity;other.merge_after=p.elapsed+60;other.last_event="school regrouped / merged"
-			a.quantity=0;a.active=false;a.merged_into=other.id;a.activity="merged";events.append({"time":p.elapsed,"kind":"merge","id":a.id,"other":other.id,"position":Vector2(a.x,a.y)});eco.forage_zones[int(a.zone)].erase(index);merge_count+=1;break
+			a.merged_into=other.id;events.append({"time":p.elapsed,"kind":"merge","id":a.id,"other":other.id,"position":Vector2(a.x,a.y)});retire_bait(index,"merged");merge_count+=1;break
 		a.merge_after=p.elapsed+30
 	while events.size()>40: events.pop_front()
 func serialize() -> Dictionary:
