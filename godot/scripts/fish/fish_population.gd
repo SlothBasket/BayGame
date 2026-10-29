@@ -61,6 +61,7 @@ var sim_phase := -1
 var sim_cursor := 0
 var maintenance_food_dt := 0.0
 var restored_pressure_pending := 0.0
+var background = preload("res://scripts/fish/fish_background.gd").new()
 var schedule = preload("res://scripts/fish/fish_schedule.gd").new()
 var step_forage_count := 0
 var completed_steps := 0
@@ -266,7 +267,7 @@ func tick_ecosystem(dt: float,_player: GeoPosition):
 	_measured_tick_ecosystem(dt,_player)
 	diagnostics.add("Simulation",Time.get_ticks_usec()-diagnostic_begin)
 func _measured_tick_ecosystem(dt: float,_player: GeoPosition):
-	if time_scale>0: presentation.tick(dt)
+	if time_scale>0: presentation.tick(dt,completed_time(),time_scale)
 	if diagnostics.ecology_disabled:
 		if time_scale>0: time_debt+=dt*time_scale
 		update_ms=0;return
@@ -303,7 +304,21 @@ func _measured_tick_ecosystem(dt: float,_player: GeoPosition):
 func dispatch_event(code: int):
 	if not schedule.alive(code): return
 	var kind := code/1000000;var index := code%1000000
+	# Classify at the current route position, not its last ecological event location.
+	if background.travel.has(code): background.synchronize(code)
 	var tier: int=schedule.level(code);var interval: float=simulation_detail.intervals[tier]
+	if tier>0:
+		var begin := Time.get_ticks_usec();background.event(code)
+		diagnostics.add(diagnostics.TIERS[tier],Time.get_ticks_usec()-begin)
+		if schedule.alive(code): schedule.put(code,background.next_event(code,tier),tier)
+		return
+	if background.travel.has(code):
+		var visible_at: Vector2=background.position(code,presentation.simulation_clock)
+		background.event(code,false);background.release(code)
+		presentation.reset_record(kind,index,visible_at)
+		if kind<2: hunting.index_entity(1 if kind==0 else 0,index)
+		presentation.publish(self,kind,index,visible_at,background.raw_position(code),.5)
+		schedule.put(code,elapsed+interval,tier);return
 	var step := minf(interval,maxf(0,elapsed-schedule.last_time(code)))
 	if step<=.000001: schedule.put(code,elapsed+interval,tier);return
 	var begin := Time.get_ticks_usec();var before := Vector2.ZERO;var at := Vector2.ZERO
@@ -327,6 +342,8 @@ func displayed(kind: int,index: int) -> Vector2:
 	diagnostics.add("Interpolation",Time.get_ticks_usec()-diagnostic_begin)
 	return result
 func _measured_displayed(kind: int,index: int) -> Vector2:
+	var code := kind*1000000+index
+	if background.travel.has(code): return background.position(code,presentation.simulation_clock)
 	var at := Vector2(east[index],south[index]) if kind==0 else Vector2.ZERO
 	if kind>0:
 		var a: Dictionary=ecology.forage[index] if kind==1 else ecology.predators[index];at=Vector2(a.x,a.y)
@@ -412,6 +429,7 @@ func setup_movement(root: String) -> bool:
 	return movement.setup(self,root,ecology.pending_movement)
 
 func dispose():
+	background.p=null;background.travel.clear()
 	schedule.p=null;schedule.ready=false
 	if simulation_detail!=null: simulation_detail.p=null;simulation_detail=null
 	if water_column!=null: water_column.p=null;water_column=null
@@ -432,7 +450,7 @@ func setup_food_web(root: String) -> bool:
 	if valid:
 		water_column=preload("res://scripts/fish/fish_water_column.gd").new();water_column.setup(self)
 		simulation_detail=preload("res://scripts/fish/fish_simulation_detail.gd").new();simulation_detail.setup(self)
-		schedule.setup(self)
+		background.p=self;schedule.setup(self)
 	return valid
 
 static func sample_size_cm(profile: Dictionary,random: RandomNumberGenerator) -> float:

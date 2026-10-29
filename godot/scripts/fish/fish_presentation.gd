@@ -3,9 +3,11 @@ extends RefCounted
 # Per-record visual state: simulation publishes only records it actually advances.
 var records: Array = [{},{},{}]
 var clock := 0.0
-func tick(dt: float):
+var simulation_clock := 0.0
+func tick(dt: float,completed: float,multiplier: float):
 	# A stalled frame must not finish every animation in one jump. Simulation retains full dt.
 	clock+=minf(maxf(dt,0),.05)
+	simulation_clock=move_toward(simulation_clock,completed,minf(maxf(dt,0),.05)*maxf(1,multiplier))
 func position(kind: int,index: int,fallback: Vector2) -> Vector2:
 	if not records[kind].has(index): return fallback
 	var r: Dictionary=records[kind][index]

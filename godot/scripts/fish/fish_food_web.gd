@@ -101,11 +101,13 @@ func register_bait(a: Dictionary,temporary := false) -> int:
 	bait_slots[int(a.id)]=index;eco.forage_zones[int(a.zone)].append(index)
 	if p.hunting!=null and p.hunting.ready: p.hunting.index_entity(0,index)
 	p.presentation.reset_record(1,index,Vector2(a.x,a.y))
+	p.background.travel.erase(1000000+index)
 	p.schedule.register(1,index)
 	return index
 func retire_bait(index: int,reason: String):
 	var a: Dictionary=eco.forage[index]
 	if not a.active: return
+	p.background.travel.erase(1000000+index)
 	p.schedule.cancel(1000000+index)
 	a.quantity=0;a.active=false;a.activity=reason;a.last_event=reason;eco.forage_zones[int(a.zone)].erase(index)
 	if p.hunting!=null: p.hunting.index_entity(0,index)

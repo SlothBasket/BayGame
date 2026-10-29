@@ -24,7 +24,7 @@ func setup(population):
 	p=population;fish_levels.resize(p.ids.size());fish_levels.fill(2)
 	var config: Dictionary=p.ecology.config.get("simulation_detail",{})
 	enabled=bool(config.get("enabled",true));detailed_m=float(config.get("detailed_m",700));intermediate_m=maxf(detailed_m+100,float(config.get("intermediate_m",2200)));hysteresis_m=float(config.get("hysteresis_m",150))
-	intervals=[.5,maxf(.5,float(config.get("intermediate_seconds",2))),maxf(.5,float(config.get("background_seconds",10)))]
+	intervals=[.5,maxf(.5,float(config.get("intermediate_seconds",2))),maxf(10,float(config.get("background_event_seconds",30)))]
 func level(at: Vector2,previous: int,pinned := false) -> int:
 	if not enabled or pinned: return 0
 	var distance := minf(at.distance_squared_to(boat),at.distance_squared_to(camera))

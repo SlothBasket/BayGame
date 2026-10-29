@@ -42,6 +42,8 @@ func state(actor: int) -> Dictionary:
 	if not a.has("hunt"): a.hunt=initial()
 	return a.hunt
 func position(actor: int) -> Vector2:
+	var code := actor if actor>=0 else 2000000-actor-1
+	if p.background.travel.has(code): return p.background.position(code,p.elapsed)
 	return Vector2(p.east[actor],p.south[actor]) if actor>=0 else Vector2(eco.predators[-actor-1].x,eco.predators[-actor-1].y)
 func zone(actor: int) -> int:
 	return p.region[actor] if actor>=0 else eco.predators[-actor-1].zone
@@ -67,6 +69,7 @@ func profile(actor: int) -> Dictionary:
 	r._band=band;profile_cache[actor]=r
 	return r
 func prey(kind: int,index: int) -> Dictionary:
+	if index>=0 and kind<2: p.background.synchronize(index if kind==1 else 1000000+index)
 	if kind==0:
 		if index<0 or index>=eco.forage.size(): return {}
 		var a: Dictionary=eco.forage[index]
