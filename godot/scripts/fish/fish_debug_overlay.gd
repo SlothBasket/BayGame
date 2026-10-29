@@ -65,6 +65,8 @@ var overview_origin := Vector2.ZERO
 
 var visible_areas: Array[int] = []
 var view_bounds := Rect2()
+var cached_revision := -1
+var view_refresh_at := 0.0
 var cached_span := 0.0
 var cached_center := Vector2.INF
 var trail := PackedVector2Array()
@@ -120,9 +122,19 @@ func button(body: Control,text: String,fn: Callable):
 func setup(game):
 	main=game
 	bait_menu=PopupMenu.new();add_child(bait_menu)
+	# Native popup uses screen pixels, independent of the world's canvas/zoom transform.
+	bait_menu.force_native=true;bait_menu.content_scale_factor=1.0;bait_menu.content_scale_size=Vector2i.ZERO
+	bait_menu.add_theme_font_size_override("font_size",16)
+	bait_menu.close_requested.connect(bait_menu.hide)
+	bait_menu.window_input.connect(func(event):
+		if event is InputEventKey and event.pressed and event.keycode==KEY_ESCAPE:
+			bait_menu.hide();bait_menu.set_input_as_handled()
+		elif event.is_action_pressed("fish_debug",false,true):
+			toggle();bait_menu.set_input_as_handled())
 	for kind in range(FishEcology.FORAGE_NAMES.size()): bait_menu.add_item("Spawn one "+FishEcology.FORAGE_NAMES[kind],kind)
 	bait_menu.id_pressed.connect(func(kind):
-		if not available(): return
+		bait_menu.hide()
+		if not enabled or not available(): return
 		var index: int=main.fish.food_web.spawn_single(kind,bait_spawn_at)
 		main.hud.tell("Placed one "+FishEcology.FORAGE_NAMES[kind] if index>=0 else "Bait requires navigable water and an available record slot.")
 		cache_view();queue_redraw())
@@ -141,7 +153,7 @@ func setup(game):
 	toggle_button(row,"Paths",true,func(v): show_paths=v)
 	toggle_button(row,"Areas",false,func(v): show_areas=v;cache_view())
 	toggle_button(row,"Grid",false,func(v): show_grid=v)
-	toggle_button(row,"Advanced",false,func(v): advanced=v;refresh())
+	toggle_button(row,"Advanced",false,func(v): advanced=v;main.fish.diagnostics.detailed=v;refresh())
 	var distance_toggle := toggle_button(row,"Distance detail",true,func(v):
 		if available(): main.fish.simulation_detail.enabled=v)
 	if main.fish!=null and main.fish.simulation_detail!=null: distance_toggle.set_pressed_no_signal(main.fish.simulation_detail.enabled)
@@ -176,6 +188,7 @@ func setup(game):
 	button(column,"Find active hunt",find_hunt)
 	toolbar.hide();panel.hide();refresh()
 func toggle():
+	bait_menu.hide()
 	enabled=not enabled;toolbar.visible=enabled;panel.visible=enabled and inspector_open
 	if enabled and available(): prior_sim=main.fish.completed_time();rate_clock=0;actual_rate=0;cache_view();refresh()
 	queue_redraw()
@@ -226,6 +239,7 @@ func tick(dt: float):
 	main.fish.diagnostics.add("Fish Lab UI",Time.get_ticks_usec()-diagnostic_begin)
 func _measured_tick(dt: float):
 	real_time+=dt
+	if bait_menu.visible and (not enabled or main.hud.menu.visible): bait_menu.hide()
 	if main.fish!=null: main.fish.presentation.view_active=enabled;main.fish.presentation.view_bounds=view_bounds
 	if not enabled or not available(): return
 	if following and entity!=Entity.NONE:
@@ -233,7 +247,7 @@ func _measured_tick(dt: float):
 		main.camera.follow=false;main.camera.anchor=null;main.camera.geo.east=lerpf(main.camera.geo.east,at.x,t);main.camera.geo.south=lerpf(main.camera.geo.south,at.y,t)
 	diagnostic_clock+=dt
 	if diagnostic_clock>=1:
-		diagnostic_clock=0;diagnostic_report=main.fish.diagnostics.report(main.fish)
+		diagnostic_clock=0;diagnostic_report=main.fish.diagnostics.report(main.fish,false)
 		var lines: PackedStringArray=diagnostic_report.split("\n")
 		performance_label.text="\n".join(lines.slice(0,4))
 		for key in ["Frame wall","Simulation"]:
@@ -245,7 +259,9 @@ func _measured_tick(dt: float):
 	if rate_clock>=1:
 		actual_rate=maxf(0,(main.fish.completed_time()-prior_sim)/rate_clock);prior_sim=main.fish.completed_time();rate_clock=0
 	if refresh_clock>=.25:
-		refresh_clock=0;cache_view();refresh()
+		refresh_clock=0
+		if real_time>=view_refresh_at and cached_revision!=main.fish.hunting.spatial.revision: cache_view()
+		refresh()
 		if entity in [Entity.FISH,Entity.BAIT,Entity.PREDATOR]:
 			var at := selected_position()
 			if trail.is_empty() or trail[-1].distance_to(at)>.2: trail.append(at)
@@ -264,6 +280,8 @@ func cache_view():
 	cached_span=main.camera.span;cached_center=Vector2(main.camera.geo.east,main.camera.geo.south)
 	view_bounds=Rect2(cached_center-half,half*2).grow(250)
 	candidates=main.fish.hunting.spatial.rectangle(view_bounds)
+	cached_revision=main.fish.hunting.spatial.revision;view_refresh_at=real_time+1
+	main.fish.presentation.view_bounds=view_bounds
 	visible_areas.clear()
 	for site in main.fish.food_web.site_areas: visible_areas.append(site)
 	if show_areas or mode==4 or entity==Entity.AREA:
@@ -434,7 +452,7 @@ func _measured_draw():
 			if not a.get("active",true) or a.quantity<1: continue
 			var pos: Vector2=observed_position(1,index)
 			if not view_bounds.has_point(pos): continue
-			if not a.get("individual",false):
+			if not a.get("individual",false) and (main.camera.span<1200 or (entity==Entity.BAIT and entity_index==index)):
 				var footprint := PackedVector2Array()
 				for n in range(17): footprint.append(pos-origin+p.food_web.member_offset(a,int(n*6283/16),p.hunting.school_radius(index)))
 				draw_polyline(footprint,Color(.5,.85,1,.35),mpp,true)
@@ -525,7 +543,7 @@ func set_diagnostic_mode(value: int):
 func school_diagnostics() -> String:
 	if entity!=Entity.BAIT or not valid_entity(entity,entity_index): return ""
 	var now := Time.get_ticks_msec()
-	if school_report_index==entity_index and now-school_report_at<1000: return school_report
+	if school_report_index==entity_index and now-school_report_at<2000: return school_report
 	school_report_at=now;school_report_index=entity_index
 	var p=main.fish;var a: Dictionary=p.ecology.forage[entity_index]
 	var parent_id: int=int(a.get("parent_id",-1)) if a.get("temporary",false) else int(a.id)
@@ -581,5 +599,11 @@ func build_overview():
 func open_bait_menu(screen: Vector2) -> bool:
 	if not enabled or entity!=Entity.NONE or not available(): return false
 	var geo: GeoPosition=main.camera.world_at(screen);bait_spawn_at=Vector2(geo.east,geo.south)
-	bait_menu.position=Vector2i(get_viewport().get_screen_transform()*screen);bait_menu.popup()
+	var window := get_window()
+	var bounds := Rect2i(DisplayServer.window_get_position(window.get_window_id()),DisplayServer.window_get_size(window.get_window_id()))
+	bounds=bounds.intersection(DisplayServer.screen_get_usable_rect(window.current_screen))
+	var extent := Vector2i(mini(300,bounds.size.x),mini(290,bounds.size.y))
+	var at := Vector2i(get_viewport().get_screen_transform()*screen)
+	at.x=clampi(at.x,bounds.position.x,bounds.end.x-extent.x);at.y=clampi(at.y,bounds.position.y,bounds.end.y-extent.y)
+	bait_menu.size=extent;bait_menu.popup(Rect2i(at,extent))
 	return true

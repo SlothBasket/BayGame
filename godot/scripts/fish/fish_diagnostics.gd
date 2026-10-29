@@ -3,6 +3,8 @@ extends RefCounted
 const WINDOW := 180
 const TIERS := ["Detailed","Intermediate","Background"]
 const THRESHOLDS := [50,100,250,500]
+var detailed := false
+const BASIC := ["Frame wall","Main process","Simulation","World step wall","World step CPU","Detailed","Intermediate","Background","Fish Lab draw"]
 var samples: Dictionary = {}
 var current: Dictionary = {}
 var peaks: Dictionary = {}
@@ -22,6 +24,7 @@ var rate_completed := 0.0
 var step_started := 0
 var step_cpu := 0.0
 func add(key: String,usec: float):
+	if not detailed and key not in BASIC: return
 	if not samples.has(key):
 		var ring := PackedFloat64Array();ring.resize(WINDOW);ring.fill(0);samples[key]=ring;current[key]=0.0;peaks[key]=0.0;calls[key]=0
 	current[key]+=usec/1000.0;peaks[key]=maxf(peaks[key],usec/1000.0);calls[key]+=1
@@ -41,7 +44,7 @@ func stats(key: String) -> String:
 	var values: PackedFloat64Array=samples[key].slice(0,mini(frames,WINDOW));values.sort()
 	if values.is_empty(): return "pending"
 	return "p50 %.2f p95 %.2f max %.2f / call-max %.2f ms (%d calls)" % [values[values.size()/2],values[mini(values.size()-1,int(values.size()*.95))],values[-1],peaks[key],calls[key]]
-func report(p) -> String:
+func report(p,include_details := true) -> String:
 	var levels := PackedInt32Array([0,0,0]);var bait := 0;var escapees := 0
 	for i in range(p.ids.size()):
 		if p.ecology.alive[i]!=0: levels[p.simulation_detail.fish_levels[i]]+=1
@@ -59,7 +62,9 @@ func report(p) -> String:
 		if peak>cost: cost=peak;costly=key
 	var text := "BayGame diagnostics | FPS %.1f | requested %.0fx achieved %.2fx\nQueued %.2f s + in-flight %.2f s | phase %d cursor %d\nD/I/B animals %d / %d / %d (last assigned) | bait records %d escapees %d\nRoutes pending %d | largest recent subsystem %s %.2f ms\nFrames >50/100/250/500ms: %s (session, overlapping)\nDisabled: ecology=%s hunting=%s publishing=%s distance=%s\n" % [Engine.get_frames_per_second(),p.time_scale,achieved,p.time_debt,p.WORLD_STEP if p.sim_phase>=0 else 0.0,p.sim_phase,p.sim_cursor,levels[0],levels[1],levels[2],bait,escapees,p.movement.nav.queued_routes.size(),costly,cost,str(spikes),ecology_disabled,hunting_disabled,publishing_disabled,not p.simulation_detail.enabled]
 	text+="Recent %d frames; timings ms/frame, nested (do not sum); call maxima/counts session. Worker time is off-thread.\n" % mini(frames,WINDOW)
-	for key in samples: text+=key+": "+stats(key)+"\n"
+	text+="Detailed timers: %s (Fish Lab Advanced)\n" % detailed
+	if include_details:
+		for key in samples: text+=key+": "+stats(key)+"\n"
 	return text
 
 func begin_session():

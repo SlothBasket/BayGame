@@ -70,7 +70,9 @@ func teleport_to(p: GeoPosition) -> bool:
 	camera.follow=true;camera.geo=p.copy();camera.anchor=null
 	hud.tell("Boat relocated.");return true
 func _unhandled_input(e):
-	if e.is_action_pressed("menu",false,true): hud.toggle();return
+	if e.is_action_pressed("menu",false,true):
+		if fish_overlay.bait_menu.visible: fish_overlay.bait_menu.hide();return
+		fish_overlay.bait_menu.hide();hud.toggle();return
 	if hud.menu.visible: return
 	if e.is_action_pressed("fish_debug",false,true): fish_overlay.toggle();return
 	if fish_overlay.enabled and e is InputEventMouseButton and e.button_index==MOUSE_BUTTON_LEFT and e.pressed:
