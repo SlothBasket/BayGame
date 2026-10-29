@@ -4,6 +4,8 @@ extends RefCounted
 var records: Array = [{},{},{}]
 var clock := 0.0
 var simulation_clock := 0.0
+var view_active := false
+var view_bounds := Rect2()
 func tick(dt: float,completed: float,multiplier: float):
 	# A stalled frame must not finish every animation in one jump. Simulation retains full dt.
 	clock+=minf(maxf(dt,0),.05)
@@ -23,6 +25,8 @@ func position(kind: int,index: int,fallback: Vector2) -> Vector2:
 	return path[low-1].lerp(path[low],clampf((travel-distances[low-1])/maxf(.0001,length),0,1))
 func publish(p,kind: int,index: int,before: Vector2,at: Vector2,simulated_dt: float):
 	if p.diagnostics.publishing_disabled: return
+	if not p.schedule.pinned.has(kind*1000000+index) and (not view_active or (not view_bounds.has_point(at) and not view_bounds.has_point(before))):
+		records[kind].erase(index);return
 	var diagnostic_begin := Time.get_ticks_usec()
 	_measured_publish(p,kind,index,before,at,simulated_dt)
 	p.diagnostics.add("Visual publishing",Time.get_ticks_usec()-diagnostic_begin)
@@ -40,8 +44,22 @@ func _measured_publish(p,kind: int,index: int,before: Vector2,at: Vector2,simula
 			corner=Vector2(at.x,start.y)
 			if nav.clear(start,corner) and nav.clear(corner,at): path=PackedVector2Array([start,corner,at])
 			else:
-				var goal: int=nav.nearest(at)
-				if goal>=0: path=nav.route(start,at,goal)
+				# Reuse the simulation's route through corners before requesting another path.
+				var route: PackedVector2Array=PackedVector2Array()
+				var cursor := 0
+				if kind==1:
+					var a: Dictionary=p.ecology.forage[index];route=a.get("natural_path",PackedVector2Array());cursor=int(a.get("path_cursor",0))
+				else:
+					var state: Dictionary=p.hunting.state(index if kind==0 else -index-1);route=state.path;cursor=int(state.cursor)
+				for n in range(maxi(0,cursor-8),mini(route.size(),cursor+1)):
+					if path.is_empty():
+						if not nav.clear(start,route[n]): continue
+						path.append(start)
+					path.append(route[n])
+					if nav.clear(route[n],at): path.append(at);break
+				if path.is_empty() or not path[-1].is_equal_approx(at):
+					path=PackedVector2Array();var goal: int=nav.nearest(at)
+					if goal>=0: path=nav.route(start,at,goal)
 	# Deferred route: retain the last continuous animation rather than snapping over land.
 	if path.is_empty(): return
 	var distances := PackedFloat32Array();distances.resize(path.size())

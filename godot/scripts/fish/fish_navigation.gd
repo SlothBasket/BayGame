@@ -4,6 +4,9 @@ var diagnostics
 var nearest_cache: Dictionary = {}
 var nearest_keys: Array[Vector4] = []
 var nearest_slot := 0
+var clear_cache: Dictionary = {}
+var clear_keys: Array[Vector4] = []
+var clear_slot := 0
 var worker_usec := 0
 var nodes: Dictionary = {}
 var route_cache: Dictionary = {}
@@ -44,7 +47,7 @@ func _compute_route(key: Vector3i) -> PackedVector2Array:
 	while index<raw.size()-1:
 		var next := index+1
 		for candidate in range(index+2,mini(raw.size(),index+(3 if key.z==1 else 10))):
-			if clear(raw[index],raw[candidate]): next=candidate
+			if _clear(raw[index],raw[candidate]): next=candidate
 		result.append(raw[next]);index=next
 	return result
 func shutdown():
@@ -91,6 +94,13 @@ func grid(p: Vector2) -> Vector2i:
 func wet(p: Vector2) -> bool:
 	return wet_cell(grid(p))
 func clear(a: Vector2,b: Vector2) -> bool:
+	var key := Vector4(a.x,a.y,b.x,b.y)
+	if clear_cache.has(key): return clear_cache[key]
+	var result := _clear(a,b)
+	if clear_keys.size()<2048: clear_keys.append(key)
+	else: clear_cache.erase(clear_keys[clear_slot]);clear_keys[clear_slot]=key;clear_slot=(clear_slot+1)%2048
+	clear_cache[key]=result;return result
+func _clear(a: Vector2,b: Vector2) -> bool:
 	var c := grid(a);var end := grid(b);var delta := b-a
 	var sx := 1 if delta.x>0 else -1;var sy := 1 if delta.y>0 else -1
 	var tx := ((origin.x+(c.x+(1 if sx>0 else 0))*cell)-a.x)/delta.x if delta.x!=0 else INF

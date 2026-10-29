@@ -243,7 +243,6 @@ func _measured_update_fish(i: int,dt: float):
 	if ecology!=null:
 		if water_column!=null: water_column.update_actor(i,dt)
 		ecology.interact(i,dt)
-		if not diagnostics.hunting_disabled and simulation_detail!=null and simulation_detail.fish_levels[i]==2: simulation_detail.coarse_hunt(i,dt);return
 		if hunting!=null and hunting.ready and hunting.step(i,dt): return
 		if movement!=null and movement.ready:
 			movement.tick_fish(i,dt);return

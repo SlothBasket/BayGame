@@ -226,6 +226,7 @@ func tick(dt: float):
 	main.fish.diagnostics.add("Fish Lab UI",Time.get_ticks_usec()-diagnostic_begin)
 func _measured_tick(dt: float):
 	real_time+=dt
+	if main.fish!=null: main.fish.presentation.view_active=enabled;main.fish.presentation.view_bounds=view_bounds
 	if not enabled or not available(): return
 	if following and entity!=Entity.NONE:
 		var at := selected_position();var t := 1-exp(-10*minf(dt,.05))
