@@ -1,6 +1,9 @@
 class_name FishNavigation
 extends RefCounted
 var diagnostics
+var nearest_cache: Dictionary = {}
+var nearest_keys: Array[Vector4] = []
+var nearest_slot := 0
 var worker_usec := 0
 var nodes: Dictionary = {}
 var route_cache: Dictionary = {}
@@ -157,8 +160,13 @@ func migration_anchor(p: Vector2,zone: int) -> int:
 	return best
 
 func nearest(p: Vector2,zone := -1,component := -1) -> int:
-	if diagnostics==null: return _measured_nearest(p,zone,component)
+	var key := Vector4(p.x,p.y,zone,component)
+	if nearest_cache.has(key): return int(nearest_cache[key])
 	var begin := Time.get_ticks_usec()
 	var result: int=_measured_nearest(p,zone,component)
-	diagnostics.add("Navigation nearest",Time.get_ticks_usec()-begin)
+	if diagnostics!=null: diagnostics.add("Navigation nearest",Time.get_ticks_usec()-begin)
+	if nearest_keys.size()<2048: nearest_keys.append(key)
+	else:
+		nearest_cache.erase(nearest_keys[nearest_slot]);nearest_keys[nearest_slot]=key;nearest_slot=(nearest_slot+1)%2048
+	nearest_cache[key]=result
 	return result

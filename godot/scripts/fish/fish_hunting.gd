@@ -10,6 +10,10 @@ var web
 var nav
 var spatial := FishSpatialIndex.new()
 var profile_cache: Dictionary = {}
+var prey_cache: Dictionary = {}
+var prey_epoch := -1.0
+var school_targets: Dictionary = {}
+var school_epoch := -1.0
 var states: Array = []
 var events: Array = []
 var rules: Dictionary = {}
@@ -69,7 +73,18 @@ func profile(actor: int) -> Dictionary:
 	r._band=band;profile_cache[actor]=r
 	return r
 func prey(kind: int,index: int) -> Dictionary:
-	if index>=0 and kind<2: p.background.synchronize(index if kind==1 else 1000000+index)
+	if index<0: return {}
+	if kind==0 and (index>=eco.forage.size() or not eco.forage[index].active or eco.forage[index].quantity<1): return {}
+	if kind==1 and (index>=p.ids.size() or eco.alive[index]==0): return {}
+	if kind==2 and (index>=web.bottom.size() or web.bottom[index].quantity<1): return {}
+	if prey_epoch!=p.elapsed: prey_epoch=p.elapsed;prey_cache.clear()
+	if kind<2: p.background.synchronize(index if kind==1 else 1000000+index)
+	var code := kind*FishSpatialIndex.STRIDE+index
+	if not prey_cache.has(code): prey_cache[code]=build_prey(kind,index)
+	return prey_cache[code]
+func invalidate_prey(kind: int,index: int):
+	prey_cache.erase(kind*FishSpatialIndex.STRIDE+index)
+func build_prey(kind: int,index: int) -> Dictionary:
 	if kind==0:
 		if index<0 or index>=eco.forage.size(): return {}
 		var a: Dictionary=eco.forage[index]
@@ -110,23 +125,31 @@ func suitable(actor: int,kind: int,index: int,data: Dictionary,r: Dictionary) ->
 func detect(actor: int,s: Dictionary,r: Dictionary) -> bool:
 	var at := position(actor);var best := -INF;var selected_kind := -1;var selected_id := -1
 	var radius: float=float(r.detect_ft)*.3048*(.75+.25*s.energy)
+	var targets: Dictionary=coordinated_targets(actor,r)
+	var max_size: float=length_cm(actor)*float(r.gape)
+	var senses: float=1.3 if r.sense in ["electroreception / scent","echolocation"] else 1.0
 	for code in spatial.query(at,radius*1.5):
-		var candidate := Vector2i(int(code)/FishSpatialIndex.STRIDE,int(code)%FishSpatialIndex.STRIDE)
-		var data := prey(candidate.x,candidate.y)
-		if not suitable(actor,candidate.x,candidate.y,data,r): continue
-		var target := prey_position(actor,candidate.x,candidate.y,data);var distance: float=p.water_column.distance_to_prey(actor,candidate.x,candidate.y,data)
-		var senses: float=1.3 if r.sense in ["electroreception / scent","echolocation"] else 1.0
+		var kind := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
+		# Reject impossible prey before allocating contact data or doing depth/navigation work.
+		if not candidate_fits(actor,kind,index,max_size,r.style): continue
+		var center := candidate_position(kind,index)
+		var footprint := 0.0
+		if kind==0 and not eco.forage[index].get("individual",false):
+			var a: Dictionary=eco.forage[index]
+			footprint=school_radius(index)*maxf(float(a.get("stretch",1)),1.0)/maxf(.5,float(a.get("cohesion",1)))
+		if at.distance_squared_to(center)>pow(radius*senses*1.1+footprint,2): continue
+		var data := prey(kind,index)
+		if data.is_empty(): continue
+		var target := prey_position(actor,kind,index,data)
+		var vertical: float=p.water_column.separation(actor,kind,index,data)
+		var distance := sqrt(at.distance_squared_to(target)+vertical*vertical)
 		var detection: float=radius*senses*(1.0-float(data.cover)*.5)*(1.1 if data.speed>.4 else .9)
-		if distance>detection or not nav.clear(at,target): continue
-		var score: float=(.5 if candidate.x==0 and eco.forage[candidate.y].get("individual",false) else 0.0)+hunger(actor)*2+float(data.size)/maxf(1,length_cm(actor))-distance/maxf(1,detection)-float(data.cover)
-		if candidate.x==2 and r.style in ["bottom","structure","bottom_shark"]: score+=1
-		if r.style=="chase" and actor>=0 and eco.school[actor]>=0:
-			for member in eco.schools.get(eco.school[actor],[]):
-				if member!=actor and states[member].kind==candidate.x and states[member].target==candidate.y and states[member].stage in [Stage.APPROACH,Stage.PURSUE]: score+=.7;break
-		if r.style=="dolphin":
-			for other in eco.predators:
-				if other.kind==3 and other.pod==eco.predators[-actor-1].pod and other.has("hunt") and other.hunt.kind==candidate.x and other.hunt.target==candidate.y: score+=.7;break
-		if score>best: best=score;selected_kind=candidate.x;selected_id=candidate.y
+		if distance>detection: continue
+		var score: float=(.5 if kind==0 and eco.forage[index].get("individual",false) else 0.0)+hunger(actor)*2+float(data.size)/maxf(1,length_cm(actor))-distance/maxf(1,detection)-float(data.cover)
+		if kind==2 and r.style in ["bottom","structure","bottom_shark"]: score+=1
+		if targets.has(code): score+=.7
+		if score<=best or not nav.clear(at,target): continue
+		best=score;selected_kind=kind;selected_id=index
 	if selected_kind<0: s.search_failures+=1;return false
 	s.committed_pursuit=false;s.traffic_position=prey(selected_kind,selected_id).position;s.traffic_seen=p.elapsed;s.kind=selected_kind;s.target=selected_id;s.target_id=eco.forage[selected_id].id if selected_kind==0 else -1;s.hunt_until=p.elapsed+90;s.progress_at=p.elapsed;s.best_distance=INF;s.ambush_until=p.elapsed+minf(12,float(r.wait_seconds));s.stage=Stage.DETECT;s.until=p.elapsed+.5;s.search_failures=0
 	event(actor,s,"detected "+prey(selected_kind,selected_id).label);return true
@@ -141,6 +164,7 @@ func scare(actor: int,s: Dictionary):
 	if s.kind==1 and s.target>=0 and eco.alive[s.target]==1:
 		p.behavior[s.target]=5;p.decision_at[s.target]=p.elapsed;eco.pressure[p.region[s.target]]=maxf(.5,eco.pressure[p.region[s.target]])
 func set_position(actor: int,at: Vector2,heading: Vector2):
+	if actor>=0: invalidate_prey(1,actor)
 	var anchor: int=nav.nearest(at)
 	if actor>=0:
 		p.east[actor]=at.x;p.south[actor]=at.y;p.movement.headings[actor]=heading
@@ -153,7 +177,9 @@ func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionar
 	var at := position(actor);var limit: float=float(r.burst_mph if fast else r.cruise_mph)*.44704*(.7+.3*minf(1.5,length_cm(actor)/70.0))
 	s.velocity=move_toward(float(s.velocity),limit,dt*2.0)
 	if nav.clear(at,target):
-		s.path=PackedVector2Array([at,target]);s.cursor=1
+		if s.path.size()==2: s.path[0]=at;s.path[1]=target
+		else: s.path=PackedVector2Array([at,target])
+		s.cursor=1
 	elif s.path.is_empty() or (s.cursor>=s.path.size() and at.distance_squared_to(target)>.25) or (p.elapsed>=s.replan_at and target.distance_squared_to(s.get("planned_target",Vector2.INF))>9):
 		var goal: int=nav.nearest(target)
 		if goal>=0:
@@ -161,7 +187,7 @@ func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionar
 			if not replacement.is_empty(): s.path=replacement;s.cursor=1
 		s.replan_at=p.elapsed+2;s.planned_target=target
 	if s.path.is_empty(): return
-	var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),s.velocity*dt,actor+90000,s.heading,p.simulation_detail==null or p.simulation_detail.actor_level(actor)==0,.12)
+	var moved: Dictionary=p.movement.advance(at,s.path,int(s.cursor),s.velocity*dt,actor+90000,s.heading,p.simulation_detail==null or current_detail(actor)==0,.12)
 	s.cursor=moved.cursor;s.heading=moved.heading;set_position(actor,moved.position,moved.heading)
 	s.energy=maxf(0,s.energy-dt*(.0015 if fast else .00015))
 func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
@@ -270,7 +296,7 @@ func _measured_step(actor: int,dt: float) -> bool:
 		s.stage=Stage.RECOVER;s.until=p.elapsed+3;s.kind=-1;recovery_activity(actor,s,r,dt);return true
 	if s.stage==Stage.SEARCH:
 		if p.elapsed>=s.detect_at:
-			s.detect_at=p.elapsed+(2 if p.simulation_detail!=null and p.simulation_detail.actor_level(actor)>0 else 1)
+			s.detect_at=p.elapsed+(2 if p.simulation_detail!=null and current_detail(actor)>0 else 1)
 			if detect(actor,s,r):
 				if actor>=0: p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.destination[actor]=-1
 				return true
@@ -339,6 +365,7 @@ func serialize() -> Dictionary:
 	return {"states":states,"events":events}
 
 func index_entity(kind: int,index: int):
+	invalidate_prey(kind,index)
 	var diagnostic_begin := Time.get_ticks_usec()
 	_measured_index_entity(kind,index)
 	p.diagnostics.add("Spatial indexing",Time.get_ticks_usec()-diagnostic_begin)
@@ -378,3 +405,38 @@ func evade(actor: int,s: Dictionary,r: Dictionary,dt: float) -> bool:
 	s.kind=-1;s.target=-1;s.stage=Stage.SEARCH;s.detect_at=p.elapsed+1;s.activity="fleeing pursuing fish #%s" % str(s.get("threat_actor",-1));s.search_wait_until=0
 	if actor>=0: p.behavior[actor]=5
 	return true
+
+func current_detail(actor: int) -> int:
+	return p.simulation_detail.fish_levels[actor] if actor>=0 else int(eco.predators[-actor-1].get("detail",2))
+func candidate_fits(actor: int,kind: int,index: int,max_size: float,style: String) -> bool:
+	var bottom_only := style in ["structure","bottom_shark"]
+	if kind==0:
+		if index<0 or index>=eco.forage.size(): return false
+		var a: Dictionary=eco.forage[index]
+		return a.active and a.quantity>=1 and float(a.size_cm)<=max_size and (not bottom_only or a.kind in [4,5])
+	if kind==1: return not bottom_only and index>=0 and index<p.ids.size() and actor!=index and eco.alive[index]!=0 and p.size_cm[index]<=max_size
+	if kind==2: return index>=0 and index<web.bottom.size() and web.bottom[index].quantity>=1 and float(web.bottom[index].size_cm)<=max_size
+	return false
+func candidate_position(kind: int,index: int) -> Vector2:
+	if kind==1: return position(index)
+	if kind==0: return p.background.position(1000000+index,p.elapsed)
+	return Vector2(web.bottom[index].x,web.bottom[index].y)
+func coordinated_targets(actor: int,r: Dictionary) -> Dictionary:
+	if school_epoch!=p.elapsed: school_epoch=p.elapsed;school_targets.clear()
+	var key := -1
+	if r.style=="chase" and actor>=0: key=int(eco.school[actor])
+	elif r.style=="dolphin": key=-1000-int(eco.predators[-actor-1].pod)
+	if key==-1: return {}
+	if not school_targets.has(key):
+		var targets: Dictionary={}
+		if key>=0:
+			for member in eco.schools.get(key,[]):
+				var state: Dictionary=states[member]
+				if eco.alive[member]!=0 and state.stage in [Stage.APPROACH,Stage.PURSUE] and state.target>=0: targets[int(state.kind)*FishSpatialIndex.STRIDE+int(state.target)]=true
+		else:
+			for other in eco.predators:
+				if other.active and other.kind==3 and -1000-int(other.pod)==key and other.has("hunt"):
+					var state: Dictionary=other.hunt
+					if state.target>=0: targets[int(state.kind)*FishSpatialIndex.STRIDE+int(state.target)]=true
+		school_targets[key]=targets
+	return school_targets[key]

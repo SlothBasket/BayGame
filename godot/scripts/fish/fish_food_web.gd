@@ -12,6 +12,7 @@ var bottom_zones: Dictionary = {}
 var nutrients := PackedFloat32Array()
 var clock := 0.0
 var threats: Dictionary = {}
+var threat_index := FishSpatialIndex.new()
 var disturbances: Array = []
 var split_count := 0
 var merge_count := 0
@@ -264,7 +265,7 @@ func _measured_process_maintenance(deadline: int):
 		cleanup_keys=threats.keys();cleanup_cursor=0;cleanup_at=p.elapsed+2
 	while cleanup_cursor<cleanup_keys.size() and Time.get_ticks_usec()<deadline:
 		var key=cleanup_keys[cleanup_cursor];cleanup_cursor+=1
-		if threats.has(key) and threats[key].until<p.elapsed: threats.erase(key)
+		if threats.has(key) and threats[key].until<p.elapsed: threat_index.remove_key(key);threats.erase(key)
 	if recruitment_due>0 and Time.get_ticks_usec()<deadline:
 		spawn_bait(p.rng.randi_range(0,areas.size()-1));recruitment_due-=1
 
@@ -279,6 +280,7 @@ func nearby_disturbance(at: Vector2,radius: float) -> Vector2:
 	return Vector2.INF
 func threaten(key: int,at: Vector2,radius: float):
 	threats[key]={"position":at,"radius":radius,"until":p.elapsed+8}
+	threat_index.cover(0,key,Rect2(at-Vector2.ONE*radius,Vector2.ONE*radius*2))
 func flee(a: Dictionary,at: Vector2):
 	detach_escapees(a,at)
 	a.fear=1.0;a.scatter_until=p.elapsed+35;a.flee_from=at;a.next=p.elapsed;a.activity="scattering";a.last_event="escaped / scattered from nearby attack"
@@ -328,7 +330,9 @@ func update_bait(index: int,dt: float):
 	if not a.active or a.quantity<1: return
 	var z: int=a.zone;a.hunger=minf(1,a.hunger+dt*.00015);a.fear=maxf(0,a.fear-dt*.01)
 	var danger := Vector2.ZERO;var nearby_threats := 0
-	for threat in threats.values():
+	for key in threat_index.query(Vector2(a.x,a.y),0):
+		var threat: Dictionary=threats.get(key,{})
+		if threat.is_empty() or float(threat.until)<p.elapsed: continue
 		if Vector2(a.x,a.y).distance_squared_to(threat.position)<float(threat.radius)*float(threat.radius): danger+=Vector2(threat.position);nearby_threats+=1
 	if nearby_threats>0: flee(a,danger/nearby_threats)
 	if eco.pressure[z]>.4: a.fear=maxf(a.fear,eco.pressure[z]);a.scatter_until=p.elapsed+15

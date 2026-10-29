@@ -49,6 +49,7 @@ func synchronize(code: int):
 	if kind==1: p.ecology.forage[i].path_cursor=cursor
 	else: p.hunting.state(actor(code)).cursor=cursor
 	r.synced=p.elapsed
+	if kind<2: p.hunting.invalidate_prey(1 if kind==0 else 0,i)
 	var dt := maxf(0,p.elapsed-float(r.depth_time))
 	if dt>0:
 		if kind==1: p.water_column.update_bait(p.ecology.forage[i],dt)
@@ -173,6 +174,8 @@ func encounter(aid: int,s: Dictionary,r: Dictionary):
 			if not p.schedule.alive(scheduled): continue
 			synchronize(scheduled)
 			if p.schedule.level(scheduled)==0: continue
+		if not h.candidate_fits(aid,kind,index,h.length_cm(aid)*float(r.gape),r.style): continue
+		if at.distance_squared_to(h.candidate_position(kind,index))>radius*radius: continue
 		var prey: Dictionary=h.prey(kind,index)
 		if not h.suitable(aid,kind,index,prey,r) or at.distance_squared_to(prey.position)>radius*radius: continue
 		eligible+=1
