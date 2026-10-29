@@ -23,6 +23,7 @@ func fail(reason: String) -> bool:
 	last_error=reason;return false
 var site_areas: Array[int] = []
 var resident_site: Dictionary = {}
+var resident_homes: Dictionary = {}
 var observed_bait := -1
 var recruitment_clock := 0.0
 var recruitment_due := 0
@@ -188,6 +189,14 @@ func sample(index: int,seed_value: int,component := -1) -> Vector2:
 	return result
 func _timed_sample(index: int,seed_value: int,component := -1) -> Vector2:
 	var a: Dictionary=areas[index];var ids: PackedInt32Array=a.nodes
+	if a.get("authored",false):
+		var center: Vector2=nav.point(int(ids[0]));var radius: float=(float(a.bounds[2])-float(a.bounds[0]))*.5
+		# Stable area samples, not fixed-radius rings around a single authored node.
+		var random := RandomNumberGenerator.new();random.seed=seed_value
+		for trial in range(12):
+			var at := center+Vector2.from_angle(random.randf()*TAU)*sqrt(random.randf())*radius*.85
+			if contains(index,at) and nav.clear(center,at): return at
+		return center
 	for trial in range(mini(20,ids.size()+8)):
 		var id: int=ids[posmod(seed_value+trial*137,ids.size())]
 		if component>=0 and nav.nodes[id].component!=component: continue
@@ -440,10 +449,11 @@ func bind_site_fish():
 			var number: int=large_count if large else small_count
 			site=choices[(number/(6 if large else 24))%choices.size()]
 			if eco.school[i]>=0: eco.schools[eco.school[i]].erase(i)
-			var school_id: int=10000000+number/(6 if large else 24)+(1000 if large else 0)
+			var school_id: int=-1 if large else 10000000+number/24
 			eco.school[i]=school_id
-			if not eco.schools.has(school_id): eco.schools[school_id]=[]
-			eco.schools[school_id].append(i)
+			if school_id>=0:
+				if not eco.schools.has(school_id): eco.schools[school_id]=[]
+				eco.schools[school_id].append(i)
 			if not large and number%24==0: p.size_cm[i]=p.rng.randf_range(14,15)*2.54
 			if large: large_count+=1
 			else: small_count+=1
@@ -460,3 +470,14 @@ func bind_site_fish():
 		p.east[i]=at.x;p.south[i]=at.y;p.movement.preferred_feed[i]=node;p.movement.preferred_rest[i]=node
 		p.movement.update_region(i,int(areas[site].zone));eco.home[i]=areas[site].zone;eco.feeding[i]=areas[site].zone;eco.resting[i]=areas[site].zone
 		if p.species[i]==7: p.preferred_depth[i]=nav.nodes[node].depth_m
+
+func home_position(actor: int) -> Vector2:
+	var site: int=resident_site[actor]
+	if not resident_homes.has(actor):
+		resident_homes[actor]={"anchor":sample(site,actor*7919),"at":sample(site,actor*7919),"next":p.elapsed+p.rng.randf_range(45,150)}
+	var home: Dictionary=resident_homes[actor]
+	if p.elapsed>=float(home.next):
+		home.next=p.elapsed+p.rng.randf_range(60,180)
+		var candidate: Vector2=home.anchor+Vector2.from_angle(p.rng.randf()*TAU)*p.rng.randf_range(1,8)
+		if contains(site,candidate) and nav.clear(home.at,candidate): home.at=candidate
+	return home.at

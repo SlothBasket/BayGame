@@ -95,7 +95,7 @@ func fish_event(aid: int,dt: float,encounters: bool):
 		if p.elapsed>=float(s.get("coarse_plan_at",0)):
 			s.coarse_plan_at=p.elapsed+90
 			if r.get("rock_resident",false) and p.food_web.resident_site.has(aid):
-				var home: Vector2=p.food_web.sample(int(p.food_web.resident_site[aid]),aid*7919)
+				var home: Vector2=p.food_web.home_position(aid)
 				var goal: int=p.food_web.areas[int(p.food_web.resident_site[aid])].nodes[0]
 				var route: PackedVector2Array=p.movement.nav.route(at,home,goal)
 				if not route.is_empty(): s.path=route;s.cursor=1

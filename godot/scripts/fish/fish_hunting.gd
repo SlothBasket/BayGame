@@ -193,7 +193,7 @@ func move_hunter(actor: int,s: Dictionary,target: Vector2,dt: float,r: Dictionar
 func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
 	var at := position(actor)
 	if r.get("rock_resident",false) and web.resident_site.has(actor):
-		var home: Vector2=web.sample(int(web.resident_site[actor]),actor*7919)
+		var home: Vector2=web.home_position(actor)
 		if at.distance_to(home)>2: move_hunter(actor,s,home,dt,r,false);s.activity="returning to deep rocks"
 		else: s.activity="holding at rocks; watching passing bait";s.energy=minf(1,s.energy+dt*.005)
 		return
@@ -234,7 +234,7 @@ func search_habitat(actor: int,s: Dictionary,r: Dictionary,dt: float):
 		if actor>=0 and eco.school[actor]>=0 and r.style=="chase":
 			for member in eco.schools.get(eco.school[actor],[]):
 				if member!=actor and eco.alive[member]==1 and states[member].has("search_goal"):
-					var shared: Vector2=states[member].search_goal+Vector2.from_angle(float(actor))*3
+					var shared: Vector2=states[member].search_goal+Vector2(sin(float(actor)*12.9898),sin(float(actor)*78.233))*3
 					if nav.clear(goal,shared): goal=shared
 					break
 		s.search_goal=goal;s.search_until=p.elapsed+60;s.path=PackedVector2Array();s.cursor=0
@@ -258,7 +258,7 @@ func _measured_step(actor: int,dt: float) -> bool:
 		if s.stage!=Stage.SEARCH: s.stage=Stage.SEARCH;s.kind=-1;p.movement.routes[actor]=PackedVector2Array();p.movement.cursors[actor]=0;p.decision_at[actor]=p.elapsed
 		return false
 	if s.get("return_home",false) and s.stage not in [Stage.CAPTURE,Stage.CONSUME]:
-		var home: Vector2=web.sample(int(web.resident_site[actor]),actor*7919)
+		var home: Vector2=web.home_position(actor)
 		if at.distance_to(home)>2: move_hunter(actor,s,home,dt,r,false);s.activity="returning to rocks after attack";return true
 		s.return_home=false
 	if s.stage==Stage.RECOVER:
@@ -313,8 +313,7 @@ func _measured_step(actor: int,dt: float) -> bool:
 		else: s.stage=Stage.PURSUE
 		return true
 	if r.get("rock_resident",false) and web.resident_site.has(actor) and s.get("committed_pursuit",false):
-		var home_node: int=web.areas[int(web.resident_site[actor])].nodes[0]
-		if at.distance_to(nav.point(home_node))>25:
+		if at.distance_to(web.home_position(actor))>25:
 			abandon(actor,s,"shot missed; returning to rock cover");s.return_home=true;return true
 	if distance<float(s.get("best_distance",INF))-1:
 		s.best_distance=distance;s.progress_at=p.elapsed
