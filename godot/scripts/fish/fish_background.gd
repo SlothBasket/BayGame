@@ -90,9 +90,11 @@ func fish_event(aid: int,dt: float,encounters: bool):
 	var at := raw_position(code);var path := PackedVector2Array([at]);var velocity: float=float(r.cruise_mph)*.44704
 	if resting: velocity*=.35
 	if eating or (resting and r.style in ["ambush","bottom_ambush","intercept"]): velocity=0
+	var reconsidered := false
 	if not eating:
 		s.stage=9 if resting else 0;s.kind=-1;s.target=-1;s.activity="background holding / recovery" if resting else "background habitat travel"
 		if p.elapsed>=float(s.get("coarse_plan_at",0)):
+			reconsidered=true
 			s.coarse_plan_at=p.elapsed+90
 			if r.get("rock_resident",false) and p.food_web.resident_site.has(aid):
 				var home: Vector2=p.food_web.home_position(aid)
@@ -107,6 +109,7 @@ func fish_event(aid: int,dt: float,encounters: bool):
 			else: p.simulation_detail.plan_coarse_route(aid,s,at)
 		if not resting and p.elapsed>=float(s.get("coarse_encounter_at",0)):
 			s.coarse_encounter_at=p.elapsed+30;encounter(aid,s,r)
+	if not reconsidered and travel.has(code) and float(travel[code].speed)==velocity and p.elapsed<float(travel[code].started)+15: return
 	if not s.path.is_empty(): path=remaining_path(at,s.path,int(s.cursor))
 	install(code,path,velocity)
 	# Store the remaining validated polyline for the eventual detailed handoff.
@@ -121,12 +124,16 @@ func bait_event(i: int,dt: float,encounters: bool):
 	if not travel.has(code): p.water_column.update_bait(a,dt)
 	if not encounters: return
 	if p.food_web.return_escapee(i): return
-	if p.elapsed>=float(a.next): p.food_web.plan_bait(a);a.next=p.elapsed+(2 if a.has("pending_route_target") else 90)
-	var at := Vector2(a.x,a.y);var path := remaining_path(at,a.natural_path,int(a.path_cursor)) if a.has("natural_path") else PackedVector2Array([at])
+	var reconsidered: bool=p.elapsed>=float(a.next)
+	if reconsidered: p.food_web.plan_bait(a);a.next=p.elapsed+(2 if a.has("pending_route_target") else 90)
+	var at := Vector2(a.x,a.y)
 	var velocity := .04 if a.kind in [4,5] else (.45 if a.kind>=6 else .3)
 	if a.fear>.3: velocity*=2
 	if a.kind>=6 and p.elapsed>=float(a.jump_at): a.jump_until=p.elapsed+2;a.jump_at=p.elapsed+p.rng.randf_range(40,180);p.ecology.jumps+=1
-	a.speed_mps=velocity;a.activity="background forage / shelter";a.natural_path=path;a.path_cursor=1
+	a.speed_mps=velocity;a.activity="background forage / shelter"
+	if not reconsidered and not a.get("temporary",false) and travel.has(code) and float(travel[code].speed)==velocity and p.elapsed<float(travel[code].started)+15: return
+	var path := remaining_path(at,a.natural_path,int(a.path_cursor)) if a.has("natural_path") else PackedVector2Array([at])
+	a.natural_path=path;a.path_cursor=1
 	install(code,path,velocity)
 func remaining_path(at: Vector2,path: PackedVector2Array,cursor: int) -> PackedVector2Array:
 	# The previous event committed its path cursor analytically; no per-stride loop.
@@ -161,6 +168,7 @@ func install(code: int,path: PackedVector2Array,velocity: float):
 		p.hunting.spatial.cover(1 if kind==0 else 0,i,bounds.grow(1))
 func next_event(code: int,tier: int) -> float:
 	var delay: float=p.simulation_detail.intervals[tier]
+	if tier==1: delay=maxf(delay,float(p.ecology.config.get("intermediate_ecology_seconds",10)))
 	if travel.has(code):
 		var r: Dictionary=travel[code];var length: float=r.lengths[-1]
 		# Wake before the route could cross into a higher-detail radius, even with a stationary camera.
@@ -169,13 +177,16 @@ func next_event(code: int,tier: int) -> float:
 			var distance: float=minf(at.distance_to(p.simulation_detail.boat),at.distance_to(p.simulation_detail.camera))
 			var radius: float=p.simulation_detail.intermediate_m if tier==2 else p.simulation_detail.detailed_m
 			delay=minf(delay,maxf(.5,(distance-radius)/float(r.speed)))
-		if float(r.speed)>0 and length>0: delay=minf(delay,maxf(.5,float(r.started)+length/float(r.speed)-p.elapsed))
+		if float(r.speed)>0 and length>0:
+			var arrival: float=float(r.started)+length/float(r.speed)
+			if arrival>p.elapsed+.001: delay=minf(delay,maxf(.5,arrival-p.elapsed))
 	var kind := code/STRIDE;var i := code%STRIDE
 	if kind==1: delay=minf(delay,maxf(.5,float(p.ecology.forage[i].next)-p.elapsed))
 	else:
 		var s: Dictionary=p.hunting.state(actor(code))
 		delay=minf(delay,maxf(.5,float(s.get("coarse_plan_at",p.elapsed+delay))-p.elapsed))
 		if s.stage==8: delay=minf(delay,maxf(.5,float(s.until)-p.elapsed))
+		if s.stage==0 and s.has("coarse_encounter_at"): delay=minf(delay,maxf(.5,float(s.coarse_encounter_at)-p.elapsed))
 	return p.elapsed+maxf(.5,delay)
 func encounter(aid: int,s: Dictionary,r: Dictionary):
 	var h=p.hunting;var at: Vector2=h.position(aid);var radius: float=minf(50,float(r.detect_ft)*.3048)
@@ -183,13 +194,13 @@ func encounter(aid: int,s: Dictionary,r: Dictionary):
 	for code in h.spatial.query(at,radius):
 		var kind := int(code)/STRIDE;var index := int(code)%STRIDE
 		if kind==1 and index==aid: continue
+		if not h.candidate_fits(aid,kind,index,h.length_cm(aid)*float(r.gape),r.style): continue
+		if at.distance_squared_to(h.candidate_position(kind,index))>radius*radius: continue
 		var scheduled := index if kind==1 else STRIDE+index
 		if kind<2:
 			if not p.schedule.alive(scheduled): continue
 			synchronize(scheduled)
 			if p.schedule.level(scheduled)==0: continue
-		if not h.candidate_fits(aid,kind,index,h.length_cm(aid)*float(r.gape),r.style): continue
-		if at.distance_squared_to(h.candidate_position(kind,index))>radius*radius: continue
 		var prey: Dictionary=h.prey(kind,index)
 		if not h.suitable(aid,kind,index,prey,r) or at.distance_squared_to(prey.position)>radius*radius: continue
 		eligible+=1

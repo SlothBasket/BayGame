@@ -343,10 +343,14 @@ func _timed_plan_bait(a: Dictionary):
 				# Depth only subtracts from v: a losing upper bound cannot win.
 				v+=float(habitat.get("bait_attraction",0))
 				if v<=score: continue
-				var candidate := sample(index,int(a.id)+int(p.elapsed),int(nav.nodes[anchor].component));var id: int=nav.nearest(candidate)
-				if id<0 or nav.nodes[id].component!=nav.nodes[anchor].component: continue
+				var id: int=habitat.nodes[0]
+				if nav.nodes[id].component!=nav.nodes[anchor].component: continue
 				v-=absf(float(nav.nodes[id].depth_m)-(1.5 if a.kind in [0,2,4,5,6] else 3.0))*.15
-				if v>score: score=v;target=candidate;chosen=id;a.preferred_area=habitat.id
+				if v>score: score=v;chosen=id;a.preferred_area=habitat.id
+		if chosen>=0:
+			target=sample(int(area_by_id[a.preferred_area]),int(a.id)+int(p.elapsed),int(nav.nodes[anchor].component))
+			chosen=nav.nearest(target)
+
 	if chosen<0: return
 	var path: PackedVector2Array=nav.route(at,target,chosen)
 	if path.is_empty():

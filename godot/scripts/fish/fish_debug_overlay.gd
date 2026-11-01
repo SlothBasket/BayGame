@@ -452,7 +452,7 @@ func _measured_draw():
 			if not a.get("active",true) or a.quantity<1: continue
 			var pos: Vector2=observed_position(1,index)
 			if not view_bounds.has_point(pos): continue
-			if not a.get("individual",false) and (main.camera.span<1200 or (entity==Entity.BAIT and entity_index==index)):
+			if not a.get("individual",false) and (main.camera.span<600 or (entity==Entity.BAIT and entity_index==index)):
 				var footprint := PackedVector2Array()
 				for n in range(17): footprint.append(pos-origin+p.food_web.member_offset(a,int(n*6283/16),p.hunting.school_radius(index)))
 				draw_polyline(footprint,Color(.5,.85,1,.35),mpp,true)
@@ -465,7 +465,7 @@ func _measured_draw():
 			else: draw_circle(pos,radius,color,false,1.5*mpp)
 			if a.get("fear",0)>.2: draw_circle(pos,radius*(1+a.fear*.8),Color(1,.4,.5,.6),false,mpp)
 			var direction: Vector2=a.get("heading",Vector2.ZERO);draw_line(pos,pos+direction*(radius+8*mpp),color,1.5*mpp)
-			if main.camera.span<3500 or (entity==Entity.BAIT and entity_index==index): caption(pos,"%s #%d ≈%.0f" % [eco.FORAGE_NAMES[int(a.kind)],a.id,a.quantity],mpp,color)
+			if main.camera.span<250 or (entity==Entity.BAIT and entity_index==index): caption(pos,"%s #%d ≈%.0f" % [eco.FORAGE_NAMES[int(a.kind)],a.id,a.quantity],mpp,color)
 	if overview:
 		for n in range(dots.size()):
 			if not dots[n].is_empty(): draw_set_transform(overview_origin-origin);draw_multiline(dots[n],COLORS[n] if n<COLORS.size() else (BAIT_COLORS[n-COLORS.size()] if n<COLORS.size()+8 else Color(1,.35,.85)),2*mpp);draw_set_transform(Vector2.ZERO)

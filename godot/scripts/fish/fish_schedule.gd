@@ -32,7 +32,14 @@ func level(code: int) -> int:
 		elif kind==1: p.ecology.forage[i].detail=0
 		else: p.ecology.predators[i].detail=0
 		return 0
-	return p.simulation_detail.bait_level(i) if kind==1 else p.simulation_detail.actor_level(i if kind==0 else -i-1)
+	# Selection-dependent pursuit checks are only needed while observing an animal.
+	if p.observed_fish>=0 or p.food_web.observed_bait>=0 or p.simulation_detail.selected_predator>=0:
+		return p.simulation_detail.bait_level(i) if kind==1 else p.simulation_detail.actor_level(i if kind==0 else -i-1)
+	var old: int=p.simulation_detail.fish_levels[i] if kind==0 else int((p.ecology.forage if kind==1 else p.ecology.predators)[i].get("detail",2))
+	var result: int=p.simulation_detail.level(p.background.position(code,p.elapsed),old)
+	if kind==0: p.simulation_detail.fish_levels[i]=result
+	else: (p.ecology.forage if kind==1 else p.ecology.predators)[i].detail=result
+	return result
 func register(kind: int,index: int):
 	if not ready: return
 	var code := kind*STRIDE+index
@@ -80,8 +87,9 @@ func last_time(code: int) -> float:
 	return float((p.ecology.forage if kind==1 else p.ecology.predators)[i].last)
 func promote(code: int):
 	if not alive(code): return
+	var continuing: bool=float(urgent.get(code,0))>p.elapsed
 	urgent[code]=p.elapsed+6
-	wake(code)
+	if not continuing: wake(code)
 func wake(code: int):
 	if not alive(code): cancel(code);return
 	if due.has(code) and float(due[code])<=p.elapsed+.5: return
