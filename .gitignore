@@ -17,3 +17,10 @@ godot-path.txt
 *.zip
 builds/windows/godot/
 builds/windows/*.pck
+
+# Native extension is built locally
+godot/native/*.dll
+godot/native/*.pdb
+godot/native/*.lib
+godot/native/*.exp
+

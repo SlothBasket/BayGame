@@ -404,6 +404,9 @@ func serialize() -> Dictionary:
 
 
 func spawn_single(kind: int,at: Vector2) -> int:
+	if p.native!=null:
+		if kind<0 or kind>=8 or not nav.wet(at): return -1
+		p.native.engine.spawn_bait(kind,at);return 0
 	if kind<0 or kind>=eco.FORAGE_NAMES.size() or not nav.wet(at): return -1
 	var node: int=nav.nearest(at)
 	if node<0: return -1

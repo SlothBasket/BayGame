@@ -45,6 +45,11 @@ func stats(key: String) -> String:
 	if values.is_empty(): return "pending"
 	return "p50 %.2f p95 %.2f max %.2f / call-max %.2f ms (%d calls)" % [values[values.size()/2],values[mini(values.size()-1,int(values.size()*.95))],values[-1],peaks[key],calls[key]]
 func report(p,include_details := true) -> String:
+	if p.native!=null:
+		var text: String=p.native.report()
+		if include_details:
+			for key in samples: text+=key+": "+stats(key)+"\n"
+		return text
 	var levels := PackedInt32Array([0,0,0]);var bait := 0;var escapees := 0
 	for i in range(p.ids.size()):
 		if p.ecology.alive[i]!=0: levels[p.simulation_detail.fish_levels[i]]+=1

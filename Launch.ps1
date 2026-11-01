@@ -11,6 +11,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $projectPath 'project.godot'))) { th
 Write-Host "Live project: $projectPath"
 Write-Host "Godot: $engine"
 if ($CheckOnly) { exit 0 }
+if ($GameArguments -notcontains '--gdscript-ecosystem') {
+    $dll = Join-Path $projectPath 'native/bay_ecosystem.dll'
+    $newest = Get-ChildItem (Join-Path $PSScriptRoot 'native') -Recurse -File | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    if (-not (Test-Path $dll) -or $newest.LastWriteTimeUtc -gt (Get-Item $dll).LastWriteTimeUtc) {
+        & (Join-Path $PSScriptRoot 'tools/native/Build.ps1')
+    }
+}
+
 $logFolder = Join-Path $PSScriptRoot '.local/logs'
 New-Item -ItemType Directory -Force -Path $logFolder | Out-Null
 # Import saved resources and refresh global script classes before every source launch.

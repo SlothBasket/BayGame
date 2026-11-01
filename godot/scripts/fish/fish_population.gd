@@ -1,5 +1,6 @@
 class_name FishPopulation
 extends RefCounted
+var native
 var size_distribution_version := 0
 var startup_error := ""
 var ecology_ready := false
@@ -24,7 +25,11 @@ func initialize(root: String) -> bool:
 	if not setup_movement(root): return startup_failed("movement: "+movement.last_error)
 	if not setup_food_web(root):
 		return startup_failed("food web: "+food_web.last_error if not food_web.ready else "hunting: "+hunting.last_error)
-	startup_error="";startup_ready=true;return true
+	startup_error="";startup_ready=true
+	if not "--gdscript-ecosystem" in OS.get_cmdline_user_args() and ClassDB.class_exists("BaySimulation"):
+		native=preload("res://scripts/fish/fish_native_bridge.gd").new()
+		if not native.initialize(self): native=null;return startup_failed("native core failed to initialize")
+	return true
 func initialization_problem() -> String:
 	if not startup_error.is_empty(): return startup_error
 	if ecology==null or not ecology_ready: return "ecology not initialized"
@@ -128,6 +133,7 @@ func advance(i: int,dt: float):
 		else: progress[i]=clampf(progress[i],0,1);direction[i]*=-1
 	place(i)
 func tick(dt: float,player: GeoPosition,depth_service: DepthService=null):
+	if native!=null: native.tick();return
 	if not zones.is_empty(): tick_ecosystem(dt,player);return
 	if ids.is_empty(): return
 	var begin := Time.get_ticks_usec();elapsed+=dt
@@ -192,6 +198,8 @@ func configure_zones(data: Dictionary,count: int):
 	zones=data.zones
 	for zone in zones: zone.neighbors=Array(PackedInt32Array(zone.neighbors))
 	fingerprint=JSON.stringify(zones).sha256_text();rng.randomize()
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--ecosystem-seed="): rng.seed=int(arg.trim_prefix("--ecosystem-seed="))
 	ids.resize(count);east.resize(count);south.resize(count);region.resize(count);last_update.resize(count)
 	species.resize(count);size_cm.resize(count);preferred_depth.resize(count);hunger.resize(count);behavior.resize(count);destination.resize(count);decision_at.resize(count);speed.resize(count)
 	food.resize(zones.size());zone_counts.resize(zones.size());zone_counts.fill(0);zone_species_counts.resize(zones.size());buckets.clear();spatial.clear()
@@ -339,6 +347,7 @@ func displayed(kind: int,index: int) -> Vector2:
 	diagnostics.add("Interpolation",Time.get_ticks_usec()-diagnostic_begin)
 	return result
 func _measured_displayed(kind: int,index: int) -> Vector2:
+	if native!=null and native.positions.has(kind*1000000+index): return native.displayed(kind*1000000+index)
 	var code := kind*1000000+index
 	if background.travel.has(code): return background.position(code,presentation.simulation_clock)
 	var at := Vector2(east[index],south[index]) if kind==0 else Vector2.ZERO
@@ -426,6 +435,7 @@ func setup_movement(root: String) -> bool:
 	return movement.setup(self,root,ecology.pending_movement)
 
 func dispose():
+	if native!=null: native.shutdown();native=null
 	background.p=null;background.travel.clear()
 	schedule.p=null;schedule.ready=false
 	if simulation_detail!=null: simulation_detail.p=null;simulation_detail=null

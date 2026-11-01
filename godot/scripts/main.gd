@@ -113,6 +113,7 @@ func _process(dt):
 	if fish!=null and fish.startup_ready and not hud.menu.visible:
 		fish.simulation_detail.boat=Vector2(boat.geo.east,boat.geo.south);fish.simulation_detail.camera=Vector2(camera.geo.east,camera.geo.south)
 		fish.tick(wall_dt,boat.geo,depth)
+	if fish!=null and fish.native!=null and hud.menu.visible: fish.native.tick(true)
 	if fish_overlay!=null: fish_overlay.tick(wall_dt)
 	queue_redraw()
 	if fish!=null: fish.diagnostics.add("Main process",Time.get_ticks_usec()-now)

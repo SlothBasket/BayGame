@@ -241,6 +241,9 @@ func _measured_tick(dt: float):
 	real_time+=dt
 	if bait_menu.visible and (not enabled or main.hud.menu.visible): bait_menu.hide()
 	if main.fish!=null: main.fish.presentation.view_active=enabled;main.fish.presentation.view_bounds=view_bounds
+	if main.fish!=null and main.fish.native!=null:
+		main.fish.native.view=view_bounds if enabled else Rect2()
+		candidates=main.fish.native.candidates
 	if not enabled or not available(): return
 	if following and entity!=Entity.NONE:
 		var at := selected_position();var t := 1-exp(-10*minf(dt,.05))
@@ -279,7 +282,8 @@ func cache_view():
 	var size := get_viewport_rect().size;var half: Vector2=Vector2(size.x/size.y,1)*main.camera.span*.5
 	cached_span=main.camera.span;cached_center=Vector2(main.camera.geo.east,main.camera.geo.south)
 	view_bounds=Rect2(cached_center-half,half*2).grow(250)
-	candidates=main.fish.hunting.spatial.rectangle(view_bounds)
+	if main.fish.native!=null: main.fish.native.view=view_bounds
+	candidates=main.fish.native.candidates if main.fish.native!=null else main.fish.hunting.spatial.rectangle(view_bounds)
 	cached_revision=main.fish.hunting.spatial.revision;view_refresh_at=real_time+1
 	main.fish.presentation.view_bounds=view_bounds
 	visible_areas.clear()
@@ -368,7 +372,7 @@ func hunt_text(actor: int) -> String:
 	if not available(): return "Hunting unavailable"
 	var p=main.fish;var h=p.hunting;var s: Dictionary=h.state(actor);var target: Dictionary=h.tracked_prey(s)
 	var text := "%s\n%s\nEnergy %.0f%% (100 = rested) · captures %d / misses %d\n" % [h.LABELS[int(s.stage)],s.activity,s.energy*100,s.captures,s.misses]
-	if s.stage in [6,8]: text+="Meal captured at physical contact; school may move away.\n"
+	if s.stage in [6,8]: text+="Captured during a valid attack opportunity; school may move away.\n"
 	elif not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),target)/.9144]
 	else: text+="Prey: searching\n"
 	text+="\nRecent: "+str(s.last_event)+"\n"
@@ -573,6 +577,8 @@ func school_target_kind(state: Dictionary,parent_id: int,school_index: int) -> i
 
 
 func build_overview():
+	if main.fish.native!=null:
+		overview_points=main.fish.native.dots;overview_origin=Vector2.ZERO;return
 	# Bay-wide movement is subpixel. Build a complete marker buffer incrementally,
 	# while the previous buffer remains visible; close views still interpolate every frame.
 	if overview_build.is_empty():
