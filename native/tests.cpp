@@ -64,6 +64,7 @@ struct EngineTest {
     static void run() {
         Engine e;
         setup(e);
+        e.detach_min=e.detach_max=2;e.detach_interval=4;
         e.scatter(0, {258, 256});
         e.sim = 5;
         e.scatter(0, {258, 256});
@@ -125,6 +126,7 @@ struct EngineTest {
         Engine competition;
         setup(competition);
         competition.animals[0].quantity = 1;
+        competition.animals[0].individual = true;
         competition.hit_min = competition.hit_max = 1;
         Animal predator;
         predator.at = competition.animals[0].at;
@@ -149,8 +151,65 @@ struct EngineTest {
         check(first.event_count == second.event_count, "speed changes skipped events");
         check((first.position(first.animals[0], 60) - second.position(second.animals[0], 60)).len() < 1e-7,
               "speed changed trajectory");
+
+        Engine ecology;
+        setup(ecology);
+        check(!ecology.eat(0), "ordinary pod directly edible");
+        ecology.animals[0].quantity=1;
+        check(!ecology.eat(0), "quantity changed prey type exception");
+        ecology.animals[0].quantity=30;
+        Animal hunter;
+        hunter.id=99;hunter.kind=0;hunter.species=2;hunter.index=0;hunter.node=0;
+        hunter.at={248,256};hunter.depth=.8;hunter.size=50;hunter.heading={1,0};
+        hunter.profile.detect=30;hunter.profile.reach=2;hunter.profile.burst=2;
+        hunter.target=ecology.handle(0);
+        ecology.animals.push_back(hunter);ecology.query_marks.push_back(0);ecology.occupancy(1);
+        auto &h=ecology.animals[1];
+        auto &pod=ecology.animals[0];
+        check(ecology.senses(h,pod),"ahead prey not detected");
+        h.heading={-1,0};check(!ecology.senses(h,pod),"rear distant prey detected");
+        h.at={254,256};check(ecology.senses(h,pod),"close rear awareness missing");
+        h.at={248,256};h.heading={1,0};
+        ecology.hunt(1,.2);
+        check(pod.escapees==0,"passive detection fragmented pod");
+        h.at={252,256};h.path.clear();h.sync_time=ecology.sim;
+        ecology.hunt(1,.2);
+        check(pod.escapees>=1 && pod.escapees<=3,"credible approach did not detach a handful");
+        check(h.attempts==0 && h.misses==0 && h.captures==0,"school pressure counted as attack");
+        check(units(ecology)==30,"pressure duplicated prey");
+        auto edible=ecology.acquire(1);
+        check(ecology.valid(edible) && ecology.animals[edible.slot].individual,"school preferred over straggler");
+        auto before=pod.escapees;
+        for(int k=0;k<10;k++) ecology.scatter(0,h.at);
+        check(pod.escapees==before,"multiple predators bypassed shared cooldown");
+        ecology.bait(0,.2);check(pod.state==10 && pod.route_speed>.5,"school did not flee cohesively");
+        uint32_t escaped=edible.slot;
+        ecology.sim=10;
+        pod.path.clear();pod.at={260,256};pod.threat_until=0;
+        auto &survivor=ecology.animals[escaped];
+        survivor.path.clear();survivor.at=pod.at;survivor.depth=pod.depth;
+        survivor.threat_until=0;survivor.regroup_at=0;
+        ecology.bait(escaped,.2);
+        check(!survivor.alive && ecology.rejoined==1,"safe survivor did not rejoin moving parent");
+        Animal orphan;orphan.kind=1;orphan.species=1;orphan.individual=orphan.temporary=true;
+        orphan.parent_id=999999;orphan.at=pod.at;orphan.depth=pod.depth;orphan.node=0;
+        auto orphan_slot=ecology.add_bait(orphan);ecology.bait(orphan_slot,.2);
+        check(!ecology.animals[orphan_slot].alive && ecology.rejoined==2,"orphan adoption/rejoin failed");
+        orphan.species=7;orphan.at={400,400};orphan.parent_id=999999;
+        orphan_slot=ecology.add_bait(orphan);ecology.bait(orphan_slot,.2);
+        check(ecology.animals[orphan_slot].alive && ecology.animals[orphan_slot].state==14 && ecology.animals[orphan_slot].hunger==0,"orphan without school did not shelter");
+        Engine fry;setup(fry);fry.animals[0].species=0;
+        fry.scatter(0,{258,256});check(fry.animals.size()==1,"fry detached");
+        check(fry.eat(0) && fry.animals[0].quantity==29,"fry direct consumption failed");
+        Engine smooth;setup(smooth);
+        auto &moving=smooth.animals[0];moving.individual=true;moving.velocity={1,0};
+        smooth.steer(moving,{280,256},.2,1);
+        check(std::abs(moving.at.x-256)<1e-8 && smooth.position(moving,.1).x>256,"steering jumped instead of publishing trajectory");
+        smooth.sim=1;smooth.animals[0].path.clear();smooth.animals[0].shelter_hold=.5;
+        smooth.shelter(smooth.animals[0]);
+        for(size_t k=1;k<smooth.animals[0].path.size();k++) check(smooth.clear(smooth.animals[0].path[k-1],smooth.animals[0].path[k]),"shelter route crossed land");
         std::cout << "PASS conservation, rejoining, escape cap, stable handles, one-time consumption, route "
-                     "continuity, event-clock invariance\n";
+                     "continuity, event-clock invariance, school pressure, prey priority, directional senses, fry exception, orphan survival, smooth steering\n";
     }
 };
 } // namespace bay

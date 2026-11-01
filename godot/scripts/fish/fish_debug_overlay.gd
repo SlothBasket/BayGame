@@ -315,8 +315,12 @@ func refresh():
 		if advanced: text+="\n"+eco.describe(i)+"\nNavigation target: "+str(p.movement.targets[i])
 	elif entity==Entity.BAIT:
 		var a: Dictionary=eco.forage[entity_index];heading.text="%s %s #%d" % [eco.FORAGE_NAMES[int(a.kind)],"individual" if a.get("individual",false) else "school",a.id]
-		text+="%.0f prey · %.1f in\n%s\nHunger %.0f%% · danger %.0f%%\nTarget habitat: %s\n\nRecent: %s\n" % [a.quantity,a.size_cm/2.54,a.get("activity","moving"),a.get("hunger",0)*100,a.get("fear",0)*100,a.get("preferred_area","searching"),a.get("last_event","")]
+		text+="%.0f prey · %.1f in\n%s\nDanger %.0f%%\nTarget habitat: %s\n\nRecent: %s\n" % [a.quantity,a.size_cm/2.54,a.get("activity","moving"),a.get("fear",0)*100,a.get("preferred_area","searching"),a.get("last_event","")]
 		text+=school_diagnostics()
+		if p.native!=null:
+			var destination: Vector2=a.get("native_destination",at)
+			text+="Heading %.0f° · shelter destination %.0f yd away\n" % [rad_to_deg(Vector2(a.heading).angle()),at.distance_to(destination)/.9144]
+			if a.fear>.1: text+="Threat E %.2f / S %.2f mi\n" % [Vector2(a.native_threat).x/1609.344,Vector2(a.native_threat).y/1609.344]
 		if not a.get("active",true): text+="Retired: "+str(a.activity)+"\n"
 		if a.get("temporary",false):
 			text+="\nEscapee #%d · parent school #%d\n%s\n" % [a.id,a.parent_id,a.activity]
@@ -372,6 +376,7 @@ func hunt_text(actor: int) -> String:
 	if not available(): return "Hunting unavailable"
 	var p=main.fish;var h=p.hunting;var s: Dictionary=h.state(actor);var target: Dictionary=h.tracked_prey(s)
 	var text := "%s\n%s\nEnergy %.0f%% (100 = rested) · captures %d / misses %d\n" % [h.LABELS[int(s.stage)],s.activity,s.energy*100,s.captures,s.misses]
+	if s.get("school_pressure",false): text+="School pressure target — captures require a separated individual.\n"
 	if s.stage in [6,8]: text+="Captured during a valid attack opportunity; school may move away.\n"
 	elif not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),target)/.9144]
 	else: text+="Prey: searching\n"
@@ -457,13 +462,15 @@ func _measured_draw():
 			var pos: Vector2=observed_position(1,index)
 			if not view_bounds.has_point(pos): continue
 			if not a.get("individual",false) and (main.camera.span<600 or (entity==Entity.BAIT and entity_index==index)):
+				var axes: Vector2=a.get("native_axes",Vector2(p.hunting.school_radius(index),p.hunting.school_radius(index)*.55))
+				var forward: Vector2=a.get("heading",Vector2.RIGHT)
+				var side := Vector2(-forward.y,forward.x)
 				var footprint := PackedVector2Array()
-				for n in range(17): footprint.append(pos-origin+p.food_web.member_offset(a,int(n*6283/16),p.hunting.school_radius(index)))
-				draw_polyline(footprint,Color(.5,.85,1,.35),mpp,true)
-				if main.camera.span<1200:
-					for n in range(mini(8,int(a.quantity))):
-						var member: Vector2=p.food_web.member_offset(a,int(a.id)*137+n*613,p.hunting.school_radius(index))
-						if p.movement.nav.clear(Vector2(a.x,a.y),Vector2(a.x,a.y)+member): draw_circle(pos-origin+member,1.5*mpp,BAIT_COLORS[int(a.kind)])
+				for n in range(33):
+					var angle := TAU*n/32
+					footprint.append(pos-origin+forward*cos(angle)*axes.x+side*sin(angle)*axes.y)
+				draw_polyline(footprint,Color(.5,.85,1,.55),mpp,true)
+
 			pos-=origin;var color: Color=Color(1,.35,.85) if a.get("temporary",false) else BAIT_COLORS[int(a.kind)];var radius: float=(2.5 if a.get("individual",false) else clampf(4+sqrt(a.quantity)*.6,4,15))*mpp
 			if a.kind in [4,5]: draw_rect(Rect2(pos-Vector2.ONE*radius,Vector2.ONE*radius*2),color,false,mpp)
 			else: draw_circle(pos,radius,color,false,1.5*mpp)
@@ -509,6 +516,16 @@ func _measured_draw():
 		if show_paths: selected_paths(at,mpp)
 	if entity in [Entity.FISH,Entity.PREDATOR]:
 		var actor := entity_index if entity==Entity.FISH else -entity_index-1
+		var selected_hunt: Dictionary=p.hunting.state(actor)
+		if advanced and selected_hunt.has("native_detect"):
+			var pos := selected_position()-origin
+			var facing: Vector2=selected_hunt.heading
+			var half_angle := acos(clampf(float(selected_hunt.native_cone_cos),-1,1))
+			var distance: float=selected_hunt.native_detect
+			draw_line(pos,pos+facing*distance,Color(.9,.8,.3,.6),mpp)
+			for angle in [-half_angle,half_angle]: draw_line(pos,pos+facing.rotated(angle)*distance,Color(.9,.8,.3,.4),mpp)
+			draw_arc(pos,distance,facing.angle()-half_angle,facing.angle()+half_angle,32,Color(.9,.8,.3,.4),mpp,true)
+			draw_circle(pos,selected_hunt.native_awareness,Color(.9,.8,.3,.35),false,mpp)
 		for event in p.hunting.events:
 			if event.actor!=actor or p.elapsed-event.time>20 or not view_bounds.has_point(event.position): continue
 			if not ("strike" in event.text or "capture:" in event.text or "escape" in event.text): continue
@@ -550,6 +567,8 @@ func school_diagnostics() -> String:
 	if school_report_index==entity_index and now-school_report_at<2000: return school_report
 	school_report_at=now;school_report_index=entity_index
 	var p=main.fish;var a: Dictionary=p.ecology.forage[entity_index]
+	if p.native!=null:
+		return "\nActive detached %d · targeting this prey %d / its escapees %d\n" % [a.get("escapees",0),a.get("native_targeters",0),a.get("native_child_targeters",0)]
 	var parent_id: int=int(a.get("parent_id",-1)) if a.get("temporary",false) else int(a.id)
 	var school_index: int=p.food_web.bait_slots.get(parent_id,-1)
 	if school_index<0: return "Parent school unavailable\n"

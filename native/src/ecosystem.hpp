@@ -46,12 +46,12 @@ struct Handle {
 };
 struct Profile {
     double cruise = .5, burst = 2, detect = 30, reach = 1.2, lunge = 8, gape = .4, chance = .6,
-           cooldown = 1.5, consume = 2, rest = 6;
+           cooldown = 1.5, consume = 2, rest = 6, cone_cos = .1736481777, awareness = .2, awareness_cap = 6;
     int style = 0;
 };
 struct Node {
     V at;
-    double depth = 2, cover = .1, food = 1, food_time = 0;
+    double depth = 2, cover = .1, shore = 100, food = 1, food_time = 0;
     int zone = 0, component = 0;
     std::vector<int> neighbors;
 };
@@ -62,10 +62,10 @@ struct Animal {
         node = -1;
     bool alive = true, individual = false, temporary = false, return_home = false;
     int quantity = 1, capacity = 1, escapees = 0, captures = 0, misses = 0, attempts = 0;
-    V at, velocity, home_at, threat;
+    V at, velocity, heading{1,0}, home_at, threat, escape_heading;
     double depth = 1, holding = 1, target_depth = 1, bottom = 2, size = 30, hunger = .5, energy = 1, fear = 0,
            spread = 0;
-    double sync_time = 0, recruitment = 0, merge_at = 0, last = 0, due = 0, decision = 0, detect_at = 0,
+    double tracked_at = 0, reaction_at = 0, shelter_hold = 0, sync_time = 0, recruitment = 0, merge_at = 0, last = 0, due = 0, decision = 0, detect_at = 0,
            attack_at = 0, until = 0, threat_until = 0, pursuit_started = 0, detached_at = 0, regroup_at = 0,
            route_started = 0, route_speed = .5, route_length = 0, scatter_at = 0;
     Handle target;
@@ -88,14 +88,17 @@ struct Row {
     uint64_t id, parent_id, target_id;
     uint32_t generation;
     bool alive, temporary, individual;
-    V at, velocity, destination;
+    V at, velocity, heading, destination, threat;
+    double major = 0, minor = 0, detect = 0, awareness = 0, cone_cos = 0;
+    int targeters = 0, child_targeters = 0;
     double depth, holding, target_depth, bottom, size, hunger, energy, fear, spread;
 };
 struct Snapshot {
     std::vector<Row> rows;
-    double time = 0, requested = 0, cpu_ms = 0, wall = 0, achieved = 0, nav_ms = 0;
+    double time = 0, requested = 0, cpu_ms = 0, wall = 0, achieved = 0, nav_ms = 0, hunting_ms = 0;
     uint64_t units = 0, initial_units = 0, created = 0, events = 0, consumed = 0, detached = 0, rejoined = 0, queries = 0, routes = 0;
-    int counts[3] = {}, alive[4] = {};
+    int counts[3] = {}, alive[4] = {}, bait_counts[3] = {};
+    uint64_t prey_units = 0;
     size_t memory = 0;
 };
 struct Controls {
@@ -118,6 +121,10 @@ class Engine {
 
   public:
     double hit_min = .15, hit_max = .95, energy_weight = .18, cover_weight = .18;
+    int bait_limit = 48000, escape_cap = 6, detach_min = 1, detach_max = 3;
+    double detach_interval = 6, pressure_range = 5;
+    // 0: explicitly direct aggregate, 1: breakaway school. Individuals always edible.
+    int prey_modes[8] = {0,1,1,1,0,0,1,1};
     std::vector<Animal> animals;
     std::vector<Node> nodes;
     std::vector<uint8_t> water;
@@ -151,6 +158,8 @@ class Engine {
     std::vector<uint32_t> free_bait, query_marks;
     uint32_t query_stamp = 0;
     std::mt19937_64 rng;
+    int next_bait_index = 0;
+    double hunting_total = 0;
     double sim = 0, requested = 0, cpu_total = 0, nav_total = 0, wall_total = 0;
     uint64_t initial_units = 0, created = 0, next_bait_id = 1, event_count = 0, consumed = 0, detached = 0, rejoined = 0, query_count = 0,
              route_count = 0;
@@ -185,6 +194,12 @@ class Engine {
     void remove_occupancy(uint32_t slot);
     void query(V at, double radius, std::vector<uint32_t> &result);
     void plan(Animal &a);
+    void shelter(Animal &a);
+    bool breakaway(Animal const &a) const;
+    V axes(Animal const &a) const;
+    V prey_point(Animal const &prey, V observer) const;
+    bool senses(Animal const &a, Animal const &prey) const;
+    Handle acquire(uint32_t slot, bool edible_only = false);
     void hunt(uint32_t slot, double dt);
     void bait(uint32_t slot, double dt);
     bool eat(uint32_t slot);

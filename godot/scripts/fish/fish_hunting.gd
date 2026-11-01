@@ -111,6 +111,12 @@ func prey_position(actor: int,kind: int,index: int,data: Dictionary) -> Vector2:
 	if kind!=0: return at
 	var a: Dictionary=eco.forage[index]
 	if a.get("individual",false): return at
+	if p.native!=null:
+		var axes: Vector2=a.get("native_axes",Vector2.ONE)
+		var heading: Vector2=a.get("heading",Vector2.RIGHT);var side := Vector2(-heading.y,heading.x)
+		var delta := position(actor)-at
+		var radial := sqrt(pow(delta.dot(heading)/maxf(.01,axes.x),2)+pow(delta.dot(side)/maxf(.01,axes.y),2))
+		return position(actor) if radial<=1 else at+delta/radial
 	var member: int=int(state(actor).get("member",0))
 	var seed_value := (actor+10001)*7919+int(a.id)*137+member*613
 	var angle := float(posmod(seed_value,6283))*.001

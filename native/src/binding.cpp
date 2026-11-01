@@ -1,7 +1,8 @@
 #include "ecosystem.hpp"
 #ifdef _WIN32
-#include <psapi.h>
 #include <windows.h>
+
+#include <psapi.h>
 #endif
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -81,7 +82,13 @@ class BaySimulation : public RefCounted {
             n.depth = number(d, "depth_m", 2);
             n.zone = int(d["zone"]);
             n.component = int(d["component"]);
-            n.cover = number(d, "shore_m", 100) < 100 ? .4 : .1;
+            n.shore=number(d,"shore_m",100);
+            n.cover = n.shore < 100 ? .4 : .1;
+            Array tags=d.get("tags",Array());
+            for(int t=0;t<tags.size();t++) {
+                String tag=tags[t];
+                if(tag.contains("mangrove") || tag.contains("grass") || tag.contains("pothole") || tag.contains("oyster") || tag.contains("structure") || tag.contains("creek")) n.cover=std::max(n.cover,.7);
+            }
             PackedInt32Array neighbors = d["neighbors"];
             n.neighbors.assign(neighbors.ptr(), neighbors.ptr() + neighbors.size());
         }
@@ -117,6 +124,9 @@ class BaySimulation : public RefCounted {
             a.profile.lunge = number(r, "lunge_ft", 20) * .3048;
             a.profile.chance = number(r, "capture_chance", .6);
             a.profile.gape = number(r, "gape", .4);
+            a.profile.cone_cos=std::cos(number(r,"field_of_view_degrees",160)*3.141592653589793/360);
+            a.profile.awareness=number(r,"close_awareness_fraction",.2);
+            a.profile.awareness_cap=number(r,"close_awareness_cap_ft",20)*.3048;
             a.profile.consume = number(r, "consume_seconds", 2);
             a.profile.cooldown = number(r, "attack_cooldown_seconds", 1.5);
             String style = r.get("style", "patrol");
@@ -127,6 +137,14 @@ class BaySimulation : public RefCounted {
                                                 : (style == "structure" || style == "bottom_shark" ? 3 : 0));
             e.animals.push_back(std::move(a));
         }
+        Dictionary ecology=world.get("ecology",Dictionary());
+        e.bait_limit=int(number(ecology,"bait_record_limit",48000));
+        e.escape_cap=int(number(ecology,"escapees_per_school",6));
+        e.detach_min=int(number(ecology,"detach_min",1));e.detach_max=std::max(e.detach_min,int(number(ecology,"detach_max",3)));
+        e.detach_interval=std::max(3.0,number(ecology,"detach_interval_seconds",6));
+        e.pressure_range=number(ecology,"school_pressure_ft",16)*.3048;
+        Array modes=ecology.get("aggregate_prey_modes",Array());
+        for(int i=0;i<std::min(8,int(modes.size()));i++) e.prey_modes[i]=String(modes[i])=="breakaway"?1:0;
         Dictionary tuning = world.get("attack_resolution", Dictionary());
         e.hit_min = number(tuning, "minimum", .15);
         e.hit_max = number(tuning, "maximum", .95);
@@ -227,7 +245,8 @@ class BaySimulation : public RefCounted {
                             r.spread,
                             double(r.event),
                             double(r.home),
-                            double(r.feeding)};
+                            double(r.feeding),r.heading.x,r.heading.y,r.major,r.minor,r.detect,r.awareness,r.cone_cos,
+                            double(r.targeters),double(r.child_targeters),r.threat.x,r.threat.y};
             for (double value : row)
                 data.push_back(value);
         }
@@ -253,6 +272,11 @@ class BaySimulation : public RefCounted {
         stats["detached"] = int64_t(snap->detached);
         stats["rejoined"] = int64_t(snap->rejoined);
         stats["navigation_ms"] = snap->nav_ms;
+        stats["hunting_ms"] = snap->hunting_ms;
+        stats["prey_units"]=int64_t(snap->prey_units);
+        stats["records"]=int64_t(snap->rows.size());
+        Array bait_counts;for(int n:snap->bait_counts) bait_counts.append(n);
+        stats["bait_counts"]=bait_counts;
         stats["queries"] = int64_t(snap->queries);
         stats["routes"] = int64_t(snap->routes);
         stats["memory_bytes"] = int64_t(snap->memory);

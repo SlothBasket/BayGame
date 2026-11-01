@@ -104,6 +104,7 @@ void Engine::advance(Animal &a, double time) {
     a.sync_time = time;
     if (dt > 0 && (a.at - previous).len2() > 1e-10)
         a.velocity = (a.at - previous) * (1 / dt);
+    if (a.velocity.len2() > .0001) a.heading = a.velocity.unit();
     double rate = (a.kind == 1 ? .25 : .4);
     a.depth += clamp(a.target_depth - a.depth, -rate * dt, rate * dt);
     a.depth = clamp(a.depth, 0, std::max(.02, a.bottom - .02));
@@ -115,7 +116,8 @@ void Engine::route(Animal &a, V goal, int target_node, double speed) {
     a.path.clear();
     a.lengths.clear();
     a.path.push_back(start);
-    if (clear(start, goal))
+    bool coastal = a.kind == 1 && !a.individual && a.species != 0 && (goal-start).len() > 60;
+    if (!coastal && clear(start, goal))
         a.path.push_back(goal);
     else {
         int from = nearest(start, a.node >= 0 ? nodes[a.node].component : -1);
@@ -141,7 +143,8 @@ void Engine::route(Animal &a, V goal, int target_node, double speed) {
                 for (int next : nodes[n].neighbors) {
                     if (next < 0 || next >= int(nodes.size()))
                         continue;
-                    double c = costs[n] + (nodes[n].at - nodes[next].at).len();
+                    double penalty = coastal ? 1 + std::min(4.0, nodes[next].shore / 180) + std::max(0.0, nodes[next].depth - 4) * .4 : 1;
+                    double c = costs[n] + (nodes[n].at - nodes[next].at).len() * penalty;
                     if (visited[next] != search_stamp || c < costs[next]) {
                         visited[next] = search_stamp;
                         costs[next] = c;
@@ -172,6 +175,7 @@ void Engine::route(Animal &a, V goal, int target_node, double speed) {
     a.route_length = a.lengths.back();
     a.route_started = sim;
     a.route_speed = std::max(0.0, speed);
+    if (a.path.size()>1 && (a.path[1]-start).len2()>.0001) a.heading=(a.path[1]-start).unit();
     nav_total += seconds(Clock::now() - begin) * 1000;
 }
 void Engine::remove_occupancy(uint32_t slot) {
@@ -265,7 +269,85 @@ void Engine::schedule(uint32_t slot, double at) {
     ++a.token;
     events.push({at, slot, a.generation, a.token});
 }
+bool Engine::breakaway(Animal const &a) const {
+    return a.kind==1 && !a.individual && prey_modes[a.species]==1;
+}
+V Engine::axes(Animal const &a) const {
+    if(a.kind!=1 || a.individual) return {};
+    double radius=clamp(std::sqrt(double(a.quantity))*.32, .6, 8);
+    return {radius*(1+a.fear*.45), radius*.55};
+}
+V Engine::prey_point(Animal const &prey, V observer) const {
+    V center=position(prey,sim), d=observer-center, shape=axes(prey);
+    if(shape.x==0 || d.len2()<1e-10) return center;
+    V h=prey.heading, side{-h.y,h.x};
+    double x=d.x*h.x+d.y*h.y,y=d.x*side.x+d.y*side.y;
+    double q=std::sqrt(x*x/(shape.x*shape.x)+y*y/(shape.y*shape.y));
+    return q<=1 ? observer : center+d*(1/q);
+}
+bool Engine::senses(Animal const &a, Animal const &prey) const {
+    V delta=prey_point(prey,a.at)-a.at;
+    double d=delta.len(), vertical=std::abs(prey.depth-a.depth);
+    if(d*d+vertical*vertical>a.profile.detect*a.profile.detect) return false;
+    double close=std::min(a.profile.awareness_cap,a.profile.detect*a.profile.awareness);
+    if(d*d+vertical*vertical<=close*close) return true;
+    return d>.0001 && (delta.x*a.heading.x+delta.y*a.heading.y)/d>=a.profile.cone_cos;
+}
+Handle Engine::acquire(uint32_t slot, bool edible_only) {
+    auto const &a=animals[slot];
+    thread_local std::vector<uint32_t> candidates;
+    query(a.at,a.profile.detect+12,candidates);
+    double best=-1e30; Handle chosen;
+    for(auto i:candidates) {
+        auto const &prey=animals[i];
+        if(i==slot || prey.kind==2 || prey.size>=a.size*a.profile.gape || prey.quantity<1 ||
+            (prey.kind==0 && prey.species==a.species && prey.size>a.size*.3)) continue;
+        if(a.profile.style==3 && prey.kind!=3 && !(prey.kind==1 && (prey.species==4 || prey.species==5))) continue;
+        if(edible_only && breakaway(prey)) continue;
+        if(!senses(a,prey)) continue;
+        V point=prey_point(prey,a.at);
+        if(!clear(a.at,point)) continue;
+        int rank=breakaway(prey)?0:(prey.kind==1 && !prey.individual ? 1 : (prey.kind==1 ? 3 : 2));
+        double score=rank*10000 - (point-a.at).len() + std::min(5.0,prey.size*.1) + prey.fear;
+        if(score>best) {best=score;chosen=handle(i);}
+    }
+    return chosen;
+}
+void Engine::shelter(Animal &a) {
+    a.hunger=0;
+    if(a.node<0) a.node=nearest(a.at);
+    if(a.node<0) {a.decision=sim+30;return;}
+    if(a.path.size()>1 && (position(a,sim)-a.path.back()).len()>1) {
+        a.state=a.individual?14:13;
+        a.decision=sim+std::max(1.0,(a.route_length-(sim-a.route_started)*a.route_speed)/std::max(.05,a.route_speed));
+        return;
+    }
+    if(a.shelter_hold==0) {
+        a.shelter_hold=sim+6+random()*20;
+        a.decision=a.shelter_hold;a.state=a.individual?14:15;
+        return;
+    }
+    a.shelter_hold=0;
+    int best=a.node, cursor=a.node;
+    double score=-1e9;
+    double max_distance=a.individual?100:650;
+    for(int k=0;k<28;k++) {
+        auto const &neighbors=nodes[cursor].neighbors;
+        if(!neighbors.empty()) cursor=neighbors[size_t(random()*neighbors.size())%neighbors.size()];
+        auto const &n=nodes[cursor];
+        double distance=(n.at-a.at).len();
+        if(distance>max_distance || n.component!=nodes[a.node].component) {cursor=a.node;continue;}
+        double value=n.cover*3 - std::min(3.0,n.shore/200) - std::abs(n.depth-std::min(4.0,nodes[a.home>=0?a.home:a.node].depth))*.25 + random()*.8;
+        if(cursor==a.node || cursor==a.feeding) value-=.6;
+        if(value>score) {score=value;best=cursor;}
+    }
+    V goal=sample(best,a.individual?5:15);
+    route(a,goal,best,a.species==4 || a.species==5?.08:(a.individual?.25:.45));
+    a.feeding=best;a.state=a.individual?14:13;
+    a.decision=sim+std::max(2.0,a.route_length/std::max(.05,a.route_speed));
+}
 void Engine::plan(Animal &a) {
+    if (a.kind == 1) { shelter(a); return; }
     if (a.node < 0)
         a.node = nearest(a.at);
     if (a.node < 0)
@@ -334,13 +416,9 @@ void Engine::steer(Animal &a, V goal, double dt, double speed) {
     if (change.len() > acceleration)
         change = change.unit() * acceleration;
     a.velocity = a.velocity + change;
-    V next = a.at + a.velocity * dt;
+    V next = a.at + a.velocity * .2;
     if (clear(a.at, next)) {
-        route(a, next, -1, dt > 0 ? (next - a.at).len() / dt : 0);
-        a.at = next;
-        a.path.clear();
-        a.lengths.clear();
-        a.route_length = 0;
+        route(a, next, -1, a.velocity.len());
     } else if (a.path.size() < 2 || sim > a.route_started + a.route_length / std::max(.1, a.route_speed))
         route(a, goal, -1, speed);
 }
@@ -368,7 +446,7 @@ void Engine::retire(uint32_t slot) {
 }
 bool Engine::eat(uint32_t slot) {
     auto &a = animals[slot];
-    if (!a.alive || a.quantity <= 0)
+    if (!a.alive || a.quantity <= 0 || breakaway(a))
         return false;
     --a.quantity;
     ++consumed;
@@ -390,12 +468,10 @@ uint32_t Engine::add_bait(Animal a) {
         a.generation = animals[slot].generation + 1;
         animals[slot] = std::move(a);
     } else {
-        index = 0;
-        for (auto const &item : animals)
-            if (item.kind == 1)
-                index = std::max(index, item.index + 1);
-        if (index >= 24000)
+        index = next_bait_index;
+        if (index >= bait_limit)
             return UINT32_MAX;
+        ++next_bait_index;
         slot = uint32_t(animals.size());
         animals.push_back(std::move(a));
         query_marks.push_back(0);
@@ -419,38 +495,39 @@ uint32_t Engine::add_bait(Animal a) {
 }
 void Engine::scatter(uint32_t slot, V threat) {
     auto &a = animals[slot];
-    if (!a.alive)
-        return;
-    a.threat = threat;
-    a.threat_until = sim + 3;
-    a.fear = std::min(1.0, a.fear + .3);
-    a.spread = std::min(1.5, a.spread + .25);
-    a.event = 2;
-    if (a.kind != 1 || a.individual || a.tier != 0 || sim < a.scatter_at)
-        return;
-    a.scatter_at = sim + 4;
-    for (int n = 0; n < 2 && a.escapees < 6 && a.quantity > 1; n++) {
-        Animal child = a;
-        child.temporary = true;
-        child.individual = true;
-        child.parent_id = a.id;
-        child.quantity = child.capacity = 1;
-        child.escapees = 0;
-        child.target = {};
-        child.hunger = 0;
-        child.state = 10;
-        child.detached_at = sim;
-        child.regroup_at = sim + 3;
-        child.spread = 0;
-        V offset = V{random() * 4 - 2, random() * 4 - 2};
-        if (clear(child.at, child.at + offset))
-            child.at = child.at + offset;
-        uint32_t created = add_bait(std::move(child));
-        if (created == UINT32_MAX)
-            break;
-        --a.quantity;
-        ++a.escapees;
-        ++detached;
+    if (!a.alive) return;
+    advance(a, sim);
+    V away=(a.at-threat).unit();
+    if (away.len2()<.01) away=a.heading;
+    // Shared reaction heading persists across attackers instead of reversing every event.
+    if (a.threat_until<=sim || sim>=a.reaction_at) {
+        a.escape_heading=(a.escape_heading*.6+away*.4).unit();
+        a.threat=threat;
+        a.reaction_at=sim+3;
+        a.decision=sim;
+    }
+    a.threat_until=sim+3;
+    a.fear=std::min(1.0,a.fear+.15);
+    a.spread=std::min(.6,a.spread+.08);
+    a.event=2;
+    if (a.due>sim+std::min(1.0,interval(a.tier))) schedule(slot,sim+std::min(1.0,interval(a.tier)));
+    if (!breakaway(a) || sim<a.scatter_at || (prey_point(a,threat)-threat).len()>pressure_range) return;
+    a.scatter_at=sim+detach_interval;
+    int count=a.quantity<12 ? 1 : detach_min+int(random()*(detach_max-detach_min+1));
+    for (int n=0;n<count && a.escapees<escape_cap && a.quantity>1;n++) {
+        Animal child=a;
+        child.temporary=child.individual=true;
+        child.parent_id=a.id;
+        child.quantity=child.capacity=1;
+        child.escapees=0;child.target={};child.hunger=0;child.state=10;
+        child.detached_at=sim;child.regroup_at=sim+2;child.spread=0;
+        V edge=prey_point(a,threat);
+        V offset{random()*2-1,random()*2-1};
+        if(clear(a.at,edge+offset)) child.at=edge+offset;
+        child.depth=clamp(a.depth+(random()-.5)*.3,0,a.bottom-.02);
+        uint32_t added=add_bait(std::move(child));
+        if(added==UINT32_MAX) break;
+        --a.quantity;++a.escapees;++detached;
     }
 }
 void Engine::attack(uint32_t slot) {
@@ -459,7 +536,8 @@ void Engine::attack(uint32_t slot) {
         return;
     auto &prey = animals[a.target.slot];
     advance(prey, sim);
-    double vertical = std::abs(a.depth - prey.depth), distance = (a.at - prey.at).len();
+    if (breakaway(prey)) return; // A school is pressure, never a meal.
+    double vertical = std::abs(a.depth - prey.depth), distance = (a.at - prey_point(prey,a.at)).len();
     if (distance > a.profile.reach || vertical > a.profile.reach || sim < a.attack_at)
         return;
     ++a.attempts;
@@ -529,11 +607,17 @@ void Engine::hunt(uint32_t slot, double dt) {
             plan(a);
         return;
     }
+    if (valid(a.target) && breakaway(animals[a.target.slot]) && sim>=a.detect_at) {
+        a.detect_at=sim+(a.tier==0?.5:2);
+        Handle exposed=acquire(slot,true);
+        if(valid(exposed)) { a.target=exposed; a.pursuit_started=a.tracked_at=sim; }
+    }
     if (valid(a.target)) {
         auto &prey = animals[a.target.slot];
-        V target = position(prey, sim);
+        V target = prey_point(prey,a.at);
         double distance = (target - a.at).len();
-        if (distance > a.profile.detect * 3 || sim - a.pursuit_started > 75) {
+        if(distance<=a.profile.detect*1.25 && clear(a.at,target)) a.tracked_at=sim;
+        if (sim-a.tracked_at>6 || distance > a.profile.detect * 2 || sim - a.pursuit_started > (breakaway(prey)?22:60)) {
             a.target = {};
             a.detect_at = sim + 3;
             a.decision = sim;
@@ -546,6 +630,8 @@ void Engine::hunt(uint32_t slot, double dt) {
             return;
         }
         a.target_depth = clamp(prey.depth, 0, a.bottom - .02);
+        bool pressure=breakaway(prey);
+        if(distance<=pressure_range && std::abs(a.depth-prey.depth)<2) scatter(a.target.slot,a.at);
         if (ambush && distance > a.profile.lunge && sim - a.pursuit_started < 6) {
             a.state = 4;
             return;
@@ -557,51 +643,23 @@ void Engine::hunt(uint32_t slot, double dt) {
             if (!clear(target, intercept))
                 intercept = target;
             steer(a, intercept, dt, a.profile.burst);
-            if (distance < a.profile.detect * .7) {
-                prey.threat = a.at;
-                prey.threat_until = sim + 3;
-                prey.fear = std::min(1.0, prey.fear + .08);
-                if (prey.due > sim + .2)
-                    schedule(a.target.slot, sim + .2);
-            }
-        } else if (sim >= a.detect_at) {
+        } else if (sim >= a.decision) {
             route(a, target + prey.velocity * std::min(3.0, distance / std::max(.1, a.profile.burst)), -1,
                   a.profile.burst);
-            a.detect_at = sim + 3;
+            a.decision = sim + 2;
         }
+        if(pressure) a.state=12;
         a.energy = std::max(0.0, a.energy - dt * .0015);
-        attack(slot);
+        if(!pressure) attack(slot);
         return;
     }
     a.target = {};
     if (sim >= a.detect_at) {
         a.detect_at = sim + (a.tier == 0 ? 1 : (a.tier == 1 ? 5 : 20));
-        thread_local std::vector<uint32_t> candidates;
-        candidates.reserve(256);
-        query(a.at, a.profile.detect, candidates);
-        double best = -1e9;
-        Handle chosen;
-        for (auto i : candidates) {
-            auto const &prey = animals[i];
-            if (i == slot || prey.kind == 2 || prey.size >= a.size * a.profile.gape || prey.quantity < 1 ||
-                (prey.kind == 0 && prey.species == a.species && prey.size > a.size * .3))
-                continue;
-            if (a.profile.style == 3 && prey.kind != 3 &&
-                !(prey.kind == 1 && (prey.species == 4 || prey.species == 5)))
-                continue;
-            V at = position(prey, sim);
-            double distance = (at - a.at).len(), vertical = std::abs(prey.depth - a.depth);
-            if (vertical > a.profile.detect * .5)
-                continue;
-            double score = prey.size * .1 - distance * .06 + (prey.temporary ? .8 : 0) + (prey.fear * .2);
-            if (score > best && clear(a.at, at)) {
-                best = score;
-                chosen = handle(i);
-            }
-        }
+        Handle chosen = acquire(slot);
         if (valid(chosen)) {
             a.target = chosen;
-            a.pursuit_started = sim;
+            a.pursuit_started = a.tracked_at = sim;
             a.state = ambush ? 4 : 2;
             a.event = 5;
             return;
@@ -613,14 +671,15 @@ void Engine::hunt(uint32_t slot, double dt) {
 }
 void Engine::bait(uint32_t slot, double dt) {
     auto &a = animals[slot];
-    a.fear = std::max(0.0, a.fear - dt * .05);
+    a.hunger=0;
+    a.fear = std::max(0.0, a.fear - dt * .08);
     a.spread = std::max(.05, a.spread - dt * .02);
     if (a.temporary || a.individual) {
         a.hunger = 0;
         if (a.threat_until > sim) {
             a.state = 10;
             a.regroup_at = sim + 2;
-            V goal = a.at + (a.at - a.threat).unit() * 12 + V{random() - .5, random() - .5} * 3;
+            V goal = a.at + a.escape_heading * 12 + V{std::sin(sim*.7+a.id)*.8,std::cos(sim*.7+a.id)*.8};
             a.target_depth = clamp(a.depth + (random() - .5), 0, a.bottom - .02);
             if (a.tier == 0)
                 steer(a, goal, dt, 1.3);
@@ -634,6 +693,11 @@ void Engine::bait(uint32_t slot, double dt) {
             return;
         auto parent = bait_ids.find(a.parent_id);
         uint32_t parent_slot = parent == bait_ids.end() ? UINT32_MAX : parent->second;
+        if(parent_slot!=UINT32_MAX && (!animals[parent_slot].alive || animals[parent_slot].individual ||
+            (position(animals[parent_slot],sim)-a.at).len()>600 || (a.node>=0 && animals[parent_slot].node>=0 && nodes[a.node].component!=nodes[animals[parent_slot].node].component))) {
+            if(a.temporary) animals[parent_slot].escapees=std::max(0,animals[parent_slot].escapees-1);
+            parent_slot=UINT32_MAX;a.parent_id=0;
+        }
         if (parent_slot == UINT32_MAX && sim >= a.detect_at) {
             a.detect_at = sim + 10;
             thread_local std::vector<uint32_t> nearby;
@@ -641,7 +705,7 @@ void Engine::bait(uint32_t slot, double dt) {
             double closest = 1e9;
             for (auto i : nearby) {
                 auto const &b = animals[i];
-                if (b.kind != 1 || b.individual || b.species != a.species)
+                if (b.kind != 1 || b.individual || b.species != a.species || !clear(a.at,position(b,sim)))
                     continue;
                 double d = (position(b, sim) - a.at).len2();
                 if (d < closest) {
@@ -675,26 +739,26 @@ void Engine::bait(uint32_t slot, double dt) {
                 a.decision = sim + 5;
             }
         } else {
-            a.state = 9;
-            if (sim >= a.decision) {
-                V goal = sample(a.node, 8);
-                route(a, goal, a.node, .2);
-                a.decision = sim + 20;
-            }
+            a.state = 14;
+            if (sim >= a.decision) shelter(a);
         }
         return;
     }
     if (a.threat_until > sim) {
         a.state = 10;
         if (sim >= a.decision) {
-            V goal = a.at + (a.at - a.threat).unit() * (a.fear > .85 ? 50 : 10);
-            route(a, goal, -1, a.fear > .85 ? 1.2 : .5);
+            V goal = a.at + a.escape_heading * 30;
+            if(!clear(a.at,goal)) {
+                V side{-a.escape_heading.y,a.escape_heading.x};
+                goal=a.at+side*12;
+                if(!clear(a.at,goal)) goal=a.at-side*12;
+            }
+            route(a, goal, -1, .7+a.fear*.6);
             a.decision = sim + 4;
         }
-        scatter(slot, a.threat);
         return;
     }
-    a.state = 0;
+    a.state = a.path.size()>1 && (position(a,sim)-a.path.back()).len()>1 ? 13 : 15;
     a.recruitment += dt * .02;
     int births = std::min(int(a.recruitment), std::max(0, a.capacity - a.quantity - a.escapees));
     a.quantity += births;
@@ -717,8 +781,7 @@ void Engine::bait(uint32_t slot, double dt) {
             break;
         }
     }
-    if (sim >= a.decision)
-        plan(a);
+    if (sim >= a.decision) shelter(a);
 }
 void Engine::update(uint32_t slot) {
     auto &a = animals[slot];
@@ -750,13 +813,16 @@ void Engine::update(uint32_t slot) {
         bait(slot, dt);
     else {
         a.hunger = clamp(a.hunger + dt * .00006 * clamp(60 / std::max(20.0, a.size), .5, 1.5), 0, 1);
+        auto hunting_begin=Clock::now();
         hunt(slot, dt);
+        hunting_total+=seconds(Clock::now()-hunting_begin)*1000;
     }
     a.last = sim;
     if (!a.alive)
         return;
     occupancy(slot);
     double delay = a.kind == 3 ? 30 : interval(a.tier);
+    if (a.kind==1 && (a.temporary || a.threat_until>sim)) delay=std::min(delay,3.0);
     if (valid(a.target) && a.tier > 0)
         delay = std::min(delay, 3.0);
     if (a.path.size() > 1 && a.route_speed > 0) {
@@ -777,7 +843,7 @@ void Engine::start(uint64_t seed) {
     stop();
     rng.seed(seed);
     stopping = false;
-    animals.reserve(animals.size() + 24000);
+    animals.reserve(animals.size() + bait_limit);
     query_marks.resize(animals.size());
     costs.resize(nodes.size());
     parents.resize(nodes.size());
@@ -792,6 +858,7 @@ void Engine::start(uint64_t seed) {
         if (a.kind == 1) {
             bait_ids[a.id] = i;
             next_bait_id = std::max(next_bait_id, a.id + 1);
+            next_bait_index=std::max(next_bait_index,a.index+1);
         }
         a.node = nearest(a.at);
         if (a.node >= 0) {
@@ -799,6 +866,7 @@ void Engine::start(uint64_t seed) {
             a.bottom = nodes[a.node].depth;
         }
         a.home_at = a.at;
+        double angle=random()*6.28318530718; a.heading={std::cos(angle),std::sin(angle)};
         a.tier = detail(a);
         occupancy(i);
         schedule(i, .1 + random() * interval(a.tier));
@@ -843,6 +911,7 @@ void Engine::publish() {
     snap->queries = query_count;
     snap->routes = route_count;
     snap->nav_ms = nav_total;
+    snap->hunting_ms=hunting_total;
     snap->memory = animals.capacity() * sizeof(Animal) + water.size();
     for (auto const &a : animals) {
         Row r{};
@@ -867,8 +936,11 @@ void Engine::publish() {
         r.individual = a.individual;
         r.at = position(a, sim);
         r.velocity = a.velocity;
+        r.heading=a.heading; r.threat=a.threat;
+        V shape=axes(a);r.major=shape.x;r.minor=shape.y;
+        r.detect=a.profile.detect;r.awareness=std::min(a.profile.awareness_cap,a.profile.detect*a.profile.awareness);r.cone_cos=a.profile.cone_cos;
         r.destination = a.path.empty() ? a.at : a.path.back();
-        r.depth = a.depth;
+        r.depth = clamp(a.depth+clamp(a.target_depth-a.depth,-(a.kind==1?.25:.4)*(sim-a.sync_time),(a.kind==1?.25:.4)*(sim-a.sync_time)),0,std::max(.02,a.bottom-.02));
         r.holding = a.holding;
         r.target_depth = a.target_depth;
         r.bottom = a.bottom;
@@ -885,10 +957,16 @@ void Engine::publish() {
         snap->rows.push_back(r);
         if (a.alive) {
             ++snap->alive[a.kind];
+            if(a.kind==1) { ++snap->bait_counts[a.temporary?2:(a.individual?1:0)];snap->prey_units+=a.quantity; }
             snap->units += a.quantity;
             if (a.kind < 3)
                 ++snap->counts[a.tier];
         }
+    }
+    for(auto const &a:animals) if(a.alive && valid(a.target)) {
+        auto &prey=animals[a.target.slot];
+        ++snap->rows[a.target.slot].targeters;
+        if(prey.temporary) { auto parent=bait_ids.find(prey.parent_id); if(parent!=bait_ids.end()) ++snap->rows[parent->second].child_targeters; }
     }
     std::atomic_store(&published, std::shared_ptr<const Snapshot>(snap));
 }

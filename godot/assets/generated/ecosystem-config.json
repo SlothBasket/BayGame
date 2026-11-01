@@ -382,7 +382,7 @@
   "size_distribution_note": "Authored weighted triangular game distributions informed by linked research/profiles, not fitted local population frequencies. Inches total length for game configuration; internal centimetres. Existing saves unchanged.",
   "bait_density_per_area": 1.8,
   "bait_solitary_fraction": 0.55,
-  "bait_record_limit": 24000,
+  "bait_record_limit": 48000,
   "bait_recruitment_seconds": 300,
   "bait_recruits_per_interval": 12,
   "escapees_per_school": 6,
@@ -503,5 +503,21 @@
       "bait_attraction": 0.8,
       "label": "Deep snapper rocks"
     }
+  ],
+  "bait_pod_density_multiplier": 2.0,
+  "bait_solitary_density_multiplier": 3.0,
+  "detach_min": 1,
+  "detach_max": 3,
+  "detach_interval_seconds": 6,
+  "school_pressure_ft": 16,
+  "aggregate_prey_modes": [
+    "direct",
+    "breakaway",
+    "breakaway",
+    "breakaway",
+    "direct",
+    "direct",
+    "breakaway",
+    "breakaway"
   ]
 }

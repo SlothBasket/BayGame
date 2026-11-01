@@ -65,6 +65,16 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 			var suitability := 1.6 if areas[index].kind in ["grass_flat_candidate","pothole_candidate","oyster_bar_candidate","mangrove_edge_candidate","shoreline_edge"] else .6
 			var count := floori(density*suitability+p.rng.randf())
 			for slot in range(count): spawn_bait(index)
+		# Expand the original habitat-weighted cohorts independently; never convert pods to singles.
+		var base_count: int=eco.forage.size()
+		for i in range(base_count):
+			var original: Dictionary=eco.forage[i]
+			var multiplier: float=eco.config.get("bait_solitary_density_multiplier",3.0) if original.individual else eco.config.get("bait_pod_density_multiplier",2.0)
+			var extra := floori(maxf(0,multiplier-1)+p.rng.randf())
+			var area: int=area_by_id[original.preferred_area]
+			for n in range(extra):
+				for attempt in range(4):
+					if _measured_spawn_bait(area,1 if original.individual else 0,int(original.kind)): break
 	for a in eco.forage: initialize_bait(a)
 	ready=true;return true
 func spawn_bait(area: int) -> bool:
@@ -72,7 +82,7 @@ func spawn_bait(area: int) -> bool:
 	var result: bool=_measured_spawn_bait(area)
 	p.diagnostics.add("Spawning",Time.get_ticks_usec()-diagnostic_begin)
 	return result
-func _measured_spawn_bait(area: int) -> bool:
+func _measured_spawn_bait(area: int,forced_individual := -1,forced_kind := -1) -> bool:
 	if retired_escapees.is_empty() and eco.forage.size()>=int(eco.config.get("bait_record_limit",24000)): return false
 	var habitat: Dictionary=areas[area]
 	var kinds: Array=[1,6,7]
@@ -80,11 +90,11 @@ func _measured_spawn_bait(area: int) -> bool:
 	elif habitat.kind in ["grass_flat_candidate","pothole_candidate"]: kinds=[0,1,2,3,3,4,5,6]
 	elif habitat.kind in ["oyster_bar_candidate","mapped_structure"]: kinds=[2,3,4,5,5]
 	elif "shelter" in habitat.roles or habitat.kind in ["mangrove_edge_candidate","shoreline_edge","creek_mouth_candidate"]: kinds=[0,0,2,3,4,5,6]
-	var kind: int=kinds[p.rng.randi_range(0,kinds.size()-1)]
+	var kind: int=forced_kind if forced_kind>=0 else kinds[p.rng.randi_range(0,kinds.size()-1)]
 	var at := sample(area,p.rng.randi());var node: int=nav.nearest(at)
 	if node<0 or not nav.wet(at): return false
 	if float(nav.nodes[node].depth_m)>6 and kind in [0,2,3,4,5]: return false
-	var individual: bool=kind in [0,2,3,4,5] and p.rng.randf()<float(eco.config.get("bait_solitary_fraction",.55))
+	var individual: bool=(forced_individual==1) if forced_individual>=0 else (kind in [0,2,3,4,5] and p.rng.randf()<float(eco.config.get("bait_solitary_fraction",.55)))
 	var quantity: int = 1 if individual else (p.rng.randi_range(70,240) if kind in [1,6,7] else p.rng.randi_range(4,18))
 	var a := {"id":0,"kind":kind,"individual":individual,"zone":int(nav.nodes[node].zone),"destination":-1,"x":at.x,"y":at.y,"quantity":float(quantity),"capacity":float(quantity),"size_cm":eco.FORAGE_SIZES[kind]*p.rng.randf_range(.65,1.15),"last":p.elapsed,"next":p.elapsed+p.rng.randf_range(1,30),"jump_at":p.elapsed+p.rng.randf_range(20,120),"jump_until":0.0,"scatter_until":0.0,"preferred_area":habitat.id}
 	if p.water_column!=null: p.water_column.initialize_record(a,false)
@@ -446,7 +456,11 @@ func bind_site_fish():
 		if areas[index].kind=="rock_pile": deep.append(index)
 		elif areas[index].kind=="oyster_bar_candidate": oysters.append(index);shallow.append(index)
 		else: shallow.append(index)
+	# Spread smaller snapper groups across all suitable habitat, keeping adults on rock sites.
+	for index in range(areas.size()):
+		if areas[index].kind in ["mangrove_edge_candidate","mapped_structure","oyster_bar_candidate","shoreline_edge"] and index not in shallow: shallow.append(index)
 	var small_count := 0;var large_count := 0
+	var group_id := 10000000;var group_left := 0;var group_site := -1;var group_solo := false
 	for i in range(p.ids.size()):
 		var site := -1
 		if p.species[i]==7:
@@ -454,9 +468,15 @@ func bind_site_fish():
 			var choices: Array[int]=deep if large else shallow
 			if choices.is_empty(): continue
 			var number: int=large_count if large else small_count
-			site=choices[(number/(6 if large else 24))%choices.size()]
+			if large: site=choices[(number/6)%choices.size()]
+			else:
+				if group_left<=0:
+					group_id+=1;group_solo=p.rng.randf()<.08
+					group_left=1 if group_solo else p.rng.randi_range(3,8)
+					group_site=choices[(group_id-10000001)%choices.size()]
+				site=group_site;group_left-=1
 			if eco.school[i]>=0: eco.schools[eco.school[i]].erase(i)
-			var school_id: int=-1 if large else 10000000+number/24
+			var school_id: int=-1 if large or group_solo else group_id
 			eco.school[i]=school_id
 			if school_id>=0:
 				if not eco.schools.has(school_id): eco.schools[school_id]=[]
