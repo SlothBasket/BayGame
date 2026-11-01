@@ -23,14 +23,14 @@ func initialize(population) -> bool:
   animals.append({"kind":0,"index":i,"id":p.ids[i],"species":int(p.species[i]),"x":p.east[i],"y":p.south[i],"depth":p.water_column.current[i],"size":p.size_cm[i],"hunger":p.hunger[i],"energy":1.0,"home":p.movement.preferred_rest[i],"feeding":p.movement.preferred_feed[i],"zone":p.region[i],"school":eco.school[i],"profile":p.hunting.profile(i)})
  for i in range(eco.forage.size()):
   var a: Dictionary=eco.forage[i]
-  animals.append({"kind":1,"index":i,"id":a.id,"species":a.kind,"x":a.x,"y":a.y,"depth":a.swim_depth,"size":a.size_cm,"hunger":0 if a.get("individual",false) else a.get("hunger",.3),"home":nav.nearest(Vector2(a.x,a.y)),"zone":a.zone,"quantity":a.quantity,"capacity":a.capacity,"individual":a.get("individual",false),"temporary":a.get("temporary",false),"parent_id":a.get("parent_id",0)})
+  animals.append({"kind":1,"index":i,"id":a.id,"species":a.kind,"x":a.x,"y":a.y,"depth":a.swim_depth,"size":a.size_cm,"hunger":0 if a.get("individual",false) else a.get("hunger",.3),"home":nav.nearest(Vector2(a.x,a.y)),"zone":a.zone,"quantity":a.quantity,"capacity":a.capacity,"individual":a.get("individual",false),"temporary":a.get("temporary",false),"parent_id":maxi(0,int(a.get("parent_id",0)))})
  for i in range(eco.predators.size()):
   var a: Dictionary=eco.predators[i]
   animals.append({"kind":2,"index":i,"id":a.id,"species":a.kind,"x":a.x,"y":a.y,"depth":a.swim_depth,"size":a.size_cm,"hunger":a.hunger,"home":nav.nearest(Vector2(a.x,a.y)),"zone":a.zone,"school":a.get("pod",-1),"profile":p.hunting.profile(-i-1)})
  for i in range(p.food_web.bottom.size()):
   var a: Dictionary=p.food_web.bottom[i]
   animals.append({"kind":3,"index":i,"id":i+1,"species":5,"x":a.x,"y":a.y,"size":a.size_cm,"depth":eco.depth_at(a.zone),"zone":a.zone,"quantity":a.quantity,"capacity":a.capacity})
- if not engine.initialize({"origin":nav.origin,"width":nav.width,"height":nav.height,"cell":nav.cell,"mask":nav.mask,"nodes":nav.nodes.values(),"animals":animals,"seed":18472}): engine=null;return false
+ if not engine.initialize({"origin":nav.origin,"width":nav.width,"height":nav.height,"cell":nav.cell,"mask":nav.mask,"nodes":nav.nodes.values(),"animals":animals,"attack_resolution":p.hunting.rules.get("attack_resolution",{}),"seed":18472}): engine=null;return false
  cpu_limit_ms=float(eco.config.get("native_cpu_budget_ms",12))
  p.movement.nav.shutdown()
  print("[Native ecosystem] C++ worker owns %d records; GDScript simulation disabled" % animals.size())
@@ -58,6 +58,9 @@ func tick(paused := false):
   if not previous.has(code): previous[code]=at
   var heading := Vector2(rows[offset+6],rows[offset+7]).normalized();var target := int(rows[offset+23])
   var state: Dictionary={}
+  if kind==3:
+   var bottom: Dictionary=p.food_web.bottom[index];bottom.x=at.x;bottom.y=at.y;bottom.quantity=rows[offset+20]
+   continue
   if kind==0:
    p.east[index]=at.x;p.south[index]=at.y;p.size_cm[index]=rows[offset+12];p.hunger[index]=rows[offset+13];p.region[index]=int(rows[offset+18]);p.ecology.alive[index]=int(rows[offset+30]);p.simulation_detail.fish_levels[index]=int(rows[offset+17]);p.ecology.school[index]=int(rows[offset+19]);p.movement.headings[index]=heading
    p.water_column.current[index]=rows[offset+8];p.water_column.holding[index]=rows[offset+9];p.water_column.target[index]=rows[offset+10];p.water_column.bottom[index]=rows[offset+11]
@@ -71,7 +74,7 @@ func tick(paused := false):
    if a.is_empty():
     a.merge({"id":0,"kind":int(rows[offset+3]),"zone":int(rows[offset+18]),"destination":-1,"quantity":1.0,"capacity":1.0,"size_cm":rows[offset+12],"active":true,"jump_until":0.0,"scatter_until":0.0,"preferred_area":"","last_event":"","cohesion":.7,"stretch":1.0,"formation_phase":0.0,"hunt":p.hunting.initial()})
    if int(a.id)!=int(rows[offset+1]): p.food_web.bait_slots.erase(int(a.id))
-   a.id=int(rows[offset+1]);a.x=at.x;a.y=at.y;a.kind=int(rows[offset+3]);a.size_cm=rows[offset+12];a.hunger=rows[offset+13];a.fear=rows[offset+15];a.swim_depth=rows[offset+8];a.holding_depth=rows[offset+9];a.target_depth=rows[offset+10];a.bottom_depth=rows[offset+11];a.heading=heading;a.detail=int(rows[offset+17]);a.zone=int(rows[offset+18]);a.quantity=rows[offset+20];a.escapees=int(rows[offset+21]);a.parent_id=int(rows[offset+22]);a.active=rows[offset+30]>0;a.temporary=rows[offset+31]>0;a.individual=rows[offset+32]>0;a.vertical_spread=rows[offset+33];a.activity=activity(int(rows[offset+16]));a.last=p.elapsed;a.last_event=event_name(int(rows[offset+34]));a.natural_path=PackedVector2Array([at,Vector2(rows[offset+28],rows[offset+29])]);a.path_cursor=1
+   a.id=int(rows[offset+1]);a.x=at.x;a.y=at.y;a.kind=int(rows[offset+3]);a.size_cm=rows[offset+12];a.hunger=rows[offset+13];a.fear=rows[offset+15];a.swim_depth=rows[offset+8];a.holding_depth=rows[offset+9];a.target_depth=rows[offset+10];a.bottom_depth=rows[offset+11];a.heading=heading;a.detail=int(rows[offset+17]);a.zone=int(rows[offset+18]);a.quantity=rows[offset+20];a.escapees=int(rows[offset+21]);a.parent_id=int(rows[offset+22]);a.active=rows[offset+30]>0;a.temporary=rows[offset+31]>0;a.individual=rows[offset+32]>0;a.vertical_spread=rows[offset+33];a.cohesion=clampf(.8-a.fear*.4,.25,.9);a.stretch=1+Vector2(rows[offset+6],rows[offset+7]).length()*.3;a.activity=activity(int(rows[offset+16]));a.last=p.elapsed;a.last_event=event_name(int(rows[offset+34]));a.natural_path=PackedVector2Array([at,Vector2(rows[offset+28],rows[offset+29])]);a.path_cursor=1
    if kind==1:
     p.food_web.bait_slots[int(a.id)]=index
     if a.active: candidates.append(index)

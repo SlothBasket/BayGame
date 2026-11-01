@@ -13,3 +13,12 @@ set_target_properties(bay_ecosystem PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE
 if(MSVC)
  target_compile_options(bay_ecosystem PRIVATE /O2 /W4)
 endif()
+
+add_executable(bay_core_tests tests.cpp src/ecosystem.cpp)
+target_compile_features(bay_core_tests PRIVATE cxx_std_17)
+target_compile_definitions(bay_core_tests PRIVATE NOMINMAX)
+
+
+if(WIN32)
+ target_link_libraries(bay_ecosystem PRIVATE Psapi)
+endif()
