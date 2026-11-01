@@ -62,12 +62,13 @@ struct Animal {
         node = -1;
     bool alive = true, individual = false, temporary = false, return_home = false;
     int quantity = 1, capacity = 1, escapees = 0, captures = 0, misses = 0, attempts = 0;
-    V at, velocity, heading{1,0}, home_at, threat, escape_heading;
+    V at, velocity, heading{1, 0}, home_at, threat, escape_heading;
     double depth = 1, holding = 1, target_depth = 1, bottom = 2, size = 30, hunger = .5, energy = 1, fear = 0,
            spread = 0;
-    double tracked_at = 0, reaction_at = 0, shelter_hold = 0, sync_time = 0, recruitment = 0, merge_at = 0, last = 0, due = 0, decision = 0, detect_at = 0,
-           attack_at = 0, until = 0, threat_until = 0, pursuit_started = 0, detached_at = 0, regroup_at = 0,
-           route_started = 0, route_speed = .5, route_length = 0, scatter_at = 0;
+    double tracked_at = 0, reaction_at = 0, shelter_hold = 0, sync_time = 0, recruitment = 0, merge_at = 0,
+           last = 0, due = 0, decision = 0, detect_at = 0, attack_at = 0, until = 0, threat_until = 0,
+           pursuit_started = 0, detached_at = 0, regroup_at = 0, route_started = 0, route_speed = .5,
+           route_length = 0, scatter_at = 0;
     Handle target;
     Profile profile;
     std::vector<V> path;
@@ -96,7 +97,8 @@ struct Row {
 struct Snapshot {
     std::vector<Row> rows;
     double time = 0, requested = 0, cpu_ms = 0, wall = 0, achieved = 0, nav_ms = 0, hunting_ms = 0;
-    uint64_t units = 0, initial_units = 0, created = 0, events = 0, consumed = 0, detached = 0, rejoined = 0, queries = 0, routes = 0;
+    uint64_t units = 0, initial_units = 0, created = 0, events = 0, consumed = 0, detached = 0, rejoined = 0,
+             queries = 0, routes = 0;
     int counts[3] = {}, alive[4] = {}, bait_counts[3] = {};
     uint64_t prey_units = 0;
     size_t memory = 0;
@@ -124,7 +126,7 @@ class Engine {
     int bait_limit = 48000, escape_cap = 6, detach_min = 1, detach_max = 3;
     double detach_interval = 6, pressure_range = 5;
     // 0: explicitly direct aggregate, 1: breakaway school. Individuals always edible.
-    int prey_modes[8] = {0,1,1,1,0,0,1,1};
+    int prey_modes[8] = {0, 1, 1, 1, 0, 0, 1, 1};
     std::vector<Animal> animals;
     std::vector<Node> nodes;
     std::vector<uint8_t> water;
@@ -161,8 +163,8 @@ class Engine {
     int next_bait_index = 0;
     double hunting_total = 0;
     double sim = 0, requested = 0, cpu_total = 0, nav_total = 0, wall_total = 0;
-    uint64_t initial_units = 0, created = 0, next_bait_id = 1, event_count = 0, consumed = 0, detached = 0, rejoined = 0, query_count = 0,
-             route_count = 0;
+    uint64_t initial_units = 0, created = 0, next_bait_id = 1, event_count = 0, consumed = 0, detached = 0,
+             rejoined = 0, query_count = 0, route_count = 0;
     std::vector<double> costs;
     std::vector<int> parents;
     std::vector<uint32_t> visited;

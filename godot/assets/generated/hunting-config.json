@@ -16,7 +16,10 @@
       "gape": 0.3,
       "sense": "vision / vibration",
       "activity": "patrol",
-      "attack_cooldown_seconds": 3
+      "attack_cooldown_seconds": 3,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Speckled trout",
@@ -33,7 +36,10 @@
       "gape": 0.3,
       "sense": "vision / vibration",
       "activity": "chase",
-      "attack_cooldown_seconds": 1.5
+      "attack_cooldown_seconds": 1.5,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Snook",
@@ -50,7 +56,10 @@
       "gape": 0.3,
       "sense": "vision / vibration",
       "activity": "ambush",
-      "attack_cooldown_seconds": 1.5
+      "attack_cooldown_seconds": 1.5,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Sheepshead",
@@ -67,7 +76,10 @@
       "gape": 0.3,
       "sense": "vision / vibration",
       "activity": "structure",
-      "attack_cooldown_seconds": 3
+      "attack_cooldown_seconds": 3,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Tarpon",
@@ -84,7 +96,10 @@
       "gape": 0.3,
       "sense": "vision / vibration",
       "activity": "travel",
-      "attack_cooldown_seconds": 2
+      "attack_cooldown_seconds": 2,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Jack crevalle",
@@ -101,7 +116,10 @@
       "gape": 0.3,
       "sense": "vision / vibration",
       "activity": "chase",
-      "attack_cooldown_seconds": 1
+      "attack_cooldown_seconds": 1,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Flounder",
@@ -118,7 +136,10 @@
       "gape": 0.3,
       "sense": "vision / vibration",
       "activity": "bottom_ambush",
-      "attack_cooldown_seconds": 6
+      "attack_cooldown_seconds": 6,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Mangrove snapper",
@@ -135,7 +156,10 @@
       "gape": 0.38,
       "sense": "vision / vibration",
       "activity": "ambush",
-      "attack_cooldown_seconds": 1.5
+      "attack_cooldown_seconds": 1.5,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     }
   ],
   "predators": [
@@ -154,7 +178,10 @@
       "gape": 0.5,
       "sense": "electroreception / scent",
       "activity": "shark",
-      "attack_cooldown_seconds": 4
+      "attack_cooldown_seconds": 4,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Blacktip shark",
@@ -171,7 +198,10 @@
       "gape": 0.5,
       "sense": "electroreception / scent",
       "activity": "shark",
-      "attack_cooldown_seconds": 4
+      "attack_cooldown_seconds": 4,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Bonnethead shark",
@@ -188,7 +218,10 @@
       "gape": 0.5,
       "sense": "electroreception / scent",
       "activity": "bottom_shark",
-      "attack_cooldown_seconds": 4
+      "attack_cooldown_seconds": 4,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     },
     {
       "name": "Bottlenose dolphin",
@@ -205,7 +238,10 @@
       "gape": 0.5,
       "sense": "echolocation",
       "activity": "dolphin",
-      "attack_cooldown_seconds": 2
+      "attack_cooldown_seconds": 2,
+      "field_of_view_degrees": 160,
+      "close_awareness_fraction": 0.2,
+      "close_awareness_cap_ft": 20
     }
   ],
   "attack_resolution": {

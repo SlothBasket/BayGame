@@ -1,0 +1,318 @@
+{
+  "seed": 18472,
+  "conditions": "Godot 4.5.2 OpenGL, GTX 1660 Ti, Fish Lab visible, boat-start camera, 1000 m span, 4 s warmup, 2 s settling and 12 s measured per speed in sequence",
+  "before": [
+    {
+      "achieved": 0.995527609480763,
+      "debt_delta": 0.0,
+      "fps": 60.0307463994874,
+      "max": 16.998,
+      "memory": {
+        "private_bytes": 696545280,
+        "working_set": 646696960
+      },
+      "native": true,
+      "p50": 16.664,
+      "p95": 16.82,
+      "speed": 1,
+      "worker": {
+        "backlog": 0.0,
+        "conservation_error": 0,
+        "consumed": 326,
+        "cpu_ms": 192.7536,
+        "created": 60,
+        "detached": 0,
+        "events": 45960,
+        "initial_units": 466529,
+        "levels": [
+          138,
+          656,
+          14621
+        ],
+        "memory_bytes": 23856320,
+        "navigation_ms": 24.8639999999961,
+        "population": [
+          7994,
+          7341,
+          80,
+          303
+        ],
+        "queries": 17687,
+        "rejoined": 52,
+        "requested": 18.0989812,
+        "routes": 23113,
+        "time": 18.0989812,
+        "units": 466263,
+        "wall": 18.0989812
+      }
+    },
+    {
+      "achieved": 4.99837962448354,
+      "debt_delta": 0.0,
+      "fps": 60.0324108408376,
+      "max": 17.043,
+      "memory": {
+        "private_bytes": 697446400,
+        "working_set": 647639040
+      },
+      "native": true,
+      "p50": 16.667,
+      "p95": 16.81,
+      "speed": 5,
+      "worker": {
+        "backlog": 0.0,
+        "conservation_error": 0,
+        "consumed": 3281,
+        "cpu_ms": 541.4364,
+        "created": 2250,
+        "detached": 20,
+        "events": 220142,
+        "initial_units": 466529,
+        "levels": [
+          142,
+          645,
+          13797
+        ],
+        "memory_bytes": 23856320,
+        "navigation_ms": 47.764500000038,
+        "population": [
+          7822,
+          6682,
+          80,
+          303
+        ],
+        "queries": 59354,
+        "rejoined": 243,
+        "requested": 87.9383524000002,
+        "routes": 72236,
+        "time": 87.9383524000002,
+        "units": 465498,
+        "wall": 32.1306188
+      }
+    },
+    {
+      "achieved": 10.0525014388336,
+      "debt_delta": 0.0,
+      "fps": 60.0346652313858,
+      "max": 17.016,
+      "memory": {
+        "private_bytes": 697827328,
+        "working_set": 648114176
+      },
+      "native": true,
+      "p50": 16.665,
+      "p95": 16.812,
+      "speed": 10,
+      "worker": {
+        "backlog": 0.0,
+        "conservation_error": 0,
+        "consumed": 4988,
+        "cpu_ms": 1142.5724,
+        "created": 6594,
+        "detached": 36,
+        "events": 541787,
+        "initial_units": 466529,
+        "levels": [
+          145,
+          639,
+          13438
+        ],
+        "memory_bytes": 23856320,
+        "navigation_ms": 85.7494000001858,
+        "population": [
+          7776,
+          6366,
+          80,
+          303
+        ],
+        "queries": 138022,
+        "rejoined": 385,
+        "requested": 228.1080149,
+        "routes": 134193,
+        "time": 228.1080149,
+        "units": 468135,
+        "wall": 46.1791553999999
+      }
+    }
+  ],
+  "after": [
+    {
+      "achieved": 0.998599846916667,
+      "debt_delta": 0.0,
+      "fps": 60.0245193084976,
+      "hunting_ms_per_wall_second": 3.42879035691598,
+      "max": 17.052,
+      "memory": {
+        "private_bytes": 802230272,
+        "working_set": 734720000
+      },
+      "native": true,
+      "p50": 16.665,
+      "p95": 16.875,
+      "speed": 1,
+      "worker": {
+        "backlog": 0.0,
+        "bait_counts": [
+          9372,
+          7041,
+          453
+        ],
+        "conservation_error": 0,
+        "consumed": 770,
+        "cpu_ms": 251.8688,
+        "created": 54,
+        "detached": 462,
+        "events": 48305,
+        "hunting_ms": 67.2961000000084,
+        "initial_units": 898608,
+        "levels": [
+          21,
+          266,
+          24627
+        ],
+        "memory_bytes": 48283024,
+        "navigation_ms": 41.382700000003,
+        "population": [
+          7968,
+          16866,
+          80,
+          303
+        ],
+        "prey_units": 865348,
+        "queries": 28678,
+        "records": 25855,
+        "rejoined": 263,
+        "requested": 18.0672910000001,
+        "routes": 17085,
+        "time": 18.0672910000001,
+        "units": 897892,
+        "wall": 18.0672910000001
+      }
+    },
+    {
+      "achieved": 4.99433628782735,
+      "debt_delta": 0.0,
+      "fps": 60.02508399141,
+      "hunting_ms_per_wall_second": 8.57087434735404,
+      "max": 16.973,
+      "memory": {
+        "private_bytes": 804921344,
+        "working_set": 737427456
+      },
+      "native": true,
+      "p50": 16.666,
+      "p95": 16.858,
+      "speed": 5,
+      "worker": {
+        "backlog": 0.0,
+        "bait_counts": [
+          9340,
+          5466,
+          534
+        ],
+        "conservation_error": 0,
+        "consumed": 2971,
+        "cpu_ms": 806.810700000001,
+        "created": 2205,
+        "detached": 1705,
+        "events": 236535,
+        "hunting_ms": 182.34680000004,
+        "initial_units": 898608,
+        "levels": [
+          22,
+          245,
+          23059
+        ],
+        "memory_bytes": 48283024,
+        "navigation_ms": 114.476000000096,
+        "population": [
+          7906,
+          15340,
+          80,
+          303
+        ],
+        "prey_units": 863886,
+        "queries": 91676,
+        "records": 25855,
+        "rejoined": 1640,
+        "requested": 87.9967881999999,
+        "routes": 63272,
+        "time": 87.9967881999999,
+        "units": 897842,
+        "wall": 32.117535
+      }
+    },
+    {
+      "achieved": 9.95548621385429,
+      "debt_delta": 0.0,
+      "fps": 60.0360649382053,
+      "hunting_ms_per_wall_second": 11.686365601459,
+      "max": 17.054,
+      "memory": {
+        "private_bytes": 805318656,
+        "working_set": 737927168
+      },
+      "native": true,
+      "p50": 16.669,
+      "p95": 16.865,
+      "speed": 10,
+      "worker": {
+        "backlog": 0.0,
+        "bait_counts": [
+          9251,
+          4426,
+          295
+        ],
+        "conservation_error": 0,
+        "consumed": 5208,
+        "cpu_ms": 1560.73910000001,
+        "created": 6569,
+        "detached": 3234,
+        "events": 566052,
+        "hunting_ms": 350.79819999976,
+        "initial_units": 898608,
+        "levels": [
+          21,
+          242,
+          21631
+        ],
+        "memory_bytes": 48283024,
+        "navigation_ms": 166.907900000257,
+        "population": [
+          7842,
+          13972,
+          80,
+          303
+        ],
+        "prey_units": 863480,
+        "queries": 202847,
+        "records": 25855,
+        "rejoined": 3322,
+        "requested": 227.6702687,
+        "routes": 111648,
+        "time": 227.6702687,
+        "units": 899969,
+        "wall": 46.1078893000001
+      }
+    }
+  ],
+  "initial_before": {
+    "pods": 4818,
+    "solitary": 2613,
+    "temporary": 0,
+    "prey_quantity": 433959,
+    "fish": 8000,
+    "predators": 80,
+    "native_records": 15814
+  },
+  "initial_after": {
+    "pods": 9635,
+    "solitary": 7837,
+    "temporary": 0,
+    "prey_quantity": 866038,
+    "fish": 8000,
+    "predators": 80,
+    "native_records": 25855
+  },
+  "validation": "Focused native tests pass; selected Fish Lab views and pause checked. Zero conservation error in all measured snapshots. Short runs, not endurance or balance validation."
+}

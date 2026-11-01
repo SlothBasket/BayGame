@@ -34,3 +34,8 @@ At 5× the reference accumulated 35.01 seconds of debt over its twelve-second me
 Earlier native core checks passed for conserved detachment/rejoining, escape caps, one-time consumption, recycled-handle safety, isolated-prey hunger, analytic route continuity and event-clock invariance. The final conservation counters, distant-threat tier guard, and added competition/land checks have not been rebuilt or tested. No new tests were run for this documentation/push checkpoint.
 
 Remaining: detailed steering still advances in decision-sized steps; continuous between-decision trajectory publication and depth interpolation need finishing. Selected-path rendering uses a destination segment rather than the complete native route, and some legacy Fish Lab history/aggregate inspectors still use compatibility shadows. Extended camera/boat/follow/detail-transition testing and long-duration population balance remain unverified. The existing local DLL predates the final source edits; rebuild through the live launcher before evaluating them. No updated standalone EXE was exported.
+
+
+## Subsequent bait ecology pass
+
+See [the current evaluation](../docs/native-bait-evaluation.md) for the expanded population, completed ecology checks and before/after measurements. The extension has now been rebuilt, conservation checks pass, and detailed trajectory/depth publishing is continuous. The historical checkpoint limitations above describe that earlier commit. The current pass retains the live launcher and does not export a standalone EXE.

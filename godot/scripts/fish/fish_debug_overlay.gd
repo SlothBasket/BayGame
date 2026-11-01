@@ -315,12 +315,12 @@ func refresh():
 		if advanced: text+="\n"+eco.describe(i)+"\nNavigation target: "+str(p.movement.targets[i])
 	elif entity==Entity.BAIT:
 		var a: Dictionary=eco.forage[entity_index];heading.text="%s %s #%d" % [eco.FORAGE_NAMES[int(a.kind)],"individual" if a.get("individual",false) else "school",a.id]
-		text+="%.0f prey · %.1f in\n%s\nDanger %.0f%%\nTarget habitat: %s\n\nRecent: %s\n" % [a.quantity,a.size_cm/2.54,a.get("activity","moving"),a.get("fear",0)*100,a.get("preferred_area","searching"),a.get("last_event","")]
+		text+="%.0f prey · %.1f in\n%s\nDanger %.0f%%\nHome shelter: %s\n\nRecent: %s\n" % [a.quantity,a.size_cm/2.54,a.get("activity","moving"),a.get("fear",0)*100,a.get("preferred_area","searching"),a.get("last_event","")]
 		text+=school_diagnostics()
 		if p.native!=null:
 			var destination: Vector2=a.get("native_destination",at)
-			text+="Heading %.0f° · shelter destination %.0f yd away\n" % [rad_to_deg(Vector2(a.heading).angle()),at.distance_to(destination)/.9144]
-			if a.fear>.1: text+="Threat E %.2f / S %.2f mi\n" % [Vector2(a.native_threat).x/1609.344,Vector2(a.native_threat).y/1609.344]
+			text+="Heading %.0f° · shelter destination %.0f yd away\n" % [rad_to_deg(Vector2(a.get("heading",Vector2.RIGHT)).angle()),at.distance_to(destination)/.9144]
+			if a.fear>.1: text+="Threat E %.2f / S %.2f mi\n" % [Vector2(a.get("native_threat",at)).x/1609.344,Vector2(a.get("native_threat",at)).y/1609.344]
 		if not a.get("active",true): text+="Retired: "+str(a.activity)+"\n"
 		if a.get("temporary",false):
 			text+="\nEscapee #%d · parent school #%d\n%s\n" % [a.id,a.parent_id,a.activity]
@@ -344,6 +344,7 @@ func refresh():
 	info.text=text
 func escapee_hunters(index: int) -> String:
 	var p=main.fish;var a: Dictionary=p.ecology.forage[index];var names := PackedStringArray()
+	if p.native!=null: return "%d active hunters (native)" % int(a.get("native_targeters",0))
 	for code in p.hunting.spatial.query(Vector2(a.x,a.y),250):
 		if int(code)/FishSpatialIndex.STRIDE!=1: continue
 		var fish_index := int(code)%FishSpatialIndex.STRIDE;var state: Dictionary=p.hunting.states[fish_index]
@@ -487,7 +488,10 @@ func _measured_draw():
 			if entity==Entity.BAIT:
 				var hunt: Dictionary=p.hunting.state(-i-1)
 				if hunt.kind==0 and hunt.target==entity_index and int(hunt.get("target_id",-1))==int(eco.forage[entity_index].id): draw_line(at-origin,observed_position(1,entity_index)-origin,Color(1,.4,.2,.65),mpp)
-			var pos := at-origin;var r := 7*mpp;draw_colored_polygon(PackedVector2Array([pos+Vector2(0,-r),pos+Vector2(r,r),pos+Vector2(-r,r)]),Color(.35,.9,1) if a.kind==3 else Color(1,.3,.2))
+			var pos := at-origin;var r := 7*mpp
+			draw_set_transform(pos)
+			draw_colored_polygon(PackedVector2Array([Vector2(0,-r),Vector2(r,r),Vector2(-r,r)]),Color(.35,.9,1) if a.kind==3 else Color(1,.3,.2))
+			draw_set_transform(Vector2.ZERO)
 	for site in p.food_web.site_areas:
 		var area: Dictionary=p.food_web.areas[site];var at: Vector2=p.movement.nav.point(int(area.nodes[0]))
 		if not view_bounds.has_point(at): continue
@@ -548,7 +552,7 @@ func selected_paths(at: Vector2,mpp: float):
 			var contact: Vector2=s.get("capture_position",p.hunting.position(actor)) if s.stage in [6,8] else observed_prey(actor,s,target)
 			var pos: Vector2=contact-Vector2(main.origin.east,main.origin.south)
 			draw_circle(pos,3*mpp,Color(1,.3,.2),false,mpp);draw_line(at,pos,Color(1,.4,.2,.7),mpp)
-			caption(pos,"Captured meal" if s.stage in [6,8] else "Target prey member",mpp,Color(1,.6,.3))
+			caption(pos,"Captured meal" if s.stage in [6,8] else ("School pressure" if s.get("school_pressure",false) else "Target prey"),mpp,Color(1,.6,.3))
 	elif entity==Entity.BAIT:
 		var a: Dictionary=p.ecology.forage[entity_index]
 		if a.has("natural_path"): path_line(a.natural_path,int(a.path_cursor),at,mpp,BAIT_COLORS[int(a.kind)])
@@ -568,7 +572,8 @@ func school_diagnostics() -> String:
 	school_report_at=now;school_report_index=entity_index
 	var p=main.fish;var a: Dictionary=p.ecology.forage[entity_index]
 	if p.native!=null:
-		return "\nActive detached %d · targeting this prey %d / its escapees %d\n" % [a.get("escapees",0),a.get("native_targeters",0),a.get("native_child_targeters",0)]
+		school_report="\nActive detached %d · targeting this prey %d / its escapees %d\n" % [a.get("escapees",0),a.get("native_targeters",0),a.get("native_child_targeters",0)]
+		return school_report
 	var parent_id: int=int(a.get("parent_id",-1)) if a.get("temporary",false) else int(a.id)
 	var school_index: int=p.food_web.bait_slots.get(parent_id,-1)
 	if school_index<0: return "Parent school unavailable\n"
