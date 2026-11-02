@@ -42,6 +42,8 @@ var advanced := false
 var following := false
 var follow_lock := false
 var inspector_open := true
+var ui_hidden := false
+var show_ui_button: Button
 var canvas: CanvasLayer
 var toolbar: PanelContainer
 var panel: PanelContainer
@@ -145,6 +147,9 @@ func setup(game):
 	var controls := VBoxContainer.new();toolbar.add_child(controls)
 	var row := HBoxContainer.new();row.add_theme_constant_override("separation",10);controls.add_child(row)
 	var title := Label.new();title.text="FISH LAB";title.add_theme_font_size_override("font_size",20);row.add_child(title)
+	button(row,"Hide UI",func(): set_ui_hidden(true))
+	show_ui_button=Button.new();show_ui_button.text="Show Fish Lab UI";show_ui_button.position=Vector2(16,110)
+	show_ui_button.pressed.connect(func(): set_ui_hidden(false));canvas.add_child(show_ui_button);show_ui_button.hide()
 	var modes := OptionButton.new()
 	for text in ["All life","Game fish","Bait schools","Predators","Habitat / food"]: modes.add_item(text)
 	row.add_child(modes);modes.item_selected.connect(func(value): mode=value;cache_view();queue_redraw())
@@ -162,7 +167,7 @@ func setup(game):
 	detail_controls.append(distance_toggle)
 	detail_controls.append(toggle_button(row,"Ranges",false,func(v): show_detail=v;queue_redraw()))
 	for control in detail_controls: control.hide()
-	button(row,"Inspector",func(): inspector_open=not inspector_open;panel.visible=enabled and inspector_open)
+	button(row,"Inspector",func(): inspector_open=not inspector_open;panel.visible=enabled and inspector_open and not ui_hidden)
 	performance_box=VBoxContainer.new();controls.add_child(performance_box)
 	var diagnostic_row := HBoxContainer.new();performance_box.add_child(diagnostic_row)
 	diagnostic_mode=OptionButton.new()
@@ -189,9 +194,17 @@ func setup(game):
 		if index>=0: select_entity(Entity.FISH,index))
 	button(column,"Find active hunt",find_hunt)
 	toolbar.hide();panel.hide();refresh()
+func apply_ui_visibility():
+	toolbar.visible=enabled and not ui_hidden
+	panel.visible=enabled and inspector_open and not ui_hidden
+	show_ui_button.visible=enabled and ui_hidden
+func set_ui_hidden(hidden: bool):
+	ui_hidden=hidden; bait_menu.hide();apply_ui_visibility()
 func toggle():
 	bait_menu.hide()
-	enabled=not enabled;toolbar.visible=enabled;panel.visible=enabled and inspector_open
+	enabled=not enabled
+	if enabled: ui_hidden=false
+	apply_ui_visibility()
 	if enabled and available(): prior_sim=main.fish.completed_time();rate_clock=0;actual_rate=0;cache_view();refresh()
 	queue_redraw()
 func select_entity(kind: int,index: int):
@@ -213,7 +226,7 @@ func select_entity(kind: int,index: int):
 		following=false
 		if follow_toggle!=null: follow_toggle.set_pressed_no_signal(false)
 	if scroll!=null: scroll.scroll_vertical=0
-	if panel!=null and entity!=Entity.NONE: inspector_open=true;panel.visible=enabled
+	if panel!=null and entity!=Entity.NONE: inspector_open=true;panel.visible=enabled and not ui_hidden
 	refresh();queue_redraw()
 func observed_position(kind: int,index: int) -> Vector2:
 	return main.fish.displayed(kind,index)
