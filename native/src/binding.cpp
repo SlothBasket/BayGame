@@ -25,6 +25,7 @@ class BaySimulation : public RefCounted {
     static void _bind_methods() {
         ClassDB::bind_method(D_METHOD("initialize", "world"), &BaySimulation::initialize);
         ClassDB::bind_method(D_METHOD("set_controls", "controls"), &BaySimulation::set_controls);
+        ClassDB::bind_method(D_METHOD("find_active_hunt"), &BaySimulation::find_active_hunt);
         ClassDB::bind_method(D_METHOD("read_view", "bounds", "selected"), &BaySimulation::read_view);
         ClassDB::bind_method(D_METHOD("spawn_bait", "species", "position"), &BaySimulation::spawn_bait);
         ClassDB::bind_method(D_METHOD("shutdown"), &BaySimulation::shutdown);
@@ -131,6 +132,11 @@ class BaySimulation : public RefCounted {
             a.profile.awareness_cap = number(r, "close_awareness_cap_ft", 20) * .3048;
             a.profile.consume = number(r, "consume_seconds", 2);
             a.profile.cooldown = number(r, "attack_cooldown_seconds", 1.5);
+            a.profile.hunger_factor = std::max(0.0, number(r, "hunger_multiplier", 1));
+            a.profile.feeding_fraction = bay::clamp(number(r, "feeding_cruise_fraction", .25), .02, .5);
+            String feeding = r.get("feeding_movement", "forward");
+            a.profile.feeding_mode =
+                feeding == "cover" ? 1 : (feeding == "school" ? 2 : (feeding == "bottom" ? 3 : 0));
             String style = r.get("style", "patrol");
             a.profile.style =
                 style == "ambush" || style == "intercept"
@@ -140,6 +146,16 @@ class BaySimulation : public RefCounted {
             e.animals.push_back(std::move(a));
         }
         Dictionary ecology = world.get("ecology", Dictionary());
+        Dictionary feeding = ecology.get("native_feeding", Dictionary());
+        e.hunger_rate = std::max(0.0, number(feeding, "hunger_per_second", .00024));
+        e.pursuit_hunger_factor = std::max(1.0, number(feeding, "pursuit_hunger_multiplier", 1.25));
+        e.hunt_start = bay::clamp(number(feeding, "hunt_start_hunger", .25), .02, 1);
+        e.hunt_stop = bay::clamp(number(feeding, "hunt_stop_hunger", .12), 0, e.hunt_start - .01);
+        e.meal_base = number(feeding, "meal_base", .02);
+        e.meal_ratio = number(feeding, "meal_size_ratio", .9);
+        e.meal_min = bay::clamp(number(feeding, "meal_minimum", .025), 0, 1);
+        e.meal_max = bay::clamp(number(feeding, "meal_maximum", .6), e.meal_min, 1);
+        e.post_meal_seconds = std::max(0.0, number(feeding, "post_meal_seconds", 2));
         e.bait_limit = int(number(ecology, "bait_record_limit", 48000));
         e.escape_cap = int(number(ecology, "escapees_per_school", 6));
         e.detach_min = int(number(ecology, "detach_min", 1));
@@ -181,6 +197,75 @@ class BaySimulation : public RefCounted {
     void spawn_bait(int species, Vector2 at) {
         if (engine && species >= 0 && species < 8)
             engine->spawn(species, {at.x, at.y});
+    }
+    Dictionary find_active_hunt() {
+        Dictionary result;
+        if (!engine)
+            return result;
+        auto snap = engine->snapshot();
+        if (!snap)
+            return result;
+        // Button-triggered scan of immutable native rows, never GDScript shadows or worker memory.
+        double best = -1e30;
+        const bay::Row *chosen = nullptr;
+        String explanation;
+        double chosen_distance = 0;
+        for (auto const &r : snap->rows) {
+            if (!r.hunt_eligible || r.target_slot < 0 || size_t(r.target_slot) >= snap->rows.size())
+                continue;
+            auto const &prey = snap->rows[r.target_slot];
+            if (!prey.alive || prey.quantity < 1 || prey.id != r.target_id || prey.code != r.target_code)
+                continue;
+            double center = (prey.at - r.at).len();
+            double distance = std::max(0.0, center - prey.major);
+            double vertical = std::abs(prey.depth - r.depth);
+            if (distance > r.detect * 1.5 || vertical > r.detect * .5)
+                continue;
+            int priority = 0;
+            String reason;
+            if (prey.school_prey) {
+                if(prey.escapees>=engine->escape_cap || (r.state==4 && distance>r.detect*.7)) continue;
+                priority = r.state == 4 ? 1 : 2;
+                reason = r.state == 4 ? "Waiting to ambush nearby school" : "Pressuring nearby bait school";
+            } else if (r.state == 3 && prey.kind == 1 && prey.individual) {
+                priority = 5;
+                reason = prey.temporary ? "Pursuing detached prey" : "Pursuing solitary prey";
+            } else if ((r.state == 2 || r.state == 5) && r.state != 12 && distance < r.detect * .5) {
+                priority = 4;
+                reason = "Approaching a valid attack opportunity";
+            } else if (r.state == 3) {
+                priority = 3;
+                reason = "Intercepting nearby prey";
+            } else if (r.state == 12) {
+                priority = 2;
+                reason = "Pressuring nearby bait school";
+            } else if (r.state == 4 && distance < r.detect * .7) {
+                priority = 1;
+                reason = "Ambushing nearby prey";
+            }
+            if (priority == 0)
+                continue;
+            bay::V delta = prey.at - r.at;
+            double toward = delta.len2() > .001
+                                ? r.swim_speed * (r.heading.x * delta.x + r.heading.y * delta.y) / delta.len()
+                                : 0;
+            double score = priority * 100 + r.hunger * 10 + std::min(5, prey.targeters) * 2 +
+                           std::max(0.0, toward) * 2 + 10 / (1 + distance + vertical);
+            if (score > best) {
+                best = score;
+                chosen = &r;
+                explanation = reason;
+                chosen_distance = center;
+            }
+        }
+        if (chosen) {
+            result["code"] = chosen->code;
+            result["id"] = int64_t(chosen->id);
+            result["position"] = Vector2(chosen->at.x, chosen->at.y);
+            result["reason"] = explanation;
+            result["span"] = bay::clamp(chosen_distance * 4 + 80, 100, 400);
+        }
+        return result;
     }
     Dictionary read_view(Rect2 bounds, int selected) {
         Dictionary result;
@@ -260,7 +345,12 @@ class BaySimulation : public RefCounted {
                             double(r.targeters),
                             double(r.child_targeters),
                             r.threat.x,
-                            r.threat.y};
+                            r.threat.y,
+                            r.consume_left,
+                            r.recover_left,
+                            r.swim_speed,
+                            r.capture_age,
+                            double(r.motivated)};
             for (double value : row)
                 data.push_back(value);
         }

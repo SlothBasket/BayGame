@@ -72,7 +72,9 @@ var cached_center := Vector2.INF
 var trail := PackedVector2Array()
 var event_seen: Dictionary = {}
 const SPEEDS := [0.0,1.0,5.0,10.0,20.0]
-const HUNT_RANK := {5:10,6:9,8:8,3:7,2:6,1:4}
+const HUNT_RANK := {5:10,3:9,2:8,1:6,4:4}
+var hunt_selection_reason := ""
+var hunt_notice := ""
 const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25),Color(.95,.35,.48)]
 const BAIT_COLORS := [Color(.8,1,.9),Color(.35,.7,1),Color(1,.7,.4),Color(1,.9,.25),Color(1,.5,.7),Color(.8,.5,.3),Color(.55,1,.6),Color(.25,.8,.45)]
 var performance_label: Label
@@ -193,6 +195,7 @@ func toggle():
 	if enabled and available(): prior_sim=main.fish.completed_time();rate_clock=0;actual_rate=0;cache_view();refresh()
 	queue_redraw()
 func select_entity(kind: int,index: int):
+	hunt_selection_reason="";hunt_notice=""
 	if not available(): return
 	if not valid_entity(kind,index): kind=Entity.NONE;index=-1
 	entity=kind if index>=0 else Entity.NONE;entity_index=index;selected_zone=-1;trail.clear()
@@ -298,6 +301,7 @@ func refresh():
 	for control in detail_controls: control.visible=advanced
 	var slow: bool=p.time_scale>0 and real_time>2 and actual_rate<p.time_scale*.9 and p.time_debt>maxf(1,p.time_scale*.5)
 	status.text="Paused" if p.time_scale<=0 else "%d×%s" % [p.time_scale," — running slower; CPU limit" if slow else ""]
+	if not hunt_notice.is_empty(): status.text+="\n"+hunt_notice
 	if advanced: status.text+="\nActual %.2f× · queued %.1f s\nSimulated %.2f h · %.1f ms/frame" % [actual_rate,p.time_debt,p.completed_time()/3600,p.update_ms]
 	var speed_index := SPEEDS.find(p.time_scale)
 	for i in range(speed_buttons.size()): speed_buttons[i].set_pressed_no_signal(i==speed_index)
@@ -377,6 +381,12 @@ func hunt_text(actor: int) -> String:
 	if not available(): return "Hunting unavailable"
 	var p=main.fish;var h=p.hunting;var s: Dictionary=h.state(actor);var target: Dictionary=h.tracked_prey(s)
 	var text := "%s\n%s\nEnergy %.0f%% (100 = rested) · captures %d / misses %d\n" % [h.LABELS[int(s.stage)],s.activity,s.energy*100,s.captures,s.misses]
+	if s.has("consume_remaining"):
+		text+="Swimming %.2f MPH · hunting motivation %s\n" % [s.swimming_mph,"active" if s.motivated else "satisfied"]
+		if s.consume_remaining>0: text+="Consuming: %.1f s remaining\n" % s.consume_remaining
+		elif s.recover_remaining>0: text+="After-meal recovery: %.1f s remaining\n" % s.recover_remaining
+		if s.capture_age>=0: text+="Last capture %.1f simulated seconds ago\n" % s.capture_age
+	if not hunt_selection_reason.is_empty(): text+="Found encounter: "+hunt_selection_reason+"\n"
 	if s.get("school_pressure",false): text+="School pressure target — captures require a separated individual.\n"
 	if s.stage in [6,8]: text+="Captured during a valid attack opportunity; school may move away.\n"
 	elif not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),target)/.9144]
@@ -391,20 +401,28 @@ func hunt_text(actor: int) -> String:
 	return text
 func find_hunt():
 	if not available(): return
-	var p=main.fish;var best := -1.0;var found := -1
+	var p=main.fish
+	if p.native!=null:
+		var encounter: Dictionary=p.native.find_active_hunt()
+		if encounter.is_empty(): hunt_notice="No active hunt found. Keep simulating.";status.text=hunt_notice;return
+		var code: int=encounter.code
+		select_entity(Entity.FISH if code<1000000 else Entity.PREDATOR,code if code<1000000 else code-2000000)
+		p.native.poll_at=0;p.native.tick()
+		hunt_selection_reason=str(encounter.reason)
+		main.camera.follow=false;main.camera.anchor=null
+		main.camera.geo=GeoPosition.new(encounter.position.x,encounter.position.y)
+		main.camera.target_span=float(encounter.span);following=true
+		refresh();return
+	# Explicit reference-engine mode: only live targets, never historical captures.
+	var best := -1.0;var found := -1
 	for i in range(p.ids.size()):
-		if p.ecology.alive[i]==0: continue
-		var s: Dictionary=p.hunting.states[i]
-		var rank: float=HUNT_RANK.get(int(s.stage),-1)
-		if rank<0: continue
-		var score: float=rank+p.hunger[i]*.1
-		if score>best: best=score;found=i
-	if found<0:
-		for index in range(p.hunting.events.size()-1,-1,-1):
-			var e: Dictionary=p.hunting.events[index]
-			if e.actor>=0 and p.elapsed-e.time<30 and "capture:" in e.text and p.ecology.alive[e.actor]==1: found=int(e.actor);break
-	if found<0: status.text="No active pursuit or recent capture; keep simulating."
-	if found>=0: select_entity(Entity.FISH,found);center_selected();main.camera.target_span=180
+		if p.ecology.alive[i]==0 or p.hunger[i]<.12: continue
+		var state: Dictionary=p.hunting.states[i]
+		var rank: float=HUNT_RANK.get(int(state.stage),-1)
+		if rank<0 or p.hunting.tracked_prey(state).is_empty(): continue
+		if rank>best: best=rank;found=i
+	if found<0: hunt_notice="No active hunt found. Keep simulating.";status.text=hunt_notice
+	else: select_entity(Entity.FISH,found);center_selected();main.camera.target_span=180;following=true
 func select_at(geo: GeoPosition,mpp: float):
 	if not available(): return
 	var p=main.fish;var at := Vector2(geo.east,geo.south);var best := pow(maxf(12*mpp,3),2);var kind := Entity.NONE;var found := -1

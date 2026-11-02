@@ -47,6 +47,8 @@ struct Handle {
 struct Profile {
     double cruise = .5, burst = 2, detect = 30, reach = 1.2, lunge = 8, gape = .4, chance = .6,
            cooldown = 1.5, consume = 2, rest = 6, cone_cos = .1736481777, awareness = .2, awareness_cap = 6;
+    double hunger_factor = 1, feeding_fraction = .25;
+    int feeding_mode = 0; // forward, cover/home, school, bottom
     int style = 0;
 };
 struct Node {
@@ -60,11 +62,12 @@ struct Animal {
     uint32_t generation = 1, token = 0;
     int kind = 0, index = 0, species = 0, state = 0, tier = 2, zone = 0, home = -1, feeding = -1, school = -1,
         node = -1;
-    bool alive = true, individual = false, temporary = false, return_home = false;
+    bool alive = true, individual = false, temporary = false, return_home = false, motivated = false;
     int quantity = 1, capacity = 1, escapees = 0, captures = 0, misses = 0, attempts = 0;
     V at, velocity, heading{1, 0}, home_at, threat, escape_heading;
     double depth = 1, holding = 1, target_depth = 1, bottom = 2, size = 30, hunger = .5, energy = 1, fear = 0,
            spread = 0;
+    double last_capture = -1, recover_until = 0, route_initial_speed = 0, route_relax = 0;
     double tracked_at = 0, reaction_at = 0, shelter_hold = 0, sync_time = 0, recruitment = 0, merge_at = 0,
            last = 0, due = 0, decision = 0, detect_at = 0, attack_at = 0, until = 0, threat_until = 0,
            pursuit_started = 0, detached_at = 0, regroup_at = 0, route_started = 0, route_speed = .5,
@@ -88,7 +91,9 @@ struct Row {
         target_code, event, home, feeding;
     uint64_t id, parent_id, target_id;
     uint32_t generation;
-    bool alive, temporary, individual;
+    bool alive, temporary, individual, hunt_eligible = false, motivated = false, school_prey = false;
+    int target_slot = -1;
+    double consume_left = 0, recover_left = 0, swim_speed = 0, capture_age = -1;
     V at, velocity, heading, destination, threat;
     double major = 0, minor = 0, detect = 0, awareness = 0, cone_cos = 0;
     int targeters = 0, child_targeters = 0;
@@ -122,6 +127,8 @@ class Engine {
     friend struct EngineTest;
 
   public:
+    double hunger_rate = .00024, pursuit_hunger_factor = 1.25, hunt_start = .25, hunt_stop = .12;
+    double meal_base = .02, meal_ratio = .9, meal_min = .025, meal_max = .6, post_meal_seconds = 2;
     double hit_min = .15, hit_max = .95, energy_weight = .18, cover_weight = .18;
     int bait_limit = 48000, escape_cap = 6, detach_min = 1, detach_max = 3;
     double detach_interval = 6, pressure_range = 5;
@@ -175,6 +182,9 @@ class Engine {
     void update(uint32_t slot);
     void advance(Animal &a, double time);
     V position(Animal const &a, double time) const;
+    double travel_distance(Animal const &a, double time) const;
+    double swimming_speed(Animal const &a, double time) const;
+    void feeding_glide(Animal &a);
     double interval(int tier) const;
     int detail(Animal const &a) const;
     bool valid(Handle h) const {

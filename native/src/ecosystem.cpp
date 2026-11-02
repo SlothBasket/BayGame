@@ -29,7 +29,8 @@ bool Engine::clear(V a, V b) const {
             return true;
         // A negative-direction endpoint on a cell edge belongs to floor(endpoint),
         // not the next cell beyond the segment.
-        if (std::min(tx,ty)>=1.0) return w(ex,ey);
+        if (std::min(tx, ty) >= 1.0)
+            return w(ex, ey);
         if (std::abs(tx - ty) < 1e-8) {
             if (!w(x + sx, y) || !w(x, y + sy))
                 return false;
@@ -89,10 +90,26 @@ V Engine::sample(int node, double radius) {
     }
     return nodes[node].at;
 }
+double Engine::travel_distance(Animal const &a, double time) const {
+    double t = std::max(0.0, time - a.route_started);
+    double distance = t * a.route_speed;
+    if (a.route_relax > 0)
+        distance +=
+            (a.route_initial_speed - a.route_speed) * a.route_relax * (1 - std::exp(-t / a.route_relax));
+    return clamp(distance, 0, a.route_length);
+}
+double Engine::swimming_speed(Animal const &a, double time) const {
+    if (a.path.size() < 2 || travel_distance(a, time) >= a.route_length)
+        return 0;
+    if (a.route_relax <= 0)
+        return a.route_speed;
+    return a.route_speed + (a.route_initial_speed - a.route_speed) *
+                               std::exp(-std::max(0.0, time - a.route_started) / a.route_relax);
+}
 V Engine::position(Animal const &a, double time) const {
     if (a.path.size() < 2)
         return a.at;
-    double distance = clamp((time - a.route_started) * a.route_speed, 0, a.route_length);
+    double distance = travel_distance(a, time);
     auto it = std::lower_bound(a.lengths.begin() + 1, a.lengths.end(), distance);
     size_t i = std::min(size_t(it - a.lengths.begin()), a.path.size() - 1);
     double f = (distance - a.lengths[i - 1]) / std::max(1e-9, a.lengths[i] - a.lengths[i - 1]);
@@ -181,6 +198,8 @@ void Engine::route(Animal &a, V goal, int target_node, double speed) {
     a.route_length = a.lengths.back();
     a.route_started = sim;
     a.route_speed = std::max(0.0, speed);
+    a.route_initial_speed = a.route_speed;
+    a.route_relax = 0;
     if (a.path.size() > 1 && (a.path[1] - start).len2() > .0001)
         a.heading = (a.path[1] - start).unit();
     nav_total += seconds(Clock::now() - begin) * 1000;
@@ -211,11 +230,11 @@ void Engine::occupancy(uint32_t slot) {
     V end = position(a, sim + horizon);
     lo = {std::min(lo.x, end.x), std::min(lo.y, end.y)};
     hi = {std::max(hi.x, end.x), std::max(hi.y, end.y)};
-    double limit = (sim + horizon - a.route_started) * a.route_speed;
+    double limit = travel_distance(a, sim + horizon);
     for (size_t i = 0; i < a.path.size(); i++) {
         if (i && a.lengths[i - 1] > limit)
             break;
-        if (a.lengths[i] + 1e-6 < (sim - a.route_started) * a.route_speed)
+        if (a.lengths[i] + 1e-6 < travel_distance(a, sim))
             continue;
         lo = {std::min(lo.x, a.path[i].x), std::min(lo.y, a.path[i].y)};
         hi = {std::max(hi.x, a.path[i].x), std::max(hi.y, a.path[i].y)};
@@ -344,8 +363,8 @@ void Engine::shelter(Animal &a) {
     }
     if (a.path.size() > 1 && (position(a, sim) - a.path.back()).len() > 1) {
         a.state = a.individual ? 14 : 13;
-        a.decision = sim + std::max(1.0, (a.route_length - (sim - a.route_started) * a.route_speed) /
-                                             std::max(.05, a.route_speed));
+        a.decision =
+            sim + std::max(1.0, (a.route_length - travel_distance(a, sim)) / std::max(.05, a.route_speed));
         return;
     }
     if (a.shelter_hold == 0) {
@@ -396,7 +415,7 @@ void Engine::plan(Animal &a) {
     int destination = a.node;
     bool ambush = a.profile.style == 1 || a.profile.style == 2;
     bool rock = a.kind == 0 && a.species == 7 && a.size >= 43.18;
-    if (a.kind != 1 && (a.energy < .2 || a.hunger < .08)) {
+    if (a.kind != 1 && (a.energy < .2 || !a.motivated)) {
         a.state = 9;
         destination = a.home >= 0 ? a.home : a.node;
     } else if (rock) {
@@ -610,21 +629,63 @@ void Engine::attack(uint32_t slot) {
         ++a.captures;
         a.state = 8;
         a.until = sim + a.profile.consume;
-        a.hunger = std::max(0.0, a.hunger - clamp(.10 + prey.size / a.size * 1.3, .10, .75));
+        a.hunger = std::max(0.0, a.hunger - clamp(meal_base + prey.size / std::max(1.0, a.size) * meal_ratio,
+                                                  meal_min, meal_max));
+        if (a.hunger <= hunt_stop)
+            a.motivated = false;
+        a.last_capture = sim;
+        a.recover_until = a.until + post_meal_seconds;
         a.event = 1;
-        if (a.kind == 0 && a.species == 7 && a.size >= 43.18)
+        if (a.kind == 0 && a.species == 7)
             a.return_home = true;
         if (a.kind == 0)
             a.size += std::min(.02, prey.size * .002);
         if (prey.alive)
             scatter(a.target.slot, a.at);
         a.target = {};
+        feeding_glide(a);
     } else {
         ++a.misses;
         a.energy = std::max(0.0, a.energy - .035);
         a.event = 3;
         scatter(a.target.slot, a.at);
     }
+}
+void Engine::feeding_glide(Animal &a) {
+    // One route per meal; analytic deceleration works at every simulation tier.
+    double initial = swimming_speed(a, sim);
+    double slow = a.profile.cruise * a.profile.feeding_fraction;
+    double relax = a.profile.feeding_mode == 3 ? .3 : .8;
+    double duration = std::max(1.0, a.recover_until - sim + 2);
+    V direction = a.heading;
+    V holding = a.home_at;
+    if (a.profile.feeding_mode == 2 && a.school >= 0) {
+        auto school = schools.find(a.school);
+        if (school != schools.end())
+            holding = school->second.goal;
+    }
+    if (a.profile.feeding_mode == 1 || a.profile.feeding_mode == 2) {
+        V toward = (holding - a.at).unit();
+        if (toward.len2() > .01)
+            direction = (a.heading * .65 + toward * .35).unit();
+    }
+    double length = std::max(.3, slow * duration + std::max(0.0, initial - slow) * relax);
+    V goal = a.at + direction * length;
+    if (!clear(a.at, goal)) {
+        // Turn locally before asking the graph; never keep a chase route through a meal.
+        V side{-direction.y, direction.x};
+        goal = a.at + side * length;
+        if (!clear(a.at, goal))
+            goal = a.at - side * length;
+        if (!clear(a.at, goal))
+            goal = a.node >= 0 ? nodes[a.node].at : a.at;
+    }
+    route(a, goal, -1, slow);
+    a.route_initial_speed = std::max(initial, slow);
+    a.route_relax = relax;
+    a.decision = a.recover_until;
+    a.detect_at = std::max(a.detect_at, a.recover_until);
+    a.target_depth = a.holding;
 }
 void Engine::hunt(uint32_t slot, double dt) {
     auto &a = animals[slot];
@@ -639,9 +700,11 @@ void Engine::hunt(uint32_t slot, double dt) {
         a.target = {};
         return;
     }
-    if (a.state == 8 && sim < a.until) {
+    if (sim < a.recover_until) {
+        a.state = sim < a.until ? 8 : 9;
+        a.target = {};
         a.energy = std::min(1.0, a.energy + dt * .005);
-        return;
+        return; // The meal route keeps advancing analytically; no new attacks.
     }
     if (a.return_home) {
         if ((a.at - a.home_at).len() > 2) {
@@ -654,7 +717,7 @@ void Engine::hunt(uint32_t slot, double dt) {
         }
         a.return_home = false;
     }
-    if (a.energy < .15 || a.hunger < .08) {
+    if (a.energy < .15 || !a.motivated) {
         a.state = 9;
         a.target = {};
         a.energy = std::min(1.0, a.energy + dt * .025);
@@ -888,7 +951,14 @@ void Engine::update(uint32_t slot) {
     } else if (a.kind == 1)
         bait(slot, dt);
     else {
-        a.hunger = clamp(a.hunger + dt * .00006 * clamp(60 / std::max(20.0, a.size), .5, 1.5), 0, 1);
+        double activity = (a.state == 3 || a.state == 12 || a.state == 10) ? pursuit_hunger_factor : 1;
+        a.hunger = clamp(a.hunger + dt * hunger_rate * a.profile.hunger_factor * activity *
+                                        clamp(60 / std::max(20.0, a.size), .5, 1.5),
+                         0, 1);
+        if (a.hunger >= hunt_start)
+            a.motivated = true;
+        else if (a.hunger <= hunt_stop)
+            a.motivated = false;
         auto hunting_begin = Clock::now();
         hunt(slot, dt);
         hunting_total += seconds(Clock::now() - hunting_begin) * 1000;
@@ -902,6 +972,10 @@ void Engine::update(uint32_t slot) {
         delay = std::min(delay, 3.0);
     if (valid(a.target) && a.tier > 0)
         delay = std::min(delay, 3.0);
+    // Do not stretch short consumption/recovery phases to a twelve-second background tick.
+    for (double boundary : {a.until, a.recover_until})
+        if (boundary > sim + .01)
+            delay = std::min(delay, boundary - sim);
     if (a.path.size() > 1 && a.route_speed > 0) {
         double arrival = a.route_started + a.route_length / a.route_speed;
         if (arrival > sim + .01)
@@ -943,6 +1017,7 @@ void Engine::start(uint64_t seed) {
             a.zone = nodes[a.node].zone;
             a.bottom = nodes[a.node].depth;
         }
+        a.motivated = a.hunger >= hunt_start;
         a.home_at = a.at;
         double angle = random() * 6.28318530718;
         a.heading = {std::cos(angle), std::sin(angle)};
@@ -1041,6 +1116,18 @@ void Engine::publish() {
         r.event = a.event;
         r.home = a.home;
         r.feeding = a.feeding;
+        r.school_prey = breakaway(a);
+        r.motivated = a.motivated;
+        r.consume_left = std::max(0.0, a.until - sim);
+        r.recover_left = std::max(0.0, a.recover_until - std::max(sim, a.until));
+        r.swim_speed = swimming_speed(a, sim);
+        r.capture_age = a.last_capture < 0 ? -1 : sim - a.last_capture;
+        r.target_slot = valid(a.target) ? int(a.target.slot) : -1;
+        r.hunt_eligible = a.alive && (a.kind == 0 || a.kind == 2) && a.motivated && a.hunger > hunt_stop &&
+                          a.energy >= .15 && !a.return_home && sim >= a.recover_until &&
+                          (a.state == 2 || a.state == 3 || a.state == 4 || a.state == 5 || a.state == 12) &&
+                          r.target_slot >= 0 && sim - a.tracked_at <= 6 &&
+                          sim - a.pursuit_started <= (breakaway(animals[a.target.slot]) ? 22 : 60);
         snap->rows.push_back(r);
         if (a.alive) {
             ++snap->alive[a.kind];

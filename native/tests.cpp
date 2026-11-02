@@ -161,6 +161,7 @@ struct EngineTest {
         check(!ecology.eat(0), "quantity changed prey type exception");
         ecology.animals[0].quantity = 30;
         Animal hunter;
+        hunter.motivated = true; // Synthetic hungry actor bypasses Engine::start().
         hunter.id = 99;
         hunter.kind = 0;
         hunter.species = 2;

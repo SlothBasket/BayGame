@@ -1,6 +1,6 @@
 extends RefCounted
 # One startup handoff, then view-only snapshots. This adapter never advances animal biology.
-const STRIDE := 48
+const STRIDE := 53
 var p
 var engine
 var stats: Dictionary = {}
@@ -18,6 +18,8 @@ func initialize(population) -> bool:
  p=population
  if not ClassDB.class_exists("BaySimulation"): return false
  engine=ClassDB.instantiate("BaySimulation")
+ if not engine.has_method("find_active_hunt"):
+  push_error("Native ecosystem is older than the scripts. Rebuild with Play BayGame.bat.");engine=null;return false
  var animals: Array=[];var eco=p.ecology;var nav=p.movement.nav
  for i in range(p.ids.size()):
   animals.append({"kind":0,"index":i,"id":p.ids[i],"species":int(p.species[i]),"x":p.east[i],"y":p.south[i],"depth":p.water_column.current[i],"size":p.size_cm[i],"hunger":p.hunger[i],"energy":1.0,"home":p.movement.preferred_rest[i],"feeding":p.movement.preferred_feed[i],"zone":p.region[i],"school":eco.school[i],"profile":p.hunting.profile(i)})
@@ -80,9 +82,20 @@ func tick(paused := false):
     if a.active: candidates.append(index)
    else: state=p.hunting.state(-index-1)
   if not state.is_empty():
+   state.consume_remaining=rows[offset+48];state.recover_remaining=rows[offset+49];state.swimming_mph=rows[offset+50]/.44704;state.capture_age=rows[offset+51];state.motivated=rows[offset+52]>0
    state.native_detect=rows[offset+41];state.native_awareness=rows[offset+42];state.native_cone_cos=rows[offset+43];state.school_pressure=int(rows[offset+16])==12;state.stage=2 if int(rows[offset+16])==12 else mini(9,int(rows[offset+16]));state.activity=activity(int(rows[offset+16]));state.energy=rows[offset+14];state.captures=int(rows[offset+25]);state.misses=int(rows[offset+26]);state.attempts=int(rows[offset+27]);state.heading=heading;state.last_event=event_name(int(rows[offset+34]));state.path=PackedVector2Array([at,Vector2(rows[offset+28],rows[offset+29])]);state.cursor=1;state.kind=-1 if target<0 else (1 if target<1000000 else (0 if target<2000000 else 2));state.target=-1 if target<0 else target%1000000;state.target_id=int(rows[offset+24]);state.capture_position=at;state.capture_depth=rows[offset+8];state.capture_time=p.elapsed
  p.hunting.prey_cache.clear();p.hunting.prey_epoch=-1
  revision+=1;transfer_ms=(Time.get_ticks_usec()-started)/1000.0;p.update_ms=transfer_ms
+func find_active_hunt() -> Dictionary:
+ var found: Dictionary=engine.find_active_hunt()
+ if found.is_empty(): return found
+ var code: int=found.code;var at: Vector2=found.position
+ # Seed observation only, so first selection/follow cannot jump to a stale shadow position.
+ positions[code]=at;previous[code]=at
+ if code<1000000: p.east[code]=at.x;p.south[code]=at.y
+ else:
+  var a: Dictionary=p.ecology.predators[code-2000000];a.x=at.x;a.y=at.y
+ return found
 func displayed(code: int) -> Vector2:
  var at: Vector2=positions.get(code,Vector2.ZERO)
  return Vector2(previous.get(code,at)).lerp(at,clampf((Time.get_ticks_usec()/1000000.0-received)/.05,0,1))

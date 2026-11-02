@@ -19,7 +19,10 @@
       "attack_cooldown_seconds": 3,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.25,
+      "feeding_movement": "cover",
+      "hunger_multiplier": 1
     },
     {
       "name": "Speckled trout",
@@ -39,7 +42,10 @@
       "attack_cooldown_seconds": 1.5,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.3,
+      "feeding_movement": "forward",
+      "hunger_multiplier": 1
     },
     {
       "name": "Snook",
@@ -59,7 +65,10 @@
       "attack_cooldown_seconds": 1.5,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.2,
+      "feeding_movement": "cover",
+      "hunger_multiplier": 1
     },
     {
       "name": "Sheepshead",
@@ -79,7 +88,10 @@
       "attack_cooldown_seconds": 3,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.08,
+      "feeding_movement": "bottom",
+      "hunger_multiplier": 0.9
     },
     {
       "name": "Tarpon",
@@ -99,7 +111,10 @@
       "attack_cooldown_seconds": 2,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.3,
+      "feeding_movement": "forward",
+      "hunger_multiplier": 1
     },
     {
       "name": "Jack crevalle",
@@ -119,7 +134,10 @@
       "attack_cooldown_seconds": 1,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.35,
+      "feeding_movement": "school",
+      "hunger_multiplier": 1.15
     },
     {
       "name": "Flounder",
@@ -139,7 +157,10 @@
       "attack_cooldown_seconds": 6,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.08,
+      "feeding_movement": "bottom",
+      "hunger_multiplier": 0.8
     },
     {
       "name": "Mangrove snapper",
@@ -159,7 +180,10 @@
       "attack_cooldown_seconds": 1.5,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.2,
+      "feeding_movement": "cover",
+      "hunger_multiplier": 1
     }
   ],
   "predators": [
@@ -181,7 +205,10 @@
       "attack_cooldown_seconds": 4,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.25,
+      "feeding_movement": "forward",
+      "hunger_multiplier": 1
     },
     {
       "name": "Blacktip shark",
@@ -201,7 +228,10 @@
       "attack_cooldown_seconds": 4,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.25,
+      "feeding_movement": "forward",
+      "hunger_multiplier": 1
     },
     {
       "name": "Bonnethead shark",
@@ -221,7 +251,10 @@
       "attack_cooldown_seconds": 4,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.25,
+      "feeding_movement": "forward",
+      "hunger_multiplier": 1
     },
     {
       "name": "Bottlenose dolphin",
@@ -241,7 +274,10 @@
       "attack_cooldown_seconds": 2,
       "field_of_view_degrees": 160,
       "close_awareness_fraction": 0.2,
-      "close_awareness_cap_ft": 20
+      "close_awareness_cap_ft": 20,
+      "feeding_cruise_fraction": 0.25,
+      "feeding_movement": "forward",
+      "hunger_multiplier": 1
     }
   ],
   "attack_resolution": {

@@ -39,3 +39,10 @@ Remaining: detailed steering still advances in decision-sized steps; continuous 
 ## Subsequent bait ecology pass
 
 See [the current evaluation](../docs/native-bait-evaluation.md) for the expanded population, completed ecology checks and before/after measurements. The extension has now been rebuilt, conservation checks pass, and detailed trajectory/depth publishing is continuous. The historical checkpoint limitations above describe that earlier commit. The current pass retains the live launcher and does not export a standalone EXE.
+
+
+## Source-only hunger and hunt-finder update
+
+`ecosystem-config.json` → `native_feeding` now sets hunger to 0.00024/s (previously 0.00006), a 1.25 pursuit multiplier, 0.25/0.12 hunting hysteresis, size-dependent meal satisfaction, and two seconds of post-meal recovery. Species hunger multipliers and feeding cruise fractions live in `hunting-config.json`. Consumption follows one analytically decelerating water-valid route per meal. Find Active Hunt queries the latest immutable native snapshot on click and excludes fed/resting/invalid-target actors; encounters can naturally finish while the camera moves.
+
+This update has not been compiled, run, tested or profiled. Rebuild through the live launcher before use; the bridge rejects the older DLL interface. Behavioral tuning and performance under the increased hunting activity require later verification.
