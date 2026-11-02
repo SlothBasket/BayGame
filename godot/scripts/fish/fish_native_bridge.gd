@@ -100,7 +100,7 @@ func displayed(code: int) -> Vector2:
  var at: Vector2=positions.get(code,Vector2.ZERO)
  return Vector2(previous.get(code,at)).lerp(at,clampf((Time.get_ticks_usec()/1000000.0-received)/.05,0,1))
 func activity(state: int) -> String:
- return ["searching / habitat patrol","detecting prey","approaching prey","pursuing / intercepting","holding ambush","strike","capture","miss","consuming prey","resting / slow patrol","evading predator","returning to school","pressuring school","traveling to shelter","seeking school / sheltering","holding at shelter"][clampi(state,0,15)]
+ return ["searching / habitat patrol","detecting prey","approaching prey","pursuing / intercepting","holding ambush","strike","capture","miss","consuming prey","resting / slow patrol","evading predator","returning to school","pressuring school","traveling to shelter","seeking school / sheltering","holding at shelter","cruising near detected food"][clampi(state,0,16)]
 func event_name(event: int) -> String:
  return ["native ecological activity","mathematical capture","predator disturbance","miss; pursuit may continue","consumed / rejoined","prey detected"][clampi(event,0,5)]
 func shutdown():

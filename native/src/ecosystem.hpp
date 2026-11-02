@@ -62,7 +62,8 @@ struct Animal {
     uint32_t generation = 1, token = 0;
     int kind = 0, index = 0, species = 0, state = 0, tier = 2, zone = 0, home = -1, feeding = -1, school = -1,
         node = -1;
-    bool alive = true, individual = false, temporary = false, return_home = false, motivated = false;
+    bool alive = true, individual = false, temporary = false, return_home = false, motivated = false,
+         ambush_committed = false;
     int quantity = 1, capacity = 1, escapees = 0, captures = 0, misses = 0, attempts = 0;
     V at, velocity, heading{1, 0}, home_at, threat, escape_heading;
     double depth = 1, holding = 1, target_depth = 1, bottom = 2, size = 30, hunger = .5, energy = 1, fear = 0,
@@ -72,7 +73,8 @@ struct Animal {
            last = 0, due = 0, decision = 0, detect_at = 0, attack_at = 0, until = 0, threat_until = 0,
            pursuit_started = 0, detached_at = 0, regroup_at = 0, route_started = 0, route_speed = .5,
            route_length = 0, scatter_at = 0;
-    Handle target;
+    Handle target, nearby_food;
+    int previous_patrol_node = -1;
     Profile profile;
     std::vector<V> path;
     std::vector<double> lengths;
@@ -213,6 +215,7 @@ class Engine {
     bool senses(Animal const &a, Animal const &prey) const;
     Handle acquire(uint32_t slot, bool edible_only = false);
     void hunt(uint32_t slot, double dt);
+    void relaxed_patrol(uint32_t slot);
     void bait(uint32_t slot, double dt);
     bool eat(uint32_t slot);
     void retire(uint32_t slot);

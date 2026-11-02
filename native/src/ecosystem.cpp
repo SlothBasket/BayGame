@@ -415,7 +415,7 @@ void Engine::plan(Animal &a) {
     int destination = a.node;
     bool ambush = a.profile.style == 1 || a.profile.style == 2;
     bool rock = a.kind == 0 && a.species == 7 && a.size >= 43.18;
-    if (a.kind != 1 && (a.energy < .2 || !a.motivated)) {
+    if (a.kind != 1 && (a.energy < .2 || (!a.motivated && ambush))) {
         a.state = 9;
         destination = a.home >= 0 ? a.home : a.node;
     } else if (rock) {
@@ -436,6 +436,14 @@ void Engine::plan(Animal &a) {
                            std::abs(nodes[n].depth - a.holding) * .04;
             if (n == a.feeding)
                 score += .15;
+            if (!ambush) {
+                V ahead = (nodes[n].at - a.at).unit();
+                score += (ahead.x * a.heading.x + ahead.y * a.heading.y) * .4;
+                if (n == a.previous_patrol_node)
+                    score -= .8;
+                if (n == a.node)
+                    score -= .35;
+            }
             if (score > best) {
                 best = score;
                 destination = n;
@@ -467,6 +475,7 @@ void Engine::plan(Animal &a) {
         velocity *= .35;
     route(a, goal, destination, velocity);
     a.decision = sim + (a.kind == 1 ? 45 : (ambush ? 35 : 25)) + random() * 35;
+    a.previous_patrol_node = a.node;
     a.feeding = destination;
 }
 void Engine::steer(Animal &a, V goal, double dt, double speed) {
@@ -687,6 +696,50 @@ void Engine::feeding_glide(Animal &a) {
     a.detect_at = std::max(a.detect_at, a.recover_until);
     a.target_depth = a.holding;
 }
+void Engine::relaxed_patrol(uint32_t slot) {
+    auto &a = animals[slot];
+    if (sim < a.decision)
+        return;
+    double cadence = a.tier == 0 ? 8 : (a.tier == 1 ? 12 : 20);
+    if (valid(a.nearby_food)) {
+        auto const &food = animals[a.nearby_food.slot];
+        if (!senses(a, food) || !clear(a.at, prey_point(food, a.at)))
+            a.nearby_food = {};
+    }
+    if (!valid(a.nearby_food))
+        a.nearby_food = acquire(slot);
+    if (valid(a.nearby_food)) {
+        auto const &food = animals[a.nearby_food.slot];
+        V center = position(food, sim);
+        double spacing = axes(food).x + pressure_range + 5;
+        V away = (a.at - center).unit();
+        if (away.len2() < .01)
+            away = {-food.heading.y, food.heading.x};
+        V goal;
+        if ((center - a.at).len() > spacing + 8)
+            goal = center + away * spacing + food.heading * 5;
+        else {
+            V forward = food.velocity.len2() > .01 ? food.heading : a.heading;
+            goal = a.at + forward * std::max(6.0, a.profile.cruise * cadence * .65);
+            if ((center - a.at).len() < spacing)
+                goal = goal + away * (spacing - (center - a.at).len());
+        }
+        if (clear(a.at, goal)) {
+            route(a, goal, -1, a.profile.cruise * .65);
+            a.state = 16;
+            a.decision = sim + cadence;
+            return; // Proximity interest is not a hunt target and never emits pressure.
+        }
+        a.nearby_food = {};
+    }
+    // Finish a useful route before choosing another, instead of oscillating around home.
+    if (a.path.size() > 1 && travel_distance(a, sim) + 1 < a.route_length) {
+        a.state = 0;
+        a.decision = sim + cadence;
+        return;
+    }
+    plan(a);
+}
 void Engine::hunt(uint32_t slot, double dt) {
     auto &a = animals[slot];
     bool ambush = a.profile.style == 1 || a.profile.style == 2;
@@ -717,19 +770,34 @@ void Engine::hunt(uint32_t slot, double dt) {
         }
         a.return_home = false;
     }
-    if (a.energy < .15 || !a.motivated) {
+    if (a.energy < .15) {
         a.state = 9;
         a.target = {};
+        a.nearby_food = {};
         a.energy = std::min(1.0, a.energy + dt * .025);
         if (sim >= a.decision)
             plan(a);
         return;
     }
+    if (!a.motivated) {
+        a.target = {};
+        a.energy = std::min(1.0, a.energy + dt * .005);
+        if (ambush) {
+            // Concealed holding is intentional; being satisfied is not exhaustion.
+            a.state = 4;
+            a.path.clear();
+            a.velocity = {};
+        } else
+            relaxed_patrol(slot);
+        return;
+    }
+    a.nearby_food = {};
     if (valid(a.target) && breakaway(animals[a.target.slot]) && sim >= a.detect_at) {
         a.detect_at = sim + (a.tier == 0 ? .5 : 2);
         Handle exposed = acquire(slot, true);
         if (valid(exposed)) {
             a.target = exposed;
+            a.ambush_committed = false;
             a.pursuit_started = a.tracked_at = sim;
         }
     }
@@ -754,13 +822,16 @@ void Engine::hunt(uint32_t slot, double dt) {
         }
         a.target_depth = clamp(prey.depth, 0, a.bottom - .02);
         bool pressure = breakaway(prey);
+        if (ambush && !a.ambush_committed && distance > a.profile.lunge) {
+            a.state = 4;
+            a.path.clear();
+            a.velocity = {};
+            return; // A concealed predator does not frighten approaching bait.
+        }
+        a.ambush_committed = true;
+        a.state = 3;
         if (distance <= pressure_range && std::abs(a.depth - prey.depth) < 2)
             scatter(a.target.slot, a.at);
-        if (ambush && distance > a.profile.lunge && sim - a.pursuit_started < 6) {
-            a.state = 4;
-            return;
-        }
-        a.state = 3;
         if (a.tier == 0) {
             V intercept =
                 target + prey.velocity * std::min(2.0, distance / std::max(.1, a.profile.burst) * .4);
@@ -785,6 +856,11 @@ void Engine::hunt(uint32_t slot, double dt) {
         Handle chosen = acquire(slot);
         if (valid(chosen)) {
             a.target = chosen;
+            a.ambush_committed = false;
+            if (ambush) {
+                a.path.clear();
+                a.velocity = {};
+            }
             a.pursuit_started = a.tracked_at = sim;
             a.state = ambush ? 4 : 2;
             a.event = 5;
