@@ -54,6 +54,9 @@ struct Profile {
 struct Node {
     V at;
     double depth = 2, cover = .1, shore = 100, food = 1, food_time = 0;
+    V trail_at, trail_heading, noise_at;
+    double trail_time = -10000, trail_size = 0, noise_time = -10000;
+    int trail_species = 0;
     int zone = 0, component = 0;
     std::vector<int> neighbors;
 };
@@ -75,6 +78,10 @@ struct Animal {
            route_length = 0, scatter_at = 0;
     Handle target, nearby_food;
     int previous_patrol_node = -1;
+    int circuit[4] = {-1, -1, -1, -1}, circuit_count = 0, circuit_cursor = 0;
+    V food_seen_at, food_seen_heading, learned_food;
+    double last_attack_noise = -10000;
+    double food_seen_time = -10000, memory_until = -1, trail_due = 0, cue_seen_time = -10000;
     Profile profile;
     std::vector<V> path;
     std::vector<double> lengths;
@@ -133,6 +140,8 @@ class Engine {
     double meal_base = .02, meal_ratio = .9, meal_min = .025, meal_max = .6, post_meal_seconds = 2;
     double hit_min = .15, hit_max = .95, energy_weight = .18, cover_weight = .18;
     int bait_limit = 48000, escape_cap = 6, detach_min = 1, detach_max = 3;
+    double trail_lifetime = 120, trail_radius = 35, noise_lifetime = 12, noise_radius = 80,
+           food_memory_seconds = 1200;
     double detach_interval = 6, pressure_range = 5;
     // 0: explicitly direct aggregate, 1: breakaway school. Individuals always edible.
     int prey_modes[8] = {0, 1, 1, 1, 0, 0, 1, 1};
@@ -216,6 +225,7 @@ class Engine {
     Handle acquire(uint32_t slot, bool edible_only = false);
     void hunt(uint32_t slot, double dt);
     void relaxed_patrol(uint32_t slot);
+    bool investigate(Animal &a);
     void bait(uint32_t slot, double dt);
     bool eat(uint32_t slot);
     void retire(uint32_t slot);

@@ -46,3 +46,10 @@ See [the current evaluation](../docs/native-bait-evaluation.md) for the expanded
 `ecosystem-config.json` → `native_feeding` now sets hunger to 0.00024/s (previously 0.00006), a 1.25 pursuit multiplier, 0.25/0.12 hunting hysteresis, size-dependent meal satisfaction, and two seconds of post-meal recovery. Species hunger multipliers and feeding cruise fractions live in `hunting-config.json`. Consumption follows one analytically decelerating water-valid route per meal. Find Active Hunt queries the latest immutable native snapshot on click and excludes fed/resting/invalid-target actors; encounters can naturally finish while the camera moves.
 
 This update has not been compiled, run, tested or profiled. Rebuild through the live launcher before use; the bridge rejects the older DLL interface. Behavioral tuning and performance under the increased hunting activity require later verification.
+
+
+## Local routes and simple food memory (source-only)
+
+Bait pods reuse up to four connected shelter nodes filtered by species depth ranges; this reuses existing habitat/shoreline data, not new surveyed zones. Per-node bait breadcrumbs fade after 120 simulated seconds and feeding sounds after 12 seconds. Predators only investigate cues within local range and still need normal prey detection to attack. A single productive-location memory lasts up to 20 simulated minutes; cue-only visits retain it for half that time. `native_cues` configures these values. These are lightweight gameplay cues, not physical scent transport or a general learning model.
+
+Satisfied fish retain detected prey through turns while within tracking range, stay within a nearby band, and use a bounded last-seen fallback. Fish Lab shows the configured prey-length limit. Existing snook limit remains 38% of predator length. Zone generation is unchanged. No compilation, tests or performance measurements were run for this source update; rebuild via the launcher and evaluate manually.

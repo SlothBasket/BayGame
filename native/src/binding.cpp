@@ -146,6 +146,12 @@ class BaySimulation : public RefCounted {
             e.animals.push_back(std::move(a));
         }
         Dictionary ecology = world.get("ecology", Dictionary());
+        Dictionary cues = ecology.get("native_cues", Dictionary());
+        e.trail_lifetime = std::max(1.0, number(cues, "trail_lifetime_seconds", 120));
+        e.trail_radius = bay::clamp(number(cues, "trail_detection_ft", 115) * .3048, 1, 150);
+        e.noise_lifetime = std::max(1.0, number(cues, "feeding_noise_seconds", 12));
+        e.noise_radius = bay::clamp(number(cues, "feeding_noise_radius_ft", 260) * .3048, 1, 250);
+        e.food_memory_seconds = std::max(1.0, number(cues, "food_memory_seconds", 1200));
         Dictionary feeding = ecology.get("native_feeding", Dictionary());
         e.hunger_rate = std::max(0.0, number(feeding, "hunger_per_second", .00024));
         e.pursuit_hunger_factor = std::max(1.0, number(feeding, "pursuit_hunger_multiplier", 1.25));
@@ -224,7 +230,8 @@ class BaySimulation : public RefCounted {
             int priority = 0;
             String reason;
             if (prey.school_prey) {
-                if(prey.escapees>=engine->escape_cap || (r.state==4 && distance>r.detect*.7)) continue;
+                if (prey.escapees >= engine->escape_cap || (r.state == 4 && distance > r.detect * .7))
+                    continue;
                 priority = r.state == 4 ? 1 : 2;
                 reason = r.state == 4 ? "Waiting to ambush nearby school" : "Pressuring nearby bait school";
             } else if (r.state == 3 && prey.kind == 1 && prey.individual) {

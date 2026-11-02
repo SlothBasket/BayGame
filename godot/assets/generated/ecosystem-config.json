@@ -530,5 +530,12 @@
     "meal_minimum": 0.025,
     "meal_maximum": 0.6,
     "post_meal_seconds": 2
+  },
+  "native_cues": {
+    "trail_lifetime_seconds": 120,
+    "trail_detection_ft": 115,
+    "feeding_noise_seconds": 12,
+    "feeding_noise_radius_ft": 260,
+    "food_memory_seconds": 1200
   }
 }

@@ -381,6 +381,7 @@ func hunt_text(actor: int) -> String:
 	if not available(): return "Hunting unavailable"
 	var p=main.fish;var h=p.hunting;var s: Dictionary=h.state(actor);var target: Dictionary=h.tracked_prey(s)
 	var text := "%s\n%s\nEnergy %.0f%% (100 = rested) · captures %d / misses %d\n" % [h.LABELS[int(s.stage)],s.activity,s.energy*100,s.captures,s.misses]
+	text+="Current prey-length limit %.1f in\n" % (h.length_cm(actor)*float(h.profile(actor).gape)/2.54)
 	if s.has("consume_remaining"):
 		text+="Swimming %.2f MPH · hunting motivation %s\n" % [s.swimming_mph,"active" if s.motivated else "satisfied"]
 		if s.consume_remaining>0: text+="Consuming: %.1f s remaining\n" % s.consume_remaining

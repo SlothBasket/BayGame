@@ -374,27 +374,49 @@ void Engine::shelter(Animal &a) {
         return;
     }
     a.shelter_hold = 0;
-    int best = a.node, cursor = a.node;
-    double score = -1e9;
-    double max_distance = a.individual ? 100 : 650;
-    for (int k = 0; k < 28; k++) {
-        auto const &neighbors = nodes[cursor].neighbors;
-        if (!neighbors.empty())
-            cursor = neighbors[size_t(random() * neighbors.size()) % neighbors.size()];
-        auto const &n = nodes[cursor];
-        double distance = (n.at - a.at).len();
-        if (distance > max_distance || n.component != nodes[a.node].component) {
-            cursor = a.node;
-            continue;
+    int best = a.node;
+    if (a.circuit_count > 1 && !a.individual) {
+        a.circuit_cursor = (a.circuit_cursor + 1) % a.circuit_count;
+        best = a.circuit[a.circuit_cursor];
+    } else {
+        static const double low[8] = {.15, .5, .2, .3, .15, .1, .25, .5};
+        static const double high[8] = {2, 7, 4, 4, 5, 4, 4, 8};
+        int cursor = a.node;
+        double score = -1e9;
+        double max_distance = a.individual ? 100 : 650;
+        if (!a.individual && a.circuit_count == 0) {
+            a.circuit[0] = a.node;
+            a.circuit_count = 1;
         }
-        double value = n.cover * 3 - std::min(3.0, n.shore / 200) -
-                       std::abs(n.depth - std::min(4.0, nodes[a.home >= 0 ? a.home : a.node].depth)) * .25 +
-                       random() * .8;
-        if (cursor == a.node || cursor == a.feeding)
-            value -= .6;
-        if (value > score) {
-            score = value;
-            best = cursor;
+        for (int k = 0; k < 48; k++) {
+            auto const &neighbors = nodes[cursor].neighbors;
+            if (!neighbors.empty())
+                cursor = neighbors[size_t(random() * neighbors.size()) % neighbors.size()];
+            auto const &n = nodes[cursor];
+            if ((n.at - a.at).len() > max_distance || n.component != nodes[a.node].component) {
+                cursor = a.node;
+                continue;
+            }
+            if (n.depth < low[a.species] || n.depth > high[a.species])
+                continue;
+            double value = n.cover * 3 - std::min(3.0, n.shore / 200) -
+                           std::abs(n.depth - nodes[a.node].depth) * .25 + random() * .25;
+            if (cursor == a.node || cursor == a.feeding)
+                value -= .6;
+            if (value > score) {
+                score = value;
+                best = cursor;
+            }
+            bool known = false;
+            for (int n = 0; n < a.circuit_count; n++)
+                if (a.circuit[n] == cursor)
+                    known = true;
+            if (!a.individual && !known && a.circuit_count < 4 && n.cover >= .35 && (n.at - a.at).len() > 30)
+                a.circuit[a.circuit_count++] = cursor;
+        }
+        if (!a.individual && a.circuit_count > 1) {
+            a.circuit_cursor = 1;
+            best = a.circuit[1];
         }
     }
     V goal = sample(best, a.individual ? 5 : 15);
@@ -623,6 +645,11 @@ void Engine::attack(uint32_t slot) {
     double vertical = std::abs(a.depth - prey.depth), distance = (a.at - prey_point(prey, a.at)).len();
     if (distance > a.profile.reach || vertical > a.profile.reach || sim < a.attack_at)
         return;
+    if (a.node >= 0) {
+        nodes[a.node].noise_at = a.at;
+        nodes[a.node].noise_time = sim;
+        a.last_attack_noise = sim;
+    }
     ++a.attempts;
     a.attack_at = sim + a.profile.cooldown;
     a.energy = std::max(0.0, a.energy - .025);
@@ -643,6 +670,8 @@ void Engine::attack(uint32_t slot) {
         if (a.hunger <= hunt_stop)
             a.motivated = false;
         a.last_capture = sim;
+        a.learned_food = a.at;
+        a.memory_until = sim + food_memory_seconds;
         a.recover_until = a.until + post_meal_seconds;
         a.event = 1;
         if (a.kind == 0 && a.species == 7)
@@ -696,6 +725,85 @@ void Engine::feeding_glide(Animal &a) {
     a.detect_at = std::max(a.detect_at, a.recover_until);
     a.target_depth = a.holding;
 }
+bool Engine::investigate(Animal &a) {
+    if (sim < a.decision || a.node < 0)
+        return false;
+    bool ambush = a.profile.style == 1 || a.profile.style == 2;
+    int cx = int(std::floor(a.at.x / 256)), cy = int(std::floor(a.at.y / 256));
+    double best = -1;
+    V goal;
+    double heard = -10000;
+    int radius = int(std::ceil(std::max(trail_radius, noise_radius) / 256)) + 1;
+    for (int y = -radius; y <= radius; y++)
+        for (int x = -radius; x <= radius; x++) {
+            auto cell = node_cells.find(key(cx + x, cy + y));
+            if (cell == node_cells.end())
+                continue;
+            for (int index : cell->second) {
+                auto const &n = nodes[index];
+                if (n.component != nodes[a.node].component)
+                    continue;
+                double distance = (n.trail_at - a.at).len(), age = sim - n.trail_time;
+                bool bottom = a.profile.style == 3;
+                if (age < trail_lifetime && distance < trail_radius && n.trail_time > a.cue_seen_time &&
+                    n.trail_size < a.size * a.profile.gape &&
+                    (!bottom || n.trail_species == 4 || n.trail_species == 5)) {
+                    double score =
+                        (1 - age / trail_lifetime) * 2 + (ambush ? n.cover : 0) - distance / trail_radius;
+                    V mark = n.trail_at + n.trail_heading * 5;
+                    if (score > best && clear(a.at, mark)) {
+                        best = score;
+                        goal = mark;
+                        heard = n.trail_time;
+                    }
+                }
+                age = sim - n.noise_time;
+                distance = (n.noise_at - a.at).len();
+                if (a.motivated && age < noise_lifetime && distance < noise_radius &&
+                    n.noise_time > a.cue_seen_time && n.noise_time > a.last_capture &&
+                    n.noise_time != a.last_attack_noise) {
+                    double score = 3 * (1 - age / noise_lifetime) - distance / noise_radius;
+                    if (score > best && clear(a.at, n.noise_at)) {
+                        best = score;
+                        goal = n.noise_at;
+                        heard = n.noise_time;
+                    }
+                }
+            }
+        }
+    if (best >= 0) {
+        a.cue_seen_time = heard;
+        a.learned_food = goal;
+        a.memory_until = sim + food_memory_seconds * .5;
+        if ((goal - a.at).len() > 3) {
+            route(a, goal, -1, a.profile.cruise * (ambush ? .55 : .8));
+            a.state = 17;
+            a.decision = sim + std::max(5.0, std::min(20.0, a.route_length / std::max(.05, a.route_speed)));
+        } else {
+            a.state = ambush ? 4 : 16;
+            a.decision = sim + 12;
+            if (ambush) {
+                a.path.clear();
+                a.velocity = {};
+            }
+        }
+        return true;
+    }
+    if (a.memory_until > sim && (a.learned_food - a.at).len() > 12 && clear(a.at, a.learned_food)) {
+        route(a, a.learned_food, -1, a.profile.cruise * .6);
+        a.state = 18;
+        a.decision = sim + std::max(8.0, std::min(30.0, a.route_length / std::max(.05, a.route_speed)));
+        return true;
+    }
+    if (ambush && a.memory_until > sim) {
+        a.state = 4;
+        a.path.clear();
+        a.velocity = {};
+        a.decision = sim + 15;
+        return true;
+    }
+    return false;
+}
 void Engine::relaxed_patrol(uint32_t slot) {
     auto &a = animals[slot];
     if (sim < a.decision)
@@ -703,7 +811,8 @@ void Engine::relaxed_patrol(uint32_t slot) {
     double cadence = a.tier == 0 ? 8 : (a.tier == 1 ? 12 : 20);
     if (valid(a.nearby_food)) {
         auto const &food = animals[a.nearby_food.slot];
-        if (!senses(a, food) || !clear(a.at, prey_point(food, a.at)))
+        if ((position(food, sim) - a.at).len() > a.profile.detect * 1.5 ||
+            !clear(a.at, prey_point(food, a.at)))
             a.nearby_food = {};
     }
     if (!valid(a.nearby_food))
@@ -711,6 +820,9 @@ void Engine::relaxed_patrol(uint32_t slot) {
     if (valid(a.nearby_food)) {
         auto const &food = animals[a.nearby_food.slot];
         V center = position(food, sim);
+        a.food_seen_at = center;
+        a.food_seen_heading = food.heading;
+        a.food_seen_time = sim;
         double spacing = axes(food).x + pressure_range + 5;
         V away = (a.at - center).unit();
         if (away.len2() < .01)
@@ -719,8 +831,10 @@ void Engine::relaxed_patrol(uint32_t slot) {
         if ((center - a.at).len() > spacing + 8)
             goal = center + away * spacing + food.heading * 5;
         else {
-            V forward = food.velocity.len2() > .01 ? food.heading : a.heading;
-            goal = a.at + forward * std::max(6.0, a.profile.cruise * cadence * .65);
+            V forward = food.velocity.len2() > .01 ? food.heading : V{-away.y, away.x};
+            goal = a.at + forward * std::min(5.0, a.profile.cruise * cadence * .5);
+            if ((goal - center).len() > spacing + 4)
+                goal = center + (goal - center).unit() * (spacing + 4);
             if ((center - a.at).len() < spacing)
                 goal = goal + away * (spacing - (center - a.at).len());
         }
@@ -732,6 +846,14 @@ void Engine::relaxed_patrol(uint32_t slot) {
         }
         a.nearby_food = {};
     }
+    if (sim - a.food_seen_time < 40 && (a.food_seen_at - a.at).len() > 8 && clear(a.at, a.food_seen_at)) {
+        route(a, a.food_seen_at, -1, a.profile.cruise * .5);
+        a.state = 16;
+        a.decision = sim + cadence;
+        return;
+    }
+    if (investigate(a))
+        return;
     // Finish a useful route before choosing another, instead of oscillating around home.
     if (a.path.size() > 1 && travel_distance(a, sim) + 1 < a.route_length) {
         a.state = 0;
@@ -783,7 +905,12 @@ void Engine::hunt(uint32_t slot, double dt) {
         a.target = {};
         a.energy = std::min(1.0, a.energy + dt * .005);
         if (ambush) {
-            // Concealed holding is intentional; being satisfied is not exhaustion.
+            if (sim >= a.decision) {
+                if (investigate(a)) return;
+                a.decision=sim+15;
+            }
+            if (a.path.size() > 1 && travel_distance(a, sim) + 1 < a.route_length)
+                return;
             a.state = 4;
             a.path.clear();
             a.velocity = {};
@@ -823,6 +950,9 @@ void Engine::hunt(uint32_t slot, double dt) {
         a.target_depth = clamp(prey.depth, 0, a.bottom - .02);
         bool pressure = breakaway(prey);
         if (ambush && !a.ambush_committed && distance > a.profile.lunge) {
+            if ((a.state == 17 || a.state == 18) && a.path.size() > 1 &&
+                travel_distance(a, sim) + 1 < a.route_length)
+                return;
             a.state = 4;
             a.path.clear();
             a.velocity = {};
@@ -857,25 +987,44 @@ void Engine::hunt(uint32_t slot, double dt) {
         if (valid(chosen)) {
             a.target = chosen;
             a.ambush_committed = false;
-            if (ambush) {
+            if (ambush && a.state != 17 && a.state != 18) {
                 a.path.clear();
                 a.velocity = {};
             }
+            bool approaching_lane = a.state == 17 || a.state == 18;
             a.pursuit_started = a.tracked_at = sim;
-            a.state = ambush ? 4 : 2;
+            a.state = ambush ? (approaching_lane ? 17 : 4) : 2;
             a.event = 5;
             return;
         }
     }
     a.energy = std::min(1.0, a.energy + dt * .002);
-    if (sim >= a.decision || a.path.empty())
-        plan(a);
+    if (sim >= a.decision) {
+        if (investigate(a))
+            return;
+        if (ambush && a.node >= 0 && nodes[a.node].cover >= .35) {
+            a.state = 4;
+            a.path.clear();
+            a.velocity = {};
+            a.decision = sim + 15;
+        } else
+            plan(a);
+    }
 }
 void Engine::bait(uint32_t slot, double dt) {
     auto &a = animals[slot];
     if (a.quantity == 0 && a.escapees == 0) {
         retire(slot);
         return;
+    }
+    if (a.node >= 0 && sim >= a.trail_due) {
+        auto &n = nodes[a.node];
+        n.trail_at = a.at;
+        n.trail_heading = a.heading;
+        n.trail_time = sim;
+        n.trail_species = a.species;
+        n.trail_size = a.size;
+        a.trail_due = sim + 12;
     }
     a.hunger = 0;
     a.fear = std::max(0.0, a.fear - dt * .08);
