@@ -60,7 +60,7 @@ struct Node {
     V at;
     double depth = 2, cover = .1, shore = 100, food = 1, food_time = 0;
     V trail_at, trail_heading, noise_at;
-    double trail_time = -10000, trail_size = 0, noise_time = -10000;
+    double trail_time = -10000, trail_size = 0, trail_speed = 0, noise_time = -10000;
     int trail_species = 0;
     int zone = 0, component = 0;
     std::vector<int> neighbors, areas;
@@ -71,7 +71,7 @@ struct Animal {
     int kind = 0, index = 0, species = 0, state = 0, tier = 2, zone = 0, home = -1, feeding = -1, school = -1,
         node = -1;
     bool alive = true, individual = false, temporary = false, return_home = false, motivated = false,
-         ambush_committed = false;
+         ambush_committed = false, exhausted = false;
     int quantity = 1, capacity = 1, escapees = 0, captures = 0, misses = 0, attempts = 0;
     V at, velocity, heading{1, 0}, home_at, threat, escape_heading;
     double depth = 1, holding = 1, target_depth = 1, bottom = 2, size = 30, hunger = .5, energy = 1, fear = 0,
@@ -90,6 +90,7 @@ struct Animal {
     int circuit[4] = {-1, -1, -1, -1}, circuit_count = 0, circuit_cursor = 0;
     V food_seen_at, food_seen_heading, learned_food;
     double last_attack_noise = -10000, stealth_until = -1, social_at = 0;
+    double ambush_wait_until = -1, ambush_evidence = -10000;
     double food_seen_time = -10000, memory_until = -1, trail_due = 0, cue_seen_time = -10000;
     Profile profile;
     std::vector<V> path;
@@ -243,6 +244,7 @@ class Engine {
     bool investigate(Animal &a, bool fresh_only = false);
     bool social(Animal &a);
     double detection(Animal const &a) const;
+    double search_speed(Animal const &a) const;
     void bait(uint32_t slot, double dt);
     bool eat(uint32_t slot);
     void retire(uint32_t slot);

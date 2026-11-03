@@ -119,9 +119,21 @@ void Engine::advance(Animal &a, double time) {
     if (time <= a.sync_time)
         return;
     V previous = a.at;
+    double moved =
+        a.path.size() > 1 ? std::max(0.0, travel_distance(a, time) - travel_distance(a, a.sync_time)) : 0;
+    double effort_speed = std::max(a.route_speed, swimming_speed(a, a.sync_time));
     a.at = position(a, time);
     double dt = std::max(0.0, time - a.sync_time);
     a.sync_time = time;
+    if ((a.kind == 0 || a.kind == 2) && dt > 0) {
+        // Charge actual route distance, including bends, even across coarse simulation ticks.
+        double cruise = std::max(.1, a.profile.cruise), ratio = effort_speed / cruise;
+        double moving = std::min(dt, moved / std::max(.05, effort_speed));
+        double cost = moved / cruise * (.0004 + .0005 * ratio);
+        double rest_rate = a.exhausted ? .012 : (a.state == 4 ? .006 : .004);
+        double recovery = rest_rate * (dt - moving) + moving * .002 * clamp(1 - ratio / .5, 0, 1);
+        a.energy = clamp(a.energy + recovery - cost, 0, 1);
+    }
     if (dt > 0 && (a.at - previous).len2() > 1e-10)
         a.velocity = (a.at - previous) * (1 / dt);
     if (a.velocity.len2() > .0001)
@@ -315,6 +327,10 @@ V Engine::prey_point(Animal const &prey, V observer) const {
     double x = d.x * h.x + d.y * h.y, y = d.x * side.x + d.y * side.y;
     double q = std::sqrt(x * x / (shape.x * shape.x) + y * y / (shape.y * shape.y));
     return q <= 1 ? observer : center + d * (1 / q);
+}
+double Engine::search_speed(Animal const &a) const {
+    double willingness = clamp((a.energy - .2) / .5, 0, 1) * a.hunger;
+    return std::min(a.profile.burst * .75, a.profile.cruise * (.8 + 1.2 * willingness));
 }
 double Engine::detection(Animal const &a) const {
     bool concealed = (a.profile.style == 1 || a.profile.style == 2) && !a.ambush_committed;
@@ -638,6 +654,8 @@ void Engine::plan(Animal &a) {
         }
     }
     double velocity = a.kind == 1 ? (a.species == 4 || a.species == 5 ? .05 : .4) : a.profile.cruise;
+    if (a.kind != 1 && a.state != 9)
+        velocity = search_speed(a);
     if (a.state == 9)
         velocity *= .35;
     route(a, goal, destination, velocity);
@@ -879,6 +897,7 @@ bool Engine::investigate(Animal &a, bool fresh_only) {
     V goal;
     double heard = -10000;
     bool feeding_sound = false;
+    V lane_heading;
     int radius = int(std::ceil(std::max(trail_radius, noise_radius) / 256));
     for (int y = -radius; y <= radius; y++)
         for (int x = -radius; x <= radius; x++) {
@@ -897,12 +916,28 @@ bool Engine::investigate(Animal &a, bool fresh_only) {
                      n.trail_size < animals[a.rejected.slot].size * .8)) {
                     double score =
                         (1 - age / trail_lifetime) * 2 + (ambush ? n.cover : 0) - distance / trail_radius;
-                    V mark = n.trail_at + n.trail_heading * 5;
+                    // Extrapolate only a short, water-valid portion of a recent bait lane.
+                    double lead = ambush ? std::min(25.0, n.trail_speed * (std::min(age, 12.0) + 12)) : 5;
+                    V mark = n.trail_at + n.trail_heading * lead;
+                    if (!clear(n.trail_at, mark))
+                        continue;
+                    if (ambush) {
+                        V side{-n.trail_heading.y, n.trail_heading.x};
+                        double offset = clamp(a.profile.lunge * .4, 1.0, 4.0);
+                        V left = mark + side * offset, right = mark - side * offset;
+                        if ((right - a.at).len() < (left - a.at).len())
+                            std::swap(left, right);
+                        if (clear(mark, left) && clear(a.at, left))
+                            mark = left;
+                        else if (clear(mark, right) && clear(a.at, right))
+                            mark = right;
+                    }
                     if (score > best && clear(a.at, mark)) {
                         best = score;
                         goal = mark;
                         heard = n.trail_time;
                         feeding_sound = false;
+                        lane_heading = n.trail_heading;
                     }
                 }
                 age = sim - n.noise_time;
@@ -923,10 +958,18 @@ bool Engine::investigate(Animal &a, bool fresh_only) {
         a.cue_seen_time = heard;
         a.learned_food = goal;
         a.memory_until = sim + food_memory_seconds * .5;
+        if (ambush) {
+            a.ambush_evidence = heard;
+            a.ambush_wait_until =
+                sim + 45 + random() * 30 + (goal - a.at).len() / std::max(.05, search_speed(a) * .55);
+            a.memory_until = std::min(a.memory_until, a.ambush_wait_until);
+            if (!feeding_sound && lane_heading.len2() > .01)
+                a.heading = lane_heading * -1;
+        }
         if ((goal - a.at).len() > 3) {
             route(a, goal, -1,
                   std::min(a.profile.burst * .8,
-                           a.profile.cruise * (feeding_sound ? 1.8 : (ambush ? .55 : .8))));
+                           search_speed(a) * (feeding_sound ? 1.4 : (ambush ? .55 : 1.0))));
             a.state = 17;
             a.decision = sim + std::max(5.0, std::min(20.0, a.route_length / std::max(.05, a.route_speed)));
         } else {
@@ -941,6 +984,14 @@ bool Engine::investigate(Animal &a, bool fresh_only) {
     }
     if (fresh_only)
         return false;
+    if (ambush && a.ambush_wait_until >= 0 && sim >= a.ambush_wait_until) {
+        a.memory_until = sim;
+        a.area_until = sim;
+        a.ambush_wait_until = -1;
+        a.path.clear();
+        a.velocity = {};
+        return false; // An empty lane is a reason to search another position.
+    }
     if (a.memory_until > sim && (a.learned_food - a.at).len() > 12 && clear(a.at, a.learned_food)) {
         route(a, a.learned_food, -1, a.profile.cruise * .6);
         a.state = 18;
@@ -1092,7 +1143,6 @@ void Engine::hunt(uint32_t slot, double dt) {
     if (sim < a.recover_until) {
         a.state = sim < a.until ? 8 : 9;
         a.target = {};
-        a.energy = std::min(1.0, a.energy + dt * .005);
         return; // The meal route keeps advancing analytically; no new attacks.
     }
     if (a.return_home) {
@@ -1106,13 +1156,16 @@ void Engine::hunt(uint32_t slot, double dt) {
         }
         a.return_home = false;
     }
-    if (a.energy < .15) {
+    if (a.energy < .15)
+        a.exhausted = true;
+    if (a.exhausted && a.energy >= .35)
+        a.exhausted = false;
+    if (a.exhausted) {
         a.state = 9;
         a.target = {};
         a.nearby_food = {};
-        a.energy = std::min(1.0, a.energy + dt * .025);
-        if (sim >= a.decision)
-            plan(a);
+        a.path.clear();
+        a.velocity = {};
         return;
     }
     if (!a.motivated) {
@@ -1120,7 +1173,6 @@ void Engine::hunt(uint32_t slot, double dt) {
         a.ambush_committed = false;
         if (social(a))
             return;
-        a.energy = std::min(1.0, a.energy + dt * .005);
         if (ambush) {
             if (sim >= a.decision) {
                 if (investigate(a))
@@ -1159,8 +1211,14 @@ void Engine::hunt(uint32_t slot, double dt) {
                 group.contact_at = sim;
             }
         }
+        V delta = target - a.at;
+        double closing =
+            distance > .01 ? -(delta.x * prey.velocity.x + delta.y * prey.velocity.y) / distance : 0;
+        bool waiting_for_approach = ambush && !a.ambush_committed && closing > .025 && sim - a.tracked_at < 3;
+        if (waiting_for_approach)
+            a.ambush_wait_until = sim + 15;
         if (sim - a.tracked_at > 6 || distance > detection(a) * 2 ||
-            sim - a.pursuit_started > (breakaway(prey) ? 22 : 60)) {
+            (!waiting_for_approach && sim - a.pursuit_started > (breakaway(prey) ? 22 : 60))) {
             a.target = {};
             a.detect_at = sim + 3;
             a.decision = sim;
@@ -1175,12 +1233,11 @@ void Engine::hunt(uint32_t slot, double dt) {
         a.target_depth = clamp(prey.depth, 0, a.bottom - .02);
         bool pressure = breakaway(prey);
         if (ambush && !a.ambush_committed && distance > a.profile.lunge) {
-            V delta = target - a.at;
             double speed2 = prey.velocity.len2();
             double arrival =
                 speed2 > .01 ? -(delta.x * prey.velocity.x + delta.y * prey.velocity.y) / speed2 : -1;
-            bool approaching =
-                arrival > 0 && arrival < 8 && (delta + prey.velocity * arrival).len() < a.profile.lunge;
+            bool approaching = waiting_for_approach && arrival > 0 && arrival < 60 &&
+                               (delta + prey.velocity * arrival).len() < a.profile.lunge;
             a.state = 4;
             if (approaching) {
                 a.path.clear();
@@ -1213,7 +1270,6 @@ void Engine::hunt(uint32_t slot, double dt) {
         }
         if (pressure)
             a.state = 12;
-        a.energy = std::max(0.0, a.energy - dt * .0015);
         if (!pressure)
             attack(slot);
         return;
@@ -1238,7 +1294,6 @@ void Engine::hunt(uint32_t slot, double dt) {
             return;
         }
     }
-    a.energy = std::min(1.0, a.energy + dt * .002);
     if (social(a))
         return;
     if (inspect_prey(slot))
@@ -1282,6 +1337,7 @@ void Engine::bait(uint32_t slot, double dt) {
         n.trail_time = sim;
         n.trail_species = a.species;
         n.trail_size = a.size;
+        n.trail_speed = swimming_speed(a, sim);
         a.trail_due = sim + 12;
     }
     a.hunger = 0;
