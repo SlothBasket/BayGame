@@ -81,7 +81,7 @@ struct Animal {
            last = 0, due = 0, decision = 0, detect_at = 0, attack_at = 0, until = 0, threat_until = 0,
            pursuit_started = 0, detached_at = 0, regroup_at = 0, route_started = 0, route_speed = .5,
            route_length = 0, scatter_at = 0;
-    Handle target, nearby_food, inspecting, rejected;
+    Handle target, prey_school, nearby_food, inspecting, rejected;
     double inspect_until = 0, inspect_at = 0, rejected_until = 0;
     int previous_patrol_node = -1, patrol_area = -1;
     uint32_t habitat_mask = 0;

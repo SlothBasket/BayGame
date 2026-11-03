@@ -353,7 +353,10 @@ double Engine::detection(Animal const &a) const {
 bool Engine::senses(Animal const &a, Animal const &prey) const {
     V delta = prey_point(prey, a.at) - a.at;
     double d = delta.len(), vertical = std::abs(prey.depth - a.depth);
-    if (d * d + vertical * vertical > detection(a) * detection(a))
+    double range = detection(a);
+    if (prey.kind == 1 && prey.individual)
+        range = std::min(range, clamp(a.profile.detect * .4, 6.0, 18.0));
+    if (d * d + vertical * vertical > range * range)
         return false;
     if ((a.profile.style == 1 || a.profile.style == 2) && !a.ambush_committed)
         return true;
@@ -385,9 +388,11 @@ Handle Engine::acquire(uint32_t slot, bool edible_only, bool curious) {
         if (!senses(a, prey))
             continue;
         V point = prey_point(prey, a.at);
+        if (edible_only && (point - a.at).len() > clamp(a.profile.detect * .4, 6.0, 18.0))
+            continue;
         if (!clear(a.at, point))
             continue;
-        int rank = breakaway(prey) ? 0 : (prey.kind == 1 && !prey.individual ? 1 : (prey.kind == 1 ? 3 : 2));
+        int rank = breakaway(prey) ? 2 : (prey.kind == 1 && !prey.individual ? 1 : (prey.kind == 1 ? 3 : 2));
         double score = rank * 10000 - (point - a.at).len() + std::min(5.0, prey.size * .1) + prey.fear;
         if (score > best) {
             best = score;
@@ -1193,12 +1198,45 @@ void Engine::hunt(uint32_t slot, double dt) {
         return;
     }
     a.nearby_food = {};
-    if (valid(a.target) && breakaway(animals[a.target.slot]) && sim >= a.detect_at) {
+    // Keep a generation-checked school handle independently of temporary bait slots.
+    bool lost_target = a.target.slot != UINT32_MAX && !valid(a.target);
+    if (lost_target) {
+        Handle replacement;
+        if (valid(a.prey_school)) {
+            auto const &pod = animals[a.prey_school.slot];
+            if (pod.quantity > 0 && senses(a, pod) && clear(a.at, prey_point(pod, a.at)))
+                replacement = a.prey_school;
+        }
+        if (!valid(replacement))
+            replacement = acquire(slot);
+        a.target = replacement;
+        a.detect_at = sim;
+        a.decision = sim;
+        if (valid(replacement)) {
+            a.pursuit_started = a.tracked_at = sim;
+            // Preserve chase momentum and commitment when another hunter wins a meal.
+        } else if (a.path.size() > 1 && travel_distance(a, sim) + 1 < a.route_length) {
+            a.decision = sim + 2;
+            return;
+        }
+    }
+    if (valid(a.target)) {
+        auto const &tracked = animals[a.target.slot];
+        if (breakaway(tracked))
+            a.prey_school = a.target;
+        else if (tracked.kind == 1 && tracked.parent_id != 0) {
+            auto parent = bait_ids.find(tracked.parent_id);
+            if (parent != bait_ids.end() && animals[parent->second].alive)
+                a.prey_school = handle(parent->second);
+        } else
+            a.prey_school = {};
+    }
+    if (valid(a.target) && breakaway(animals[a.target.slot]) && sim >= a.detect_at &&
+        (prey_point(animals[a.target.slot], a.at) - a.at).len() <= clamp(a.profile.detect * .4, 6.0, 18.0)) {
         a.detect_at = sim + (a.tier == 0 ? .5 : 2);
         Handle exposed = acquire(slot, true);
         if (valid(exposed)) {
             a.target = exposed;
-            a.ambush_committed = false;
             a.pursuit_started = a.tracked_at = sim;
         }
     }
@@ -1223,6 +1261,17 @@ void Engine::hunt(uint32_t slot, double dt) {
             a.ambush_wait_until = sim + 15;
         if (sim - a.tracked_at > 6 || distance > detection(a) * 2 ||
             (!waiting_for_approach && sim - a.pursuit_started > (breakaway(prey) ? 22 : 60))) {
+            if (prey.individual && valid(a.prey_school)) {
+                auto const &pod = animals[a.prey_school.slot];
+                V point = prey_point(pod, a.at);
+                if (pod.quantity > 0 && senses(a, pod) && clear(a.at, point)) {
+                    a.target = a.prey_school;
+                    a.pursuit_started = a.tracked_at = sim;
+                    route(a, point, -1, a.profile.burst);
+                    a.decision = sim + 2;
+                    return;
+                }
+            }
             a.target = {};
             a.detect_at = sim + 3;
             a.decision = sim;
@@ -1285,6 +1334,15 @@ void Engine::hunt(uint32_t slot, double dt) {
         Handle chosen = acquire(slot);
         if (valid(chosen)) {
             a.target = chosen;
+            a.prey_school = {};
+            auto const &prey = animals[chosen.slot];
+            if (breakaway(prey))
+                a.prey_school = chosen;
+            else if (prey.kind == 1 && prey.parent_id != 0) {
+                auto parent = bait_ids.find(prey.parent_id);
+                if (parent != bait_ids.end() && animals[parent->second].alive)
+                    a.prey_school = handle(parent->second);
+            }
             a.ambush_committed = false;
             if (ambush && a.state != 17 && a.state != 18) {
                 a.path.clear();
