@@ -71,7 +71,7 @@ struct Animal {
     int kind = 0, index = 0, species = 0, state = 0, tier = 2, zone = 0, home = -1, feeding = -1, school = -1,
         node = -1;
     bool alive = true, individual = false, temporary = false, return_home = false, motivated = false,
-         ambush_committed = false, exhausted = false;
+         ambush_committed = false;
     int quantity = 1, capacity = 1, escapees = 0, captures = 0, misses = 0, attempts = 0;
     V at, velocity, heading{1, 0}, home_at, threat, escape_heading;
     double depth = 1, holding = 1, target_depth = 1, bottom = 2, size = 30, hunger = .5, energy = 1, fear = 0,
@@ -245,6 +245,7 @@ class Engine {
     bool social(Animal &a);
     double detection(Animal const &a) const;
     double search_speed(Animal const &a) const;
+    double sustainable_speed(Animal const &a) const;
     void bait(uint32_t slot, double dt);
     bool eat(uint32_t slot);
     void retire(uint32_t slot);
