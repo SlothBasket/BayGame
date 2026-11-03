@@ -524,7 +524,7 @@
     "breakaway"
   ],
   "native_feeding": {
-    "hunger_per_second": 0.00024,
+    "hunger_per_second": 0.00096,
     "pursuit_hunger_multiplier": 1.25,
     "hunt_start_hunger": 0.25,
     "hunt_stop_hunger": 0.12,

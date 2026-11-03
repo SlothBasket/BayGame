@@ -208,7 +208,7 @@ class BaySimulation : public RefCounted {
         e.noise_radius = bay::clamp(number(cues, "feeding_noise_radius_ft", 260) * .3048, 1, 250);
         e.food_memory_seconds = std::max(1.0, number(cues, "food_memory_seconds", 1200));
         Dictionary feeding = ecology.get("native_feeding", Dictionary());
-        e.hunger_rate = std::max(0.0, number(feeding, "hunger_per_second", .00024));
+        e.hunger_rate = std::max(0.0, number(feeding, "hunger_per_second", .00096));
         e.pursuit_hunger_factor = std::max(1.0, number(feeding, "pursuit_hunger_multiplier", 1.25));
         e.hunt_start = bay::clamp(number(feeding, "hunt_start_hunger", .25), .02, 1);
         e.hunt_stop = bay::clamp(number(feeding, "hunt_stop_hunger", .12), 0, e.hunt_start - .01);

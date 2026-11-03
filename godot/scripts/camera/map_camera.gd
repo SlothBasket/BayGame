@@ -18,6 +18,8 @@ func setup(m: Dictionary):
 		var value: float=original[i]*1.3
 		while value<minf(float(original[i+1]),2000.0)*.98:
 			presets.append(value);value*=1.3
+	var closest: float=float(presets.min())
+	presets.append(closest*.5);presets.append(closest*.25)
 	presets.sort()
 	presets.append(overview_span())
 	index=presets.size()-1

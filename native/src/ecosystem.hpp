@@ -145,7 +145,7 @@ class Engine {
     friend struct EngineTest;
 
   public:
-    double hunger_rate = .00024, pursuit_hunger_factor = 1.25, hunt_start = .25, hunt_stop = .12;
+    double hunger_rate = .00096, pursuit_hunger_factor = 1.25, hunt_start = .25, hunt_stop = .12;
     double meal_base = .02, meal_ratio = .9, meal_min = .025, meal_max = .6, post_meal_seconds = 2;
     double hit_min = .15, hit_max = .95, energy_weight = .18, cover_weight = .18;
     int bait_limit = 48000, escape_cap = 6, detach_min = 1, detach_max = 3;
