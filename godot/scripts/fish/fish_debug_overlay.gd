@@ -45,7 +45,6 @@ var inspector_open := true
 var ui_hidden := false
 var show_ui_button: Button
 var marker_span := 14000.0
-var fish_body := PackedVector2Array()
 var canvas: CanvasLayer
 var toolbar: PanelContainer
 var panel: PanelContainer
@@ -131,7 +130,6 @@ func setup(game):
 	for i in range(main.camera.presets.size()):
 		if float(main.camera.presets[i])<=3500: last_close=i
 	marker_span=float(main.camera.presets[mini(last_close+2,main.camera.presets.size()-1)])
-	for n in range(16): fish_body.append(Vector2.from_angle(TAU*n/16))
 	if main.fish.native!=null: main.fish.native.marker_span=marker_span
 	bait_menu=PopupMenu.new();add_child(bait_menu)
 	# Native popup uses screen pixels, independent of the world's canvas/zoom transform.
@@ -486,21 +484,29 @@ func path_line(path: PackedVector2Array,cursor: int,start: Vector2,mpp: float,co
 	for i in range(cursor,path.size()): line.append(path[i]-origin)
 	if line.size()>1: draw_polyline(line,color,1.5*mpp,true)
 func draw_fish_marker(at: Vector2,species: int,length_cm: float,direction: Vector2,mpp: float):
-	var elongation: float=[1.0,.95,1.2,.8,1.45,1.1,.75,.9][species]
-	var breadth: float=[.32,.28,.28,.62,.25,.48,.72,.42][species]
-	var radius: float=clampf(3+sqrt(maxf(1,length_cm))*.45,4,13)*elongation
-	draw_set_transform(at,direction.angle() if direction.length_squared()>.01 else 0,Vector2(radius*mpp,radius*breadth*mpp))
-	draw_colored_polygon(fish_body,COLORS[species])
+	# Build the basis explicitly: nose follows the geographic heading, width is perpendicular.
+	# Total nose-to-tail length has one common inch scale for every species.
+	var inches: float=maxf(1.0,length_cm/2.54)
+	var half_length: float=(3.0+inches*.32)*mpp
+	var breadth: float=[.30,.26,.28,.52,.25,.43,.62,.36][species]
+	var forward: Vector2=direction.normalized() if direction.length_squared()>.01 else Vector2.RIGHT
+	var side := Vector2(-forward.y,forward.x)
+	draw_set_transform_matrix(Transform2D(forward*half_length,side*half_length*breadth,at))
+	# A pointed nose, tapered tail stock and forked tail make direction unambiguous.
+	draw_colored_polygon(PackedVector2Array([Vector2(-1,-.65),Vector2(-.78,0),Vector2(-1,.65),Vector2(-.55,.20),Vector2(-.55,-.20)]),COLORS[species].darkened(.18))
+	draw_colored_polygon(PackedVector2Array([Vector2(1,0),Vector2(.7,-.65),Vector2(.2,-1),Vector2(-.3,-.8),Vector2(-.7,-.18),Vector2(-.7,.18),Vector2(-.3,.8),Vector2(.2,1),Vector2(.7,.65)]),COLORS[species])
 	if species==3:
-		for x in [-.6,-.3,0.0,.3,.6]:
-			var edge := sqrt(1-float(x)*float(x))*.9
+		for x in [-.35,-.1,.15,.4,.65]:
+			var edge: float=.85-absf(float(x)-.1)*.5
 			draw_line(Vector2(x,-edge),Vector2(x,edge),Color(.08,.09,.09),.13,true)
-	elif species in [2,7]: draw_line(Vector2(-.85,0),Vector2(.85,0),Color(.18,.21,.17),.14,true)
+	elif species in [2,7]: draw_line(Vector2(-.55,0),Vector2(.7,0),Color(.18,.21,.17),.12,true)
 	elif species in [1,6]:
-		for spot in [Vector2(-.45,-.3),Vector2(0,.3),Vector2(.4,-.25)]: draw_circle(spot,.12,Color(.17,.2,.13))
-	elif species==0: draw_circle(Vector2(-.65,0),.16,Color(.1,.12,.1))
-	else: draw_line(Vector2(-.65,-.35),Vector2(.65,-.35),Color(.34,.42,.36),.16,true)
+		for spot in [Vector2(-.3,-.3),Vector2(0,.3),Vector2(.4,-.25)]: draw_circle(spot,.10,Color(.17,.2,.13))
+	elif species==0: draw_circle(Vector2(-.53,0),.14,Color(.1,.12,.1))
+	else: draw_line(Vector2(-.35,-.35),Vector2(.55,-.35),Color(.34,.42,.36),.12,true)
+	draw_circle(Vector2(.69,-.23),.075,Color(.07,.08,.08))
 	draw_set_transform(Vector2.ZERO)
+
 func _draw():
 	if main==null or main.fish==null: return
 	var diagnostic_begin := Time.get_ticks_usec()
