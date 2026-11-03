@@ -537,5 +537,6 @@
     "feeding_noise_seconds": 12,
     "feeding_noise_radius_ft": 260,
     "food_memory_seconds": 1200
-  }
+  },
+  "attached_forage_patches_per_area": 3
 }

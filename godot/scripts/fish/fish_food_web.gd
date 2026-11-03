@@ -48,10 +48,16 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 		for polygon in a.polygons:
 			polygon.outer=points(polygon.outer)
 			for h in range(polygon.holes.size()): polygon.holes[h]=points(polygon.holes[h])
+		var attached: bool=a.kind in ["mapped_structure","oyster_bar_candidate","rock_pile"]
+		if attached: a.bottom_capacity=maxf(float(a.bottom_capacity),240.0 if a.kind=="oyster_bar_candidate" else 160.0)
 		if a.bottom_capacity>0:
-			var at := sample(index,index*7919)
-			bottom_zones[a.zone].append(bottom.size())
-			bottom.append({"id":bottom.size()+1,"area":a.id,"zone":a.zone,"x":at.x,"y":at.y,"capacity":a.bottom_capacity,"quantity":a.bottom_capacity*.8,"size_cm":2.0 if a.kind=="mapped_structure" else 4.0,"kind":"barnacles / attached forage" if a.kind=="mapped_structure" else "small crabs / bottom forage"})
+			var patches: int=int(eco.config.get("attached_forage_patches_per_area",3)) if attached else 1
+			patches=clampi(patches,1,8)
+			for patch in range(patches):
+				var at := sample(index,index*7919+patch*104729)
+				bottom_zones[a.zone].append(bottom.size())
+				var capacity: float=float(a.bottom_capacity)/patches
+				bottom.append({"id":bottom.size()+1,"area":a.id,"zone":a.zone,"x":at.x,"y":at.y,"capacity":capacity,"quantity":capacity*.8,"size_cm":2.0 if attached else 4.0,"kind":"small oysters / attached forage" if a.kind=="oyster_bar_candidate" else ("barnacles / attached forage" if attached else "small crabs / bottom forage")})
 	if not saved.is_empty():
 		if saved.get("nutrients",PackedFloat32Array()).size()!=areas.size() or not saved.get("bottom") is Array: return fail("saved food resource arrays or bottom-forage records incompatible")
 		for b in saved.bottom:

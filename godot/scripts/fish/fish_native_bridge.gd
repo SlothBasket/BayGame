@@ -5,6 +5,7 @@ var p
 var engine
 var stats: Dictionary = {}
 var view := Rect2()
+var marker_span := 14000.0
 var candidates: Array = []
 var dots: Array = []
 var positions: Dictionary = {}
@@ -18,7 +19,7 @@ func initialize(population) -> bool:
  p=population
  if not ClassDB.class_exists("BaySimulation"): return false
  engine=ClassDB.instantiate("BaySimulation")
- if not engine.has_method("find_active_hunt"):
+ if not engine.has_method("find_trophy"):
   push_error("Native ecosystem is older than the scripts. Rebuild with Play BayGame.bat.");engine=null;return false
  var animals: Array=[];var eco=p.ecology;var nav=p.movement.nav
  for i in range(p.ids.size()):
@@ -44,7 +45,7 @@ func selected_code() -> int:
  return -1
 func tick(paused := false):
  var started := Time.get_ticks_usec();var now := started/1000000.0
- engine.set_controls({"speed":0 if paused else p.time_scale,"boat":p.simulation_detail.boat,"camera":p.simulation_detail.camera,"tide":p.ecology.tide_level_m,"lod":p.simulation_detail.enabled,"detailed":p.simulation_detail.detailed_m,"intermediate":p.simulation_detail.intermediate_m,"hysteresis":p.simulation_detail.hysteresis_m,"selected":selected_code(),"cpu_ms":cpu_limit_ms})
+ engine.set_controls({"speed":0 if paused else p.time_scale,"boat":p.simulation_detail.boat,"camera":p.simulation_detail.camera,"tide":p.ecology.tide_level_m,"lod":p.simulation_detail.enabled,"detailed":p.simulation_detail.detailed_m,"intermediate":p.simulation_detail.intermediate_m,"hysteresis":p.simulation_detail.hysteresis_m,"selected":selected_code(),"cpu_ms":cpu_limit_ms,"marker_span":marker_span})
  if now<poll_at: return
  poll_at=now+.05
  var snapshot: Dictionary=engine.read_view(view,selected_code())
@@ -87,7 +88,10 @@ func tick(paused := false):
  p.hunting.prey_cache.clear();p.hunting.prey_epoch=-1
  revision+=1;transfer_ms=(Time.get_ticks_usec()-started)/1000.0;p.update_ms=transfer_ms
 func find_active_hunt() -> Dictionary:
- var found: Dictionary=engine.find_active_hunt()
+ return observe_found(engine.find_active_hunt())
+func find_trophy(excluded: int) -> Dictionary:
+ return observe_found(engine.find_trophy(excluded))
+func observe_found(found: Dictionary) -> Dictionary:
  if found.is_empty(): return found
  var code: int=found.code;var at: Vector2=found.position
  # Seed observation only, so first selection/follow cannot jump to a stale shadow position.
@@ -100,7 +104,7 @@ func displayed(code: int) -> Vector2:
  var at: Vector2=positions.get(code,Vector2.ZERO)
  return Vector2(previous.get(code,at)).lerp(at,clampf((Time.get_ticks_usec()/1000000.0-received)/.05,0,1))
 func activity(state: int) -> String:
- return ["searching / habitat patrol","detecting prey","approaching prey","pursuing / intercepting","holding ambush","strike","capture","miss","consuming prey","resting / slow patrol","evading predator","returning to school","pressuring school","traveling to shelter","seeking school / sheltering","holding at shelter","cruising near detected food","investigating fading bait trail / feeding sound","returning to remembered food location"][clampi(state,0,18)]
+ return ["searching / habitat patrol","detecting prey","approaching prey","pursuing / intercepting","holding ambush","strike","capture","miss","consuming prey","resting / slow patrol","evading predator","returning to school","pressuring school","traveling to shelter","seeking school / sheltering","holding at shelter","cruising near detected food","investigating fading bait trail / feeding sound","returning to remembered food location","investigating prey size / suitability"][clampi(state,0,19)]
 func event_name(event: int) -> String:
  return ["native ecological activity","mathematical capture","predator disturbance","miss; pursuit may continue","consumed / rejoined","prey detected"][clampi(event,0,5)]
 func shutdown():

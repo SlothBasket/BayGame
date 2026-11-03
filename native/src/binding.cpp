@@ -17,6 +17,8 @@ using namespace godot;
 class BaySimulation : public RefCounted {
     GDCLASS(BaySimulation, RefCounted)
     std::unique_ptr<bay::Engine> engine;
+    double marker_span = 14000;
+    double trophies[8] = {33, 25, 35, 21, 72, 32, 22, 20};
     static double number(Dictionary const &d, char const *k, double fallback = 0) {
         return double(d.get(k, fallback));
     }
@@ -25,6 +27,7 @@ class BaySimulation : public RefCounted {
     static void _bind_methods() {
         ClassDB::bind_method(D_METHOD("initialize", "world"), &BaySimulation::initialize);
         ClassDB::bind_method(D_METHOD("set_controls", "controls"), &BaySimulation::set_controls);
+        ClassDB::bind_method(D_METHOD("find_trophy", "excluded"), &BaySimulation::find_trophy);
         ClassDB::bind_method(D_METHOD("find_active_hunt"), &BaySimulation::find_active_hunt);
         ClassDB::bind_method(D_METHOD("read_view", "bounds", "selected"), &BaySimulation::read_view);
         ClassDB::bind_method(D_METHOD("spawn_bait", "species", "position"), &BaySimulation::spawn_bait);
@@ -146,6 +149,11 @@ class BaySimulation : public RefCounted {
             e.animals.push_back(std::move(a));
         }
         Dictionary ecology = world.get("ecology", Dictionary());
+        Array species = ecology.get("species", Array());
+        for (int i = 0; i < std::min(8, int(species.size())); i++) {
+            Dictionary spec = species[i];
+            trophies[i] = number(spec, "preserve_trophy_in", trophies[i]);
+        }
         Dictionary cues = ecology.get("native_cues", Dictionary());
         e.trail_lifetime = std::max(1.0, number(cues, "trail_lifetime_seconds", 120));
         e.trail_radius = bay::clamp(number(cues, "trail_detection_ft", 115) * .3048, 1, 150);
@@ -186,6 +194,7 @@ class BaySimulation : public RefCounted {
     void set_controls(Dictionary const &d) {
         if (!engine)
             return;
+        marker_span = number(d, "marker_span", 14000);
         bay::Controls c;
         c.speed = number(d, "speed", 1);
         c.tide = number(d, "tide", 0);
@@ -203,6 +212,32 @@ class BaySimulation : public RefCounted {
     void spawn_bait(int species, Vector2 at) {
         if (engine && species >= 0 && species < 8)
             engine->spawn(species, {at.x, at.y});
+    }
+    Dictionary find_trophy(int excluded) {
+        Dictionary result;
+        if (!engine)
+            return result;
+        auto snap = engine->snapshot();
+        if (!snap)
+            return result;
+        const bay::Row *chosen = nullptr, *current = nullptr;
+        double best = 0;
+        for (auto const &r : snap->rows) {
+            if (r.kind != 0 || !r.alive)
+                continue;
+            double relative = r.size / (std::max(1.0, trophies[r.species]) * 2.54);
+            if(r.code==excluded) {if(relative>=.95) current=&r;continue;}
+            if (relative >= .95 && relative > best) {
+                best = relative;
+                chosen = &r;
+            }
+        }
+        if(!chosen) chosen=current;
+        if (chosen) {
+            result["code"] = chosen->code;
+            result["position"] = Vector2(chosen->at.x, chosen->at.y);
+        }
+        return result;
     }
     Dictionary find_active_hunt() {
         Dictionary result;
@@ -284,7 +319,7 @@ class BaySimulation : public RefCounted {
         PackedFloat64Array data;
         Array dots;
         std::vector<std::vector<Vector2>> groups(17);
-        bool overview = bounds.size.y > 4000;
+        bool overview = bounds.size.y > marker_span + 500;
         int target = -1;
         for (auto const &r : snap->rows)
             if (r.code == selected) {

@@ -323,7 +323,7 @@ bool Engine::senses(Animal const &a, Animal const &prey) const {
         return true;
     return d > .0001 && (delta.x * a.heading.x + delta.y * a.heading.y) / d >= a.profile.cone_cos;
 }
-Handle Engine::acquire(uint32_t slot, bool edible_only) {
+Handle Engine::acquire(uint32_t slot, bool edible_only, bool curious) {
     auto const &a = animals[slot];
     thread_local std::vector<uint32_t> candidates;
     query(a.at, a.profile.detect + 12, candidates);
@@ -331,11 +331,15 @@ Handle Engine::acquire(uint32_t slot, bool edible_only) {
     Handle chosen;
     for (auto i : candidates) {
         auto const &prey = animals[i];
-        if (i == slot || prey.kind == 2 || prey.size >= a.size * a.profile.gape || prey.quantity < 1 ||
-            (prey.kind == 0 && prey.species == a.species && prey.size > a.size * .3))
+        if (i == slot || prey.kind == 2 || prey.quantity < 1 ||
+            (curious && prey.kind != 1 && prey.kind != 3) ||
+            (!curious && (prey.size >= a.size * a.profile.gape ||
+                          (prey.kind == 0 && prey.species == a.species && prey.size > a.size * .3))))
             continue;
-        if (a.profile.style == 3 && prey.kind != 3 &&
+        if (!curious && a.profile.style == 3 && prey.kind != 3 &&
             !(prey.kind == 1 && (prey.species == 4 || prey.species == 5)))
+            continue;
+        if (curious && handle(i) == a.rejected && sim < a.rejected_until)
             continue;
         if (edible_only && breakaway(prey))
             continue;
@@ -352,6 +356,59 @@ Handle Engine::acquire(uint32_t slot, bool edible_only) {
         }
     }
     return chosen;
+}
+bool Engine::inspect_prey(uint32_t slot) {
+    auto &a = animals[slot];
+    if (valid(a.inspecting) && sim > a.inspect_until) {
+        a.rejected = a.inspecting;
+        a.rejected_until = sim + 90;
+        a.inspecting = {};
+    }
+    if (!valid(a.inspecting)) {
+        if (sim < a.inspect_at)
+            return false;
+        a.inspect_at = sim + (a.tier == 0 ? 8 : 20);
+        a.inspecting = acquire(slot, false, true);
+        a.inspect_until = sim + 20;
+    }
+    if (!valid(a.inspecting))
+        return false;
+    auto const &prey = animals[a.inspecting.slot];
+    V target = prey_point(prey, a.at);
+    double distance = (target - a.at).len();
+    if (distance > a.profile.detect * 1.5 || !clear(a.at, target)) {
+        a.inspecting = {};
+        return false;
+    }
+    if (distance <= std::min(6.0, a.profile.detect * .3)) {
+        bool edible = prey.size < a.size * a.profile.gape &&
+                      (a.profile.style != 3 || prey.kind == 3 ||
+                       (prey.kind == 1 && (prey.species == 4 || prey.species == 5)));
+        if (edible) {
+            a.nearby_food = a.inspecting;
+            if (a.motivated) {
+                a.target = a.inspecting;
+                a.pursuit_started = a.tracked_at = sim;
+                a.ambush_committed = false;
+                a.state = 2;
+            }
+        } else {
+            a.rejected = a.inspecting;
+            a.rejected_until = sim + 120;
+            if ((a.learned_food - target).len() < 20)
+                a.memory_until = sim;
+        }
+        a.inspecting = {};
+        a.decision = sim;
+        return edible && a.motivated;
+    }
+    if (sim >= a.decision || a.state != 19) {
+        V goal = target + (a.at - target).unit() * std::min(4.0, a.profile.detect * .2);
+        route(a, goal, -1, a.profile.cruise * .6);
+        a.decision = sim + (a.tier == 0 ? 4 : 10);
+    }
+    a.state = 19;
+    return true; // Investigating is not a strike or pressure event; size is assessed nearby.
 }
 void Engine::shelter(Animal &a) {
     a.hunger = 0;
@@ -744,10 +801,10 @@ bool Engine::investigate(Animal &a) {
                 if (n.component != nodes[a.node].component)
                     continue;
                 double distance = (n.trail_at - a.at).len(), age = sim - n.trail_time;
-                bool bottom = a.profile.style == 3;
                 if (age < trail_lifetime && distance < trail_radius && n.trail_time > a.cue_seen_time &&
-                    n.trail_size < a.size * a.profile.gape &&
-                    (!bottom || n.trail_species == 4 || n.trail_species == 5)) {
+                    (!valid(a.rejected) || sim >= a.rejected_until ||
+                     n.trail_species != animals[a.rejected.slot].species ||
+                     n.trail_size < animals[a.rejected.slot].size * .8)) {
                     double score =
                         (1 - age / trail_lifetime) * 2 + (ambush ? n.cover : 0) - distance / trail_radius;
                     V mark = n.trail_at + n.trail_heading * 5;
@@ -759,9 +816,8 @@ bool Engine::investigate(Animal &a) {
                 }
                 age = sim - n.noise_time;
                 distance = (n.noise_at - a.at).len();
-                if (a.motivated && age < noise_lifetime && distance < noise_radius &&
-                    n.noise_time > a.cue_seen_time && n.noise_time > a.last_capture &&
-                    n.noise_time != a.last_attack_noise) {
+                if (age < noise_lifetime && distance < noise_radius && n.noise_time > a.cue_seen_time &&
+                    n.noise_time > a.last_capture && n.noise_time != a.last_attack_noise) {
                     double score = 3 * (1 - age / noise_lifetime) - distance / noise_radius;
                     if (score > best && clear(a.at, n.noise_at)) {
                         best = score;
@@ -852,7 +908,7 @@ void Engine::relaxed_patrol(uint32_t slot) {
         a.decision = sim + cadence;
         return;
     }
-    if (investigate(a))
+    if (inspect_prey(slot) || investigate(a))
         return;
     // Finish a useful route before choosing another, instead of oscillating around home.
     if (a.path.size() > 1 && travel_distance(a, sim) + 1 < a.route_length) {
@@ -906,8 +962,9 @@ void Engine::hunt(uint32_t slot, double dt) {
         a.energy = std::min(1.0, a.energy + dt * .005);
         if (ambush) {
             if (sim >= a.decision) {
-                if (investigate(a)) return;
-                a.decision=sim+15;
+                if (investigate(a))
+                    return;
+                a.decision = sim + 15;
             }
             if (a.path.size() > 1 && travel_distance(a, sim) + 1 < a.route_length)
                 return;
@@ -999,6 +1056,8 @@ void Engine::hunt(uint32_t slot, double dt) {
         }
     }
     a.energy = std::min(1.0, a.energy + dt * .002);
+    if (inspect_prey(slot))
+        return;
     if (sim >= a.decision) {
         if (investigate(a))
             return;
@@ -1170,6 +1229,7 @@ void Engine::update(uint32_t slot) {
     if (!valid(a.target))
         a.target_depth = a.holding;
     if (a.kind == 3) {
+        a.depth = a.holding = a.target_depth = std::max(0.0, a.bottom - .03);
         int births = std::min(a.capacity - a.quantity, int(dt * .1));
         a.quantity += births;
         created += births;
@@ -1242,6 +1302,7 @@ void Engine::start(uint64_t seed) {
             a.zone = nodes[a.node].zone;
             a.bottom = nodes[a.node].depth;
         }
+        if(a.kind==3) a.depth=a.holding=a.target_depth=std::max(0.0,a.bottom-.03);
         a.motivated = a.hunger >= hunt_start;
         a.home_at = a.at;
         double angle = random() * 6.28318530718;

@@ -44,6 +44,8 @@ var follow_lock := false
 var inspector_open := true
 var ui_hidden := false
 var show_ui_button: Button
+var marker_span := 14000.0
+var fish_body := PackedVector2Array()
 var canvas: CanvasLayer
 var toolbar: PanelContainer
 var panel: PanelContainer
@@ -77,7 +79,7 @@ const SPEEDS := [0.0,1.0,5.0,10.0,20.0]
 const HUNT_RANK := {5:10,3:9,2:8,1:6,4:4}
 var hunt_selection_reason := ""
 var hunt_notice := ""
-const COLORS := [Color(.98,.48,.22),Color(.35,.83,.96),Color(.77,.54,.96),Color(.85,.85,.7),Color(.7,.9,1),Color(1,.9,.2),Color(.6,.45,.25),Color(.95,.35,.48)]
+const COLORS := [Color(.68,.42,.22),Color(.62,.67,.54),Color(.64,.68,.51),Color(.88,.87,.8),Color(.78,.84,.84),Color(.7,.73,.5),Color(.4,.32,.2),Color(.63,.48,.40)]
 const BAIT_COLORS := [Color(.8,1,.9),Color(.35,.7,1),Color(1,.7,.4),Color(1,.9,.25),Color(1,.5,.7),Color(.8,.5,.3),Color(.55,1,.6),Color(.25,.8,.45)]
 var performance_label: Label
 var performance_box: VBoxContainer
@@ -125,6 +127,12 @@ func button(body: Control,text: String,fn: Callable):
 	var b := Button.new();b.text=text;b.pressed.connect(fn);body.add_child(b)
 func setup(game):
 	main=game
+	var last_close := 0
+	for i in range(main.camera.presets.size()):
+		if float(main.camera.presets[i])<=3500: last_close=i
+	marker_span=float(main.camera.presets[mini(last_close+2,main.camera.presets.size()-1)])
+	for n in range(16): fish_body.append(Vector2.from_angle(TAU*n/16))
+	if main.fish.native!=null: main.fish.native.marker_span=marker_span
 	bait_menu=PopupMenu.new();add_child(bait_menu)
 	# Native popup uses screen pixels, independent of the world's canvas/zoom transform.
 	bait_menu.force_native=true;bait_menu.content_scale_factor=1.0;bait_menu.content_scale_size=Vector2i.ZERO
@@ -167,7 +175,7 @@ func setup(game):
 	detail_controls.append(distance_toggle)
 	detail_controls.append(toggle_button(row,"Ranges",false,func(v): show_detail=v;queue_redraw()))
 	for control in detail_controls: control.hide()
-	button(row,"Inspector",func(): inspector_open=not inspector_open;panel.visible=enabled and inspector_open and not ui_hidden)
+	button(row,"Inspector",func(): inspector_open=not inspector_open;panel.visible=enabled and inspector_open)
 	performance_box=VBoxContainer.new();controls.add_child(performance_box)
 	var diagnostic_row := HBoxContainer.new();performance_box.add_child(diagnostic_row)
 	diagnostic_mode=OptionButton.new()
@@ -192,11 +200,13 @@ func setup(game):
 		if not available(): return
 		var index: int=main.fish.ids.find(str(value).to_int())
 		if index>=0: select_entity(Entity.FISH,index))
-	button(column,"Find active hunt",find_hunt)
+	var find_buttons := HBoxContainer.new();column.add_child(find_buttons)
+	button(find_buttons,"Find active hunt",find_hunt)
+	button(find_buttons,"Find trophy",find_trophy)
 	toolbar.hide();panel.hide();refresh()
 func apply_ui_visibility():
 	toolbar.visible=enabled and not ui_hidden
-	panel.visible=enabled and inspector_open and not ui_hidden
+	panel.visible=enabled and inspector_open
 	show_ui_button.visible=enabled and ui_hidden
 func set_ui_hidden(hidden: bool):
 	ui_hidden=hidden; bait_menu.hide();apply_ui_visibility()
@@ -226,7 +236,7 @@ func select_entity(kind: int,index: int):
 		following=false
 		if follow_toggle!=null: follow_toggle.set_pressed_no_signal(false)
 	if scroll!=null: scroll.scroll_vertical=0
-	if panel!=null and entity!=Entity.NONE: inspector_open=true;panel.visible=enabled and not ui_hidden
+	if panel!=null and entity!=Entity.NONE: inspector_open=true;panel.visible=enabled
 	refresh();queue_redraw()
 func observed_position(kind: int,index: int) -> Vector2:
 	return main.fish.displayed(kind,index)
@@ -291,7 +301,7 @@ func _measured_tick(dt: float):
 			if not event_seen.has(key): event_seen[key]=real_time
 	for key in event_seen.keys():
 		if real_time-float(event_seen[key])>10: event_seen.erase(key)
-	if main.camera.span>3500: build_overview()
+	if main.camera.span>marker_span: build_overview()
 	queue_redraw()
 func cache_view():
 	if not available(): return
@@ -400,7 +410,7 @@ func hunt_text(actor: int) -> String:
 		if s.consume_remaining>0: text+="Consuming: %.1f s remaining\n" % s.consume_remaining
 		elif s.recover_remaining>0: text+="After-meal recovery: %.1f s remaining\n" % s.recover_remaining
 		if s.capture_age>=0: text+="Last capture %.1f simulated seconds ago\n" % s.capture_age
-	if not hunt_selection_reason.is_empty(): text+="Found encounter: "+hunt_selection_reason+"\n"
+	if not hunt_selection_reason.is_empty(): text+="Finder: "+hunt_selection_reason+"\n"
 	if s.get("school_pressure",false): text+="School pressure target — captures require a separated individual.\n"
 	if s.stage in [6,8]: text+="Captured during a valid attack opportunity; school may move away.\n"
 	elif not target.is_empty(): text+="Prey: %s · %.1f yd\n" % [target.label,p.water_column.distance_to_prey(actor,int(s.kind),int(s.target),target)/.9144]
@@ -413,6 +423,15 @@ func hunt_text(actor: int) -> String:
 			if e.actor==actor: text+="%.0f s ago: %s\n" % [p.elapsed-e.time,e.text];count+=1
 			if count>=4: break
 	return text
+func find_trophy():
+	if not available(): return
+	var p=main.fish
+	if p.native==null: status.text="Trophy finder requires the native ecosystem.";return
+	var found: Dictionary=p.native.find_trophy(selected)
+	if found.is_empty(): hunt_notice="No living trophy found.";status.text=hunt_notice;return
+	select_entity(Entity.FISH,int(found.code));p.native.poll_at=0;p.native.tick()
+	main.camera.follow=false;main.camera.anchor=null;main.camera.geo=GeoPosition.new(found.position.x,found.position.y)
+	main.camera.target_span=180;following=true;hunt_selection_reason="Near the upper size range for this species";refresh()
 func find_hunt():
 	if not available(): return
 	var p=main.fish
@@ -466,6 +485,22 @@ func path_line(path: PackedVector2Array,cursor: int,start: Vector2,mpp: float,co
 	var line := PackedVector2Array([start]);var origin := Vector2(main.origin.east,main.origin.south)
 	for i in range(cursor,path.size()): line.append(path[i]-origin)
 	if line.size()>1: draw_polyline(line,color,1.5*mpp,true)
+func draw_fish_marker(at: Vector2,species: int,length_cm: float,direction: Vector2,mpp: float):
+	var elongation: float=[1.0,.95,1.2,.8,1.45,1.1,.75,.9][species]
+	var breadth: float=[.32,.28,.28,.62,.25,.48,.72,.42][species]
+	var radius: float=clampf(3+sqrt(maxf(1,length_cm))*.45,4,13)*elongation
+	draw_set_transform(at,direction.angle() if direction.length_squared()>.01 else 0,Vector2(radius*mpp,radius*breadth*mpp))
+	draw_colored_polygon(fish_body,COLORS[species])
+	if species==3:
+		for x in [-.6,-.3,0.0,.3,.6]:
+			var edge := sqrt(1-float(x)*float(x))*.9
+			draw_line(Vector2(x,-edge),Vector2(x,edge),Color(.08,.09,.09),.13,true)
+	elif species in [2,7]: draw_line(Vector2(-.85,0),Vector2(.85,0),Color(.18,.21,.17),.14,true)
+	elif species in [1,6]:
+		for spot in [Vector2(-.45,-.3),Vector2(0,.3),Vector2(.4,-.25)]: draw_circle(spot,.12,Color(.17,.2,.13))
+	elif species==0: draw_circle(Vector2(-.65,0),.16,Color(.1,.12,.1))
+	else: draw_line(Vector2(-.65,-.35),Vector2(.65,-.35),Color(.34,.42,.36),.16,true)
+	draw_set_transform(Vector2.ZERO)
 func _draw():
 	if main==null or main.fish==null: return
 	var diagnostic_begin := Time.get_ticks_usec()
@@ -478,15 +513,15 @@ func _measured_draw():
 		for focus in [p.simulation_detail.boat,p.simulation_detail.camera]:
 			draw_circle(focus-origin,p.simulation_detail.detailed_m,Color(.4,1,.5,.4),false,mpp)
 			draw_circle(focus-origin,p.simulation_detail.intermediate_m,Color(1,.8,.4,.3),false,mpp)
-	var overview: bool=main.camera.span>3500
+	var overview: bool=main.camera.span>marker_span
 	var dots: Array[PackedVector2Array]=overview_points
 	for code in ([] if overview else candidates):
 		var kind := int(code)/FishSpatialIndex.STRIDE;var index := int(code)%FishSpatialIndex.STRIDE
 		if kind==1 and mode in [0,1]:
-			if eco.alive[index]==0 or (main.camera.span>15000 and index%4!=0 and selected!=index): continue
+			if eco.alive[index]==0: continue
 			var pos: Vector2=observed_position(0,index)
 			if view_bounds.has_point(pos):
-				draw_circle(pos-origin,(3 if selected==index else 2)*mpp,COLORS[p.species[index]])
+				draw_fish_marker(pos-origin,int(p.species[index]),float(p.size_cm[index]),p.movement.headings[index],mpp)
 				var hunt: Dictionary=p.hunting.states[index]
 				if entity==Entity.BAIT and hunt.kind==0 and hunt.target==entity_index and int(hunt.get("target_id",-1))==int(eco.forage[entity_index].id): draw_line(pos-origin,observed_position(1,entity_index)-origin,Color(1,.4,.2,.65),mpp)
 		elif kind==0 and mode in [0,2]:

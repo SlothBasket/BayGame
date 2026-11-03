@@ -76,7 +76,8 @@ struct Animal {
            last = 0, due = 0, decision = 0, detect_at = 0, attack_at = 0, until = 0, threat_until = 0,
            pursuit_started = 0, detached_at = 0, regroup_at = 0, route_started = 0, route_speed = .5,
            route_length = 0, scatter_at = 0;
-    Handle target, nearby_food;
+    Handle target, nearby_food, inspecting, rejected;
+    double inspect_until = 0, inspect_at = 0, rejected_until = 0;
     int previous_patrol_node = -1;
     int circuit[4] = {-1, -1, -1, -1}, circuit_count = 0, circuit_cursor = 0;
     V food_seen_at, food_seen_heading, learned_food;
@@ -222,7 +223,8 @@ class Engine {
     V axes(Animal const &a) const;
     V prey_point(Animal const &prey, V observer) const;
     bool senses(Animal const &a, Animal const &prey) const;
-    Handle acquire(uint32_t slot, bool edible_only = false);
+    Handle acquire(uint32_t slot, bool edible_only = false, bool curious = false);
+    bool inspect_prey(uint32_t slot);
     void hunt(uint32_t slot, double dt);
     void relaxed_patrol(uint32_t slot);
     bool investigate(Animal &a);
