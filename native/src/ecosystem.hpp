@@ -89,7 +89,7 @@ struct Animal {
     std::vector<int> preferred_areas;
     int circuit[4] = {-1, -1, -1, -1}, circuit_count = 0, circuit_cursor = 0;
     V food_seen_at, food_seen_heading, learned_food;
-    double last_attack_noise = -10000;
+    double last_attack_noise = -10000, stealth_until = -1, social_at = 0;
     double food_seen_time = -10000, memory_until = -1, trail_due = 0, cue_seen_time = -10000;
     Profile profile;
     std::vector<V> path;
@@ -137,6 +137,9 @@ struct Command {
     V at;
 };
 struct School {
+    std::vector<uint32_t> members;
+    V center, contact, reporter;
+    double center_at = -1, contact_at = -10000;
     V goal;
     double until = 0;
     int node = -1;
@@ -237,7 +240,9 @@ class Engine {
     bool inspect_prey(uint32_t slot);
     void hunt(uint32_t slot, double dt);
     void relaxed_patrol(uint32_t slot);
-    bool investigate(Animal &a);
+    bool investigate(Animal &a, bool fresh_only = false);
+    bool social(Animal &a);
+    double detection(Animal const &a) const;
     void bait(uint32_t slot, double dt);
     bool eat(uint32_t slot);
     void retire(uint32_t slot);

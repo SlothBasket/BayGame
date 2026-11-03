@@ -316,11 +316,17 @@ V Engine::prey_point(Animal const &prey, V observer) const {
     double q = std::sqrt(x * x / (shape.x * shape.x) + y * y / (shape.y * shape.y));
     return q <= 1 ? observer : center + d * (1 / q);
 }
+double Engine::detection(Animal const &a) const {
+    bool concealed = (a.profile.style == 1 || a.profile.style == 2) && !a.ambush_committed;
+    return a.profile.detect * (concealed ? 2.0 : 1.0);
+}
 bool Engine::senses(Animal const &a, Animal const &prey) const {
     V delta = prey_point(prey, a.at) - a.at;
     double d = delta.len(), vertical = std::abs(prey.depth - a.depth);
-    if (d * d + vertical * vertical > a.profile.detect * a.profile.detect)
+    if (d * d + vertical * vertical > detection(a) * detection(a))
         return false;
+    if ((a.profile.style == 1 || a.profile.style == 2) && !a.ambush_committed)
+        return true;
     double close = std::min(a.profile.awareness_cap, a.profile.detect * a.profile.awareness);
     if (d * d + vertical * vertical <= close * close)
         return true;
@@ -329,7 +335,7 @@ bool Engine::senses(Animal const &a, Animal const &prey) const {
 Handle Engine::acquire(uint32_t slot, bool edible_only, bool curious) {
     auto const &a = animals[slot];
     thread_local std::vector<uint32_t> candidates;
-    query(a.at, a.profile.detect + 12, candidates);
+    query(a.at, detection(a) + 12, candidates);
     double best = -1e30;
     Handle chosen;
     for (auto i : candidates) {
@@ -864,15 +870,16 @@ void Engine::feeding_glide(Animal &a) {
     a.detect_at = std::max(a.detect_at, a.recover_until);
     a.target_depth = a.holding;
 }
-bool Engine::investigate(Animal &a) {
-    if (sim < a.decision || a.node < 0)
+bool Engine::investigate(Animal &a, bool fresh_only) {
+    if ((!fresh_only && sim < a.decision) || a.node < 0)
         return false;
     bool ambush = a.profile.style == 1 || a.profile.style == 2;
     int cx = int(std::floor(a.at.x / 256)), cy = int(std::floor(a.at.y / 256));
     double best = -1;
     V goal;
     double heard = -10000;
-    int radius = int(std::ceil(std::max(trail_radius, noise_radius) / 256)) + 1;
+    bool feeding_sound = false;
+    int radius = int(std::ceil(std::max(trail_radius, noise_radius) / 256));
     for (int y = -radius; y <= radius; y++)
         for (int x = -radius; x <= radius; x++) {
             auto cell = node_cells.find(key(cx + x, cy + y));
@@ -883,7 +890,8 @@ bool Engine::investigate(Animal &a) {
                 if (n.component != nodes[a.node].component)
                     continue;
                 double distance = (n.trail_at - a.at).len(), age = sim - n.trail_time;
-                if (age < trail_lifetime && distance < trail_radius && n.trail_time > a.cue_seen_time &&
+                if (!fresh_only && age < trail_lifetime && distance < trail_radius &&
+                    n.trail_time > a.cue_seen_time &&
                     (!valid(a.rejected) || sim >= a.rejected_until ||
                      n.trail_species != animals[a.rejected.slot].species ||
                      n.trail_size < animals[a.rejected.slot].size * .8)) {
@@ -894,6 +902,7 @@ bool Engine::investigate(Animal &a) {
                         best = score;
                         goal = mark;
                         heard = n.trail_time;
+                        feeding_sound = false;
                     }
                 }
                 age = sim - n.noise_time;
@@ -905,6 +914,7 @@ bool Engine::investigate(Animal &a) {
                         best = score;
                         goal = n.noise_at;
                         heard = n.noise_time;
+                        feeding_sound = true;
                     }
                 }
             }
@@ -914,7 +924,9 @@ bool Engine::investigate(Animal &a) {
         a.learned_food = goal;
         a.memory_until = sim + food_memory_seconds * .5;
         if ((goal - a.at).len() > 3) {
-            route(a, goal, -1, a.profile.cruise * (ambush ? .55 : .8));
+            route(a, goal, -1,
+                  std::min(a.profile.burst * .8,
+                           a.profile.cruise * (feeding_sound ? 1.8 : (ambush ? .55 : .8))));
             a.state = 17;
             a.decision = sim + std::max(5.0, std::min(20.0, a.route_length / std::max(.05, a.route_speed)));
         } else {
@@ -927,6 +939,8 @@ bool Engine::investigate(Animal &a) {
         }
         return true;
     }
+    if (fresh_only)
+        return false;
     if (a.memory_until > sim && (a.learned_food - a.at).len() > 12 && clear(a.at, a.learned_food)) {
         route(a, a.learned_food, -1, a.profile.cruise * .6);
         a.state = 18;
@@ -1000,6 +1014,68 @@ void Engine::relaxed_patrol(uint32_t slot) {
     }
     plan(a);
 }
+bool Engine::social(Animal &a) {
+    if (a.kind != 0 || a.energy < .2 || sim < a.social_at)
+        return false;
+    a.social_at = sim + (a.tier == 0 ? 2 : 5);
+    if (investigate(a, true))
+        return true;
+    V goal;
+    bool found = false, excited = false;
+    if (a.school >= 0) {
+        auto &group = schools[a.school];
+        if (sim >= group.center_at) {
+            V sum;
+            int count = 0;
+            for (auto member : group.members) {
+                auto const &friend_fish = animals[member];
+                if (!friend_fish.alive)
+                    continue;
+                sum = sum + position(friend_fish, sim);
+                ++count;
+            }
+            if (count)
+                group.center = sum * (1.0 / count);
+            group.center_at = sim + 3;
+        }
+        // Reports are local and expire. They convey a last-seen position, not a remote target lock.
+        if (sim - group.contact_at < 8 &&
+            (group.reporter - a.at).len() < std::max(80.0, a.profile.detect * 1.5) &&
+            clear(a.at, group.reporter)) {
+            goal = group.contact;
+            found = true;
+            excited = true;
+        } else if (group.members.size() > 1 && (group.center - a.at).len() > 18) {
+            goal = group.center;
+            found = true;
+        }
+    }
+    if (!found) {
+        thread_local std::vector<uint32_t> nearby;
+        query(a.at, a.profile.detect, nearby);
+        for (auto i : nearby) {
+            auto const &other = animals[i];
+            if (other.id == a.id || other.kind != 0 || (a.school >= 0 && other.school == a.school) ||
+                (other.state != 3 && other.state != 12) || !senses(a, other) ||
+                !clear(a.at, position(other, sim)))
+                continue;
+            // Follow visible activity, not another fish's invisible prey coordinates.
+            goal = position(other, sim) + other.heading * 8;
+            found = excited = true;
+            break;
+        }
+    }
+    if (!found || (goal - a.at).len() < 8)
+        return false;
+    bool concealed = (a.profile.style == 1 || a.profile.style == 2) && !a.ambush_committed;
+    double speed = std::min(a.profile.burst * .8, a.profile.cruise * (excited ? 1.8 : 1.4));
+    if (concealed)
+        speed = a.profile.cruise * .55;
+    route(a, goal, -1, speed);
+    a.state = 17;
+    a.decision = sim + 4;
+    return true;
+}
 void Engine::hunt(uint32_t slot, double dt) {
     auto &a = animals[slot];
     bool ambush = a.profile.style == 1 || a.profile.style == 2;
@@ -1041,6 +1117,9 @@ void Engine::hunt(uint32_t slot, double dt) {
     }
     if (!a.motivated) {
         a.target = {};
+        a.ambush_committed = false;
+        if (social(a))
+            return;
         a.energy = std::min(1.0, a.energy + dt * .005);
         if (ambush) {
             if (sim >= a.decision) {
@@ -1071,9 +1150,16 @@ void Engine::hunt(uint32_t slot, double dt) {
         auto &prey = animals[a.target.slot];
         V target = prey_point(prey, a.at);
         double distance = (target - a.at).len();
-        if (distance <= a.profile.detect * 1.25 && clear(a.at, target))
+        if (distance <= detection(a) * 1.25 && clear(a.at, target)) {
             a.tracked_at = sim;
-        if (sim - a.tracked_at > 6 || distance > a.profile.detect * 2 ||
+            if (a.kind == 0 && a.school >= 0) {
+                auto &group = schools[a.school];
+                group.contact = target;
+                group.reporter = a.at;
+                group.contact_at = sim;
+            }
+        }
+        if (sim - a.tracked_at > 6 || distance > detection(a) * 2 ||
             sim - a.pursuit_started > (breakaway(prey) ? 22 : 60)) {
             a.target = {};
             a.detect_at = sim + 3;
@@ -1089,17 +1175,30 @@ void Engine::hunt(uint32_t slot, double dt) {
         a.target_depth = clamp(prey.depth, 0, a.bottom - .02);
         bool pressure = breakaway(prey);
         if (ambush && !a.ambush_committed && distance > a.profile.lunge) {
-            if ((a.state == 17 || a.state == 18) && a.path.size() > 1 &&
-                travel_distance(a, sim) + 1 < a.route_length)
-                return;
+            V delta = target - a.at;
+            double speed2 = prey.velocity.len2();
+            double arrival =
+                speed2 > .01 ? -(delta.x * prey.velocity.x + delta.y * prey.velocity.y) / speed2 : -1;
+            bool approaching =
+                arrival > 0 && arrival < 8 && (delta + prey.velocity * arrival).len() < a.profile.lunge;
             a.state = 4;
-            a.path.clear();
-            a.velocity = {};
-            return; // A concealed predator does not frighten approaching bait.
+            if (approaching) {
+                a.path.clear();
+                a.velocity = {};
+                a.heading = delta.unit();
+            } else if (sim >= a.decision) {
+                // Slow concealed repositioning; normal water navigation and depth limits still apply.
+                V goal = a.at + delta.unit() * std::min(8.0, std::max(0.0, distance - a.profile.lunge * .8));
+                route(a, goal, -1, a.profile.cruise * .45);
+                a.decision = sim + 2;
+            }
+            return;
         }
+        if (ambush && !a.ambush_committed)
+            a.stealth_until = sim + 1.5;
         a.ambush_committed = true;
         a.state = 3;
-        if (distance <= pressure_range && std::abs(a.depth - prey.depth) < 2)
+        if (sim >= a.stealth_until && distance <= pressure_range && std::abs(a.depth - prey.depth) < 2)
             scatter(a.target.slot, a.at);
         if (a.tier == 0) {
             V intercept =
@@ -1120,6 +1219,7 @@ void Engine::hunt(uint32_t slot, double dt) {
         return;
     }
     a.target = {};
+    a.ambush_committed = false;
     if (sim >= a.detect_at) {
         a.detect_at = sim + (a.tier == 0 ? 1 : (a.tier == 1 ? 5 : 20));
         Handle chosen = acquire(slot);
@@ -1133,11 +1233,14 @@ void Engine::hunt(uint32_t slot, double dt) {
             bool approaching_lane = a.state == 17 || a.state == 18;
             a.pursuit_started = a.tracked_at = sim;
             a.state = ambush ? (approaching_lane ? 17 : 4) : 2;
+            a.decision = sim;
             a.event = 5;
             return;
         }
     }
     a.energy = std::min(1.0, a.energy + dt * .002);
+    if (social(a))
+        return;
     if (inspect_prey(slot))
         return;
     if (sim >= a.decision) {
@@ -1386,6 +1489,8 @@ void Engine::start(uint64_t seed) {
     for (uint32_t i = 0; i < animals.size(); i++) {
         auto &a = animals[i];
         code_slots[code(a)] = i;
+        if (a.kind == 0 && a.school >= 0)
+            schools[a.school].members.push_back(i);
         if (a.alive)
             initial_units += a.quantity;
         if (a.kind == 1) {
@@ -1479,8 +1584,10 @@ void Engine::publish() {
         V shape = axes(a);
         r.major = shape.x;
         r.minor = shape.y;
-        r.detect = a.profile.detect;
-        r.awareness = std::min(a.profile.awareness_cap, a.profile.detect * a.profile.awareness);
+        r.detect = detection(a);
+        r.awareness = ((a.profile.style == 1 || a.profile.style == 2) && !a.ambush_committed)
+                          ? detection(a)
+                          : std::min(a.profile.awareness_cap, a.profile.detect * a.profile.awareness);
         r.cone_cos = a.profile.cone_cos;
         r.destination = a.path.empty() ? a.at : a.path.back();
         r.depth =
