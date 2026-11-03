@@ -51,6 +51,11 @@ struct Profile {
     int feeding_mode = 0; // forward, cover/home, school, bottom
     int style = 0;
 };
+struct Habitat {
+    uint32_t kind = 0;
+    std::vector<V> samples;
+    std::vector<double> radii;
+};
 struct Node {
     V at;
     double depth = 2, cover = .1, shore = 100, food = 1, food_time = 0;
@@ -58,7 +63,7 @@ struct Node {
     double trail_time = -10000, trail_size = 0, noise_time = -10000;
     int trail_species = 0;
     int zone = 0, component = 0;
-    std::vector<int> neighbors;
+    std::vector<int> neighbors, areas;
 };
 struct Animal {
     uint64_t id = 0, parent_id = 0;
@@ -78,7 +83,10 @@ struct Animal {
            route_length = 0, scatter_at = 0;
     Handle target, nearby_food, inspecting, rejected;
     double inspect_until = 0, inspect_at = 0, rejected_until = 0;
-    int previous_patrol_node = -1;
+    int previous_patrol_node = -1, patrol_area = -1;
+    uint32_t habitat_mask = 0;
+    double area_until = 0;
+    std::vector<int> preferred_areas;
     int circuit[4] = {-1, -1, -1, -1}, circuit_count = 0, circuit_cursor = 0;
     V food_seen_at, food_seen_heading, learned_food;
     double last_attack_noise = -10000;
@@ -148,6 +156,7 @@ class Engine {
     int prey_modes[8] = {0, 1, 1, 1, 0, 0, 1, 1};
     std::vector<Animal> animals;
     std::vector<Node> nodes;
+    std::vector<Habitat> habitats;
     std::vector<uint8_t> water;
     int width = 0, height = 0;
     double cell = 32;
@@ -218,6 +227,7 @@ class Engine {
     void remove_occupancy(uint32_t slot);
     void query(V at, double radius, std::vector<uint32_t> &result);
     void plan(Animal &a);
+    void habitat_circuit(Animal &a);
     void shelter(Animal &a);
     bool breakaway(Animal const &a) const;
     V axes(Animal const &a) const;

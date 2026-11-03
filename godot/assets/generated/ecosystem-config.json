@@ -17,7 +17,8 @@
       "habitats": [
         "grass_flat_candidate",
         "oyster_bar_candidate",
-        "shoreline_edge"
+        "shoreline_edge",
+        "sand_hole"
       ],
       "style": "patrol",
       "max_prey_ratio": 0.32,
@@ -65,7 +66,8 @@
       "habitats": [
         "grass_flat_candidate",
         "pothole_candidate",
-        "channel_dropoff"
+        "channel_dropoff",
+        "sand_hole"
       ],
       "style": "hunt",
       "max_prey_ratio": 0.3,
@@ -297,7 +299,8 @@
       "habitats": [
         "pothole_candidate",
         "grass_flat_candidate",
-        "channel_dropoff"
+        "channel_dropoff",
+        "sand_hole"
       ],
       "style": "bottom_ambush",
       "max_prey_ratio": 0.35,

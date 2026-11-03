@@ -361,6 +361,8 @@ func refresh():
 		for b in web.bottom:
 			if b.area==a.id: stock+=b.quantity
 		text="%s\n\nFunctions: %s\nExtent %.0f × %.0f ft\nBottom prey %.0f / %.0f capacity\nNutrients %.0f%%; replenishes gradually\n" % ["Authored gameplay site (not a surveyed feature)" if a.get("authored",false) else ("Inferred habitat" if a.inferred else "Mapped evidence; inferred opportunity boundary"),", ".join(a.roles),(a.bounds[2]-a.bounds[0])/.3048,(a.bounds[3]-a.bounds[1])/.3048,stock,a.bottom_capacity,web.nutrients[entity_index]*100]
+		if a.kind=="pothole_candidate": text+="Grass-free opening in an inferred grass flat; fish can hold at its edge or inside.\n"
+		elif a.kind=="sand_hole": text+="Inferred sandy depression; existing depth relief %.1f ft. Substrate and exact boundary are inferred.\n" % (float(a.get("relief_m",0))/.3048)
 		if advanced: text+="\nEvidence: "+", ".join(a.evidence)+"\n"+a.id
 	if p.simulation_detail!=null:
 		var tier: int=p.simulation_detail.actor_level(entity_index) if entity==Entity.FISH else (p.simulation_detail.bait_level(entity_index) if entity==Entity.BAIT else (p.simulation_detail.actor_level(-entity_index-1) if entity==Entity.PREDATOR else -1))

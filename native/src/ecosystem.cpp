@@ -137,7 +137,10 @@ void Engine::route(Animal &a, V goal, int target_node, double speed) {
     a.path.clear();
     a.lengths.clear();
     a.path.push_back(start);
-    bool coastal = a.kind == 1 && !a.individual && a.species != 0 && (goal - start).len() > 60;
+    bool coastal = (a.kind == 1 && !a.individual && a.species != 0 && (goal - start).len() > 60) ||
+                   (a.kind == 0 && !valid(a.target) &&
+                    (a.habitat_mask & ((1u << 0) | (1u << 1) | (1u << 7) | (1u << 8))) && a.node >= 0 &&
+                    nodes[a.node].shore < 180 && (goal - start).len() > 100);
     if (!coastal && clear(start, goal))
         a.path.push_back(goal);
     else {
@@ -482,7 +485,50 @@ void Engine::shelter(Animal &a) {
     a.state = a.individual ? 14 : 13;
     a.decision = sim + std::max(2.0, a.route_length / std::max(.05, a.route_speed));
 }
+void Engine::habitat_circuit(Animal &a) {
+    if (a.kind != 0 || a.node < 0 || !a.habitat_mask)
+        return;
+    // Startup only: bounded connected search, three distinct areas per preferred type.
+    std::vector<int> queue{a.node};
+    uint32_t stamp = ++search_stamp;
+    visited[a.node] = stamp;
+    int counts[13] = {};
+    double radius = (a.species == 4 || a.species == 5) ? 2200 : 1000;
+    bool coastal = a.species == 2 || a.species == 3 || a.species == 7;
+    for (size_t head = 0; head < queue.size() && head < 200; ++head) {
+        int n = queue[head];
+        for (int area : nodes[n].areas) {
+            auto const &h = habitats[area];
+            if (!(h.kind & a.habitat_mask) || h.samples.empty())
+                continue;
+            if (std::find(a.preferred_areas.begin(), a.preferred_areas.end(), area) !=
+                a.preferred_areas.end())
+                continue;
+            int type = 0;
+            while (type < 13 && !(h.kind & (uint32_t(1) << type)))
+                ++type;
+            if (type < 13 && counts[type] < 3) {
+                a.preferred_areas.push_back(area);
+                ++counts[type];
+            }
+        }
+        for (int j : nodes[n].neighbors) {
+            if (visited[j] == stamp || (nodes[j].at - a.home_at).len() > radius || queue.size() >= 200)
+                continue;
+            // Shore residents follow the coastal band instead of cutting to the opposite bank.
+            if (coastal && nodes[a.node].shore < 180 && nodes[j].shore > 180)
+                continue;
+            visited[j] = stamp;
+            queue.push_back(j);
+        }
+    }
+}
 void Engine::plan(Animal &a) {
+    if (a.kind == 0 && a.energy >= .2 && (a.state == 0 || a.state == 4) && a.path.size() > 1 &&
+        travel_distance(a, sim) + 1 < a.route_length) {
+        a.decision = sim + 10;
+        return; // Finish the habitat leg instead of continually redirecting it.
+    }
     if (a.kind == 1) {
         shelter(a);
         return;
@@ -530,8 +576,43 @@ void Engine::plan(Animal &a) {
         }
         a.state = ambush ? 4 : 0;
     }
+    int area = -1;
+    if (a.kind == 0 && !rock && a.state != 9 && !a.preferred_areas.empty()) {
+        if (a.patrol_area < 0 || sim >= a.area_until) {
+            double best = -1e9;
+            for (int candidate : a.preferred_areas) {
+                auto const &h = habitats[candidate];
+                int n = nearest(h.samples.front());
+                if (n < 0 || nodes[n].component != nodes[a.node].component)
+                    continue;
+                double score = random() * 1.4 + nodes[n].food * .5;
+                if (candidate == a.patrol_area)
+                    score -= 1;
+                if (score > best) {
+                    best = score;
+                    a.patrol_area = candidate;
+                }
+            }
+            a.area_until = sim + 120 + random() * 240;
+            if (a.patrol_area >= 0)
+                a.area_until +=
+                    (habitats[a.patrol_area].samples.front() - a.at).len() / std::max(.1, a.profile.cruise);
+        }
+        area = a.patrol_area;
+    }
     V goal = rock ? a.home_at + V{random() * 12 - 6, random() * 12 - 6}
                   : sample(destination, a.kind == 1 ? 18 : 35);
+    if (area >= 0) {
+        auto const &samples = habitats[area].samples;
+        size_t pick = size_t(random() * samples.size()) % samples.size();
+        double angle = random() * 6.28318530718, radius = std::sqrt(random()) * habitats[area].radii[pick];
+        V candidate = samples[pick] + V{std::cos(angle), std::sin(angle)} * radius;
+        int n = nearest(candidate);
+        if (n >= 0 && nodes[n].component == nodes[a.node].component && clear(nodes[n].at, candidate)) {
+            goal = candidate;
+            destination = n;
+        }
+    }
     if (rock && !clear(nodes[destination].at, goal))
         goal = sample(destination, 8);
     if (a.kind == 0 && a.school >= 0 && !rock && a.state != 9) {
@@ -539,9 +620,10 @@ void Engine::plan(Animal &a) {
         if (shared.until <= sim || shared.node < 0) {
             shared.goal = goal;
             shared.node = destination;
-            shared.until = sim + 20 + random() * 15;
+            shared.until = sim + std::max(45.0, (goal - a.at).len() / std::max(.1, a.profile.cruise) + 30);
         } else if (nodes[shared.node].component == nodes[a.node].component) {
-            V offset{std::sin(double(a.id) * 12.9898) * 3, std::sin(double(a.id) * 78.233) * 3};
+            V offset{std::sin(double(a.id) * 12.9898 + sim * .025) * 8,
+                     std::sin(double(a.id) * 78.233 + sim * .02) * 8};
             V member = shared.goal + offset;
             if (clear(shared.goal, member)) {
                 goal = member;
@@ -731,7 +813,7 @@ void Engine::attack(uint32_t slot) {
         a.memory_until = sim + food_memory_seconds;
         a.recover_until = a.until + post_meal_seconds;
         a.event = 1;
-        if (a.kind == 0 && a.species == 7)
+        if (a.kind == 0 && a.species == 7 && a.size >= 43.18)
             a.return_home = true;
         if (a.kind == 0)
             a.size += std::min(.02, prey.size * .002);
@@ -1061,10 +1143,24 @@ void Engine::hunt(uint32_t slot, double dt) {
     if (sim >= a.decision) {
         if (investigate(a))
             return;
-        if (ambush && a.node >= 0 && nodes[a.node].cover >= .35) {
+        if (ambush && a.node >= 0 && nodes[a.node].cover >= .35 &&
+            (a.preferred_areas.empty() || (a.patrol_area >= 0 && sim < a.area_until))) {
+            if (a.path.size() > 1 && travel_distance(a, sim) + 1 < a.route_length) {
+                a.decision = sim + 10;
+                return;
+            }
             a.state = 4;
             a.path.clear();
             a.velocity = {};
+            if (a.patrol_area >= 0 && habitats[a.patrol_area].kind == (1u << 4)) {
+                auto const &points = habitats[a.patrol_area].samples;
+                V center;
+                for (auto point : points)
+                    center = center + point;
+                center = center * (1.0 / points.size());
+                if ((center - a.at).len() > 1)
+                    a.heading = (center - a.at).unit();
+            }
             a.decision = sim + 15;
         } else
             plan(a);
@@ -1302,9 +1398,11 @@ void Engine::start(uint64_t seed) {
             a.zone = nodes[a.node].zone;
             a.bottom = nodes[a.node].depth;
         }
-        if(a.kind==3) a.depth=a.holding=a.target_depth=std::max(0.0,a.bottom-.03);
+        if (a.kind == 3)
+            a.depth = a.holding = a.target_depth = std::max(0.0, a.bottom - .03);
         a.motivated = a.hunger >= hunt_start;
         a.home_at = a.at;
+        habitat_circuit(a);
         double angle = random() * 6.28318530718;
         a.heading = {std::cos(angle), std::sin(angle)};
         a.tier = detail(a);

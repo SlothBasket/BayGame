@@ -52,11 +52,11 @@ func setup(p,settings: Dictionary,habitat_data: Dictionary):
 var life_profiles: Dictionary = {}
 func profile(i: int) -> Dictionary:
 	var species: int=population.species[i]
-	if species in [4,5] and population.size_cm[i]<76.2:
+	if (species==4 and population.size_cm[i]<76.2) or (species==5 and population.size_cm[i]<30.48):
 		if not life_profiles.has(species):
 			var juvenile: Dictionary=config.species[species].duplicate(true)
 			juvenile.home_radius_hops=1 if species==4 else 2
-			juvenile.habitats=["mangrove_edge_candidate","creek_mouth_candidate","shoreline_edge"] if species==4 else ["grass_flat_candidate","shoreline_edge","creek_mouth_candidate"]
+			juvenile.habitats=["mangrove_edge_candidate","creek_mouth_candidate","shoreline_edge"] if species==4 else ["grass_flat_candidate","channel_dropoff","open_water"]
 			life_profiles[species]=juvenile
 		return life_profiles[species]
 	return config.species[species]
@@ -74,6 +74,7 @@ func initialize_individuals():
 	var p=population;var n: int=p.ids.size()
 	home.resize(n);feeding.resize(n);resting.resize(n);phase.resize(n);boldness.resize(n);school.resize(n);alive.resize(n);spot.resize(n);returning.resize(n)
 	school.fill(-1);alive.fill(1);spot.fill(-1);returning.fill(0);schools.clear()
+	var open_schools: Dictionary={}
 	for i in range(n):
 		home[i]=p.region[i];phase[i]=p.rng.randf()*7200;boldness[i]=p.rng.randf_range(.15,.9)
 		var area: Array=local_range(home[i],int(profile(i).home_radius_hops))
@@ -82,14 +83,18 @@ func initialize_individuals():
 			var candidate: int=area[p.rng.randi_range(0,area.size()-1)]
 			if affinity(i,candidate)>affinity(i,feeding[i]): feeding[i]=candidate
 		# Schools share a small home range and size band; membership/leader IDs persist.
-		var chance: float=profile(i).school_probability
-		if p.species[i]==0: chance=.8 if p.size_cm[i]<45 else .2
+		var solitary_cm: float=[100,63.5,100,50,165,100,60,43.18][p.species[i]]
+		var chance: float=1.0 if p.size_cm[i]<solitary_cm else float(profile(i).school_probability)*.35
 		if p.rng.randf()<chance:
-			var key: int=(home[i]*p.SPECIES.size()+int(p.species[i]))*5+mini(4,int(p.size_cm[i]/40))
+			var bucket: int=(home[i]*p.SPECIES.size()+int(p.species[i]))*5+mini(4,int(p.size_cm[i]/40))
+			var key: int=int(open_schools.get(bucket,bucket))
 			for neighbor_home in local_range(home[i],2):
 				var candidate_key: int=(neighbor_home*p.SPECIES.size()+int(p.species[i]))*5+mini(4,int(p.size_cm[i]/40))
-				if schools.has(candidate_key) and schools[candidate_key].size()<12:
+				candidate_key=int(open_schools.get(candidate_key,candidate_key))
+				if schools.has(candidate_key) and schools[candidate_key].size()<(24 if p.species[i] in [4,5] else 10):
 					key=candidate_key;var leader: int=schools[key][0];home[i]=home[leader];feeding[i]=feeding[leader];resting[i]=resting[leader];break
+			if schools.has(key) and schools[key].size()>=(24 if p.species[i] in [4,5] else 10):
+				key=p.zones.size()*p.SPECIES.size()*5+i;open_schools[bucket]=key
 			school[i]=key
 			if not schools.has(key): schools[key]=[]
 			schools[key].append(i)

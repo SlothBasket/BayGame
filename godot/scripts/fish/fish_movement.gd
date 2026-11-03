@@ -10,6 +10,7 @@ var cursors := PackedInt32Array()
 var headings := PackedVector2Array()
 var routes: Array = []
 var pending_routes: Dictionary = {}
+var spawn_candidates: Dictionary = {}
 var ready := false
 var last_error := ""
 func fail(reason: String) -> bool:
@@ -33,6 +34,12 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 		for i in range(n):
 			if routes[i].is_empty(): cursors[i]=0
 	else:
+		var school_starts: Dictionary={}
+		var jack_starts: Array[int]=[]
+		if p.fresh_population:
+			for id in nav.nodes:
+				var node: Dictionary=nav.nodes[id]
+				if float(node.shore_m)>220 and float(node.depth_m)>=2 and ("channel_dropoff" in node.tags or "open_water" in node.tags): jack_starts.append(int(id))
 		# Only locations/navigation migrate. Identity, size, home, routine phase and school stay intact.
 		for i in range(n):
 			var at := Vector2(p.east[i],p.south[i]);var anchor := nav.nearest(at)
@@ -44,9 +51,20 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 			if preferred_rest[i]<0: preferred_rest[i]=anchor
 			var old_center := Vector2(p.zones[p.region[i]].x,p.zones[p.region[i]].y)
 			if p.fresh_population or at.distance_to(old_center)<2 or not nav.wet(at) or nav.nearest(at)<0:
-				var local := habitat(i,p.region[i],component,int(p.ids[i])+31)
+				var local := habitat(i,eco.home[i],component,int(p.ids[i])+31)
 				if local<0: local=anchor
-				at=nav.offset(local,int(p.ids[i]),25.0);p.east[i]=at.x;p.south[i]=at.y
+				if p.fresh_population: local=starting_habitat(i,component,local)
+				if p.fresh_population and p.species[i]==5 and not jack_starts.is_empty():
+					for trial in range(32):
+						var candidate: int=jack_starts[posmod(int(p.ids[i])*97+trial*7919,jack_starts.size())]
+						if nav.nodes[candidate].component==component: local=candidate;break
+				var school_id: int=eco.school[i]
+				if school_id>=0 and school_starts.has(school_id): local=int(school_starts[school_id])
+				elif school_id>=0: school_starts[school_id]=local
+				var spread: float=12.0 if p.species[i] in [0,1,4,5,7] else 30.0
+				at=nav.offset(local,int(p.ids[i]),spread);p.east[i]=at.x;p.south[i]=at.y
+				preferred_feed[i]=local;preferred_rest[i]=local
+				eco.home[i]=int(nav.nodes[local].zone);eco.feeding[i]=eco.home[i];eco.resting[i]=eco.home[i]
 			p.destination[i]=-1;p.decision_at[i]=p.elapsed+float(i%23);update_region(i,nav.nodes[nav.nearest(at)].zone)
 		for a in eco.forage+eco.predators:
 			var at := Vector2(a.x,a.y);var anchor := nav.nearest(at)
@@ -56,6 +74,27 @@ func setup(population,root: String,saved: Dictionary) -> bool:
 			a.x=moved.x;a.y=moved.y;a.zone=nav.nodes[anchor].zone;a.destination=-1;a.erase("natural_path");a.next=p.elapsed+float(int(a.id)%30)
 		eco.rebuild_forage_index()
 	ready=true;return true
+func starting_habitat(i: int,component: int,fallback: int) -> int:
+	var preferences: Array=eco.profile(i).habitats
+	for tag in nav.nodes[fallback].tags:
+		if tag in preferences: return fallback
+	# Only fish lacking a suitable local habitat need this shared startup lookup.
+	var key: String=str(p.species[i])+":"+str(preferences)
+	if not spawn_candidates.has(key):
+		var candidates: Array[int]=[]
+		for id in nav.nodes:
+			for tag in nav.nodes[id].tags:
+				if tag in preferences: candidates.append(int(id));break
+		spawn_candidates[key]=candidates
+	var choices: Array=spawn_candidates[key]
+	if choices.is_empty(): return fallback
+	var best: int=fallback;var score := -INF
+	for trial in range(48):
+		var id: int=choices[posmod(int(p.ids[i])*97+trial*7919,choices.size())]
+		if nav.nodes[id].component!=component: continue
+		var value: float=feature_score(i,id)
+		if value>score: score=value;best=id
+	return best
 func habitat(i: int,zone: int,component: int,salt: int) -> int:
 	var choices: Array=[]
 	for z in [zone]+p.zones[zone].neighbors:
@@ -74,6 +113,9 @@ func feature_score(i: int,id: int) -> float:
 	var n: Dictionary=nav.nodes[id];var value := 0.0
 	for tag in n.tags:
 		if tag in eco.profile(i).habitats: value+=1.1
+	if p.species[i]==5:
+		value-=maxf(0,220.0-float(n.shore_m))*.025
+		if float(n.depth_m)<1.5: value-=3.0
 	value-=absf(float(n.depth_m)+eco.tide_level_m-p.preferred_depth[i])/maxf(1,p.preferred_depth[i])
 	return value
 func choose(i: int):

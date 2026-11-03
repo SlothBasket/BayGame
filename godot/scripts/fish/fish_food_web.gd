@@ -213,6 +213,17 @@ func _timed_sample(index: int,seed_value: int,component := -1) -> Vector2:
 			var at := center+Vector2.from_angle(random.randf()*TAU)*sqrt(random.randf())*radius*.85
 			if contains(index,at) and nav.clear(center,at): return at
 		return center
+	var samples: Array=a.get("patrol_samples",[])
+	for trial in range(samples.size()):
+		var xy: Array=samples[posmod(seed_value+trial,samples.size())]
+		var at := Vector2(float(xy[0]),float(xy[1]))
+		var radii: Array=a.get("patrol_radii",[])
+		if not radii.is_empty():
+			var angle: float=float(posmod(seed_value*97+trial*17,1000))*TAU/1000.0
+			var radius: float=float(radii[posmod(seed_value+trial,radii.size())])*sqrt(float(posmod(seed_value*31,997))/997.0)
+			at+=Vector2.from_angle(angle)*radius
+		var anchor: int=nav.nearest(at)
+		if anchor>=0 and (component<0 or nav.nodes[anchor].component==component) and contains(index,at) and nav.clear(nav.point(anchor),at): return at
 	for trial in range(mini(20,ids.size()+8)):
 		var id: int=ids[posmod(seed_value+trial*137,ids.size())]
 		if component>=0 and nav.nodes[id].component!=component: continue
@@ -477,7 +488,7 @@ func bind_site_fish():
 			if large: site=choices[(number/6)%choices.size()]
 			else:
 				if group_left<=0:
-					group_id+=1;group_solo=p.rng.randf()<.08
+					group_id+=1;group_solo=false
 					group_left=1 if group_solo else p.rng.randi_range(3,8)
 					group_site=choices[(group_id-10000001)%choices.size()]
 				site=group_site;group_left-=1

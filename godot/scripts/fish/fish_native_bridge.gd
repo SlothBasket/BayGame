@@ -23,7 +23,7 @@ func initialize(population) -> bool:
   push_error("Native ecosystem is older than the scripts. Rebuild with Play BayGame.bat.");engine=null;return false
  var animals: Array=[];var eco=p.ecology;var nav=p.movement.nav
  for i in range(p.ids.size()):
-  animals.append({"kind":0,"index":i,"id":p.ids[i],"species":int(p.species[i]),"x":p.east[i],"y":p.south[i],"depth":p.water_column.current[i],"size":p.size_cm[i],"hunger":p.hunger[i],"energy":1.0,"home":p.movement.preferred_rest[i],"feeding":p.movement.preferred_feed[i],"zone":p.region[i],"school":eco.school[i],"profile":p.hunting.profile(i)})
+  animals.append({"kind":0,"index":i,"id":p.ids[i],"species":int(p.species[i]),"x":p.east[i],"y":p.south[i],"depth":p.water_column.current[i],"size":p.size_cm[i],"hunger":p.hunger[i],"energy":1.0,"home":p.movement.preferred_rest[i],"feeding":p.movement.preferred_feed[i],"zone":p.region[i],"school":eco.school[i],"habitats":eco.profile(i).habitats,"profile":p.hunting.profile(i)})
  for i in range(eco.forage.size()):
   var a: Dictionary=eco.forage[i]
   animals.append({"kind":1,"index":i,"id":a.id,"species":a.kind,"x":a.x,"y":a.y,"depth":a.swim_depth,"size":a.size_cm,"hunger":0 if a.get("individual",false) else a.get("hunger",.3),"home":nav.nearest(Vector2(a.x,a.y)),"zone":a.zone,"quantity":a.quantity,"capacity":a.capacity,"individual":a.get("individual",false),"temporary":a.get("temporary",false),"parent_id":maxi(0,int(a.get("parent_id",0)))})
@@ -33,7 +33,7 @@ func initialize(population) -> bool:
  for i in range(p.food_web.bottom.size()):
   var a: Dictionary=p.food_web.bottom[i]
   animals.append({"kind":3,"index":i,"id":i+1,"species":5,"x":a.x,"y":a.y,"size":a.size_cm,"depth":eco.depth_at(a.zone),"zone":a.zone,"quantity":a.quantity,"capacity":a.capacity})
- if not engine.initialize({"origin":nav.origin,"width":nav.width,"height":nav.height,"cell":nav.cell,"mask":nav.mask,"nodes":nav.nodes.values(),"animals":animals,"ecology":eco.config,"attack_resolution":p.hunting.rules.get("attack_resolution",{}),"seed":18472}): engine=null;return false
+ if not engine.initialize({"origin":nav.origin,"width":nav.width,"height":nav.height,"cell":nav.cell,"mask":nav.mask,"nodes":nav.nodes.values(),"habitats":p.food_web.areas,"animals":animals,"ecology":eco.config,"attack_resolution":p.hunting.rules.get("attack_resolution",{}),"seed":18472}): engine=null;return false
  cpu_limit_ms=float(eco.config.get("native_cpu_budget_ms",12))
  p.movement.nav.shutdown()
  print("[Native ecosystem] C++ worker owns %d records; GDScript simulation disabled" % animals.size())

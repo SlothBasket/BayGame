@@ -14,6 +14,26 @@
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/rect2.hpp>
 using namespace godot;
+// Stable habitat bits shared by startup preferences and area records.
+static uint32_t habitat_bit(String const &tag) {
+    static char const *names[] = {"shoreline_edge",
+                                  "mangrove_edge_candidate",
+                                  "shoreline_point_candidate",
+                                  "grass_flat_candidate",
+                                  "pothole_candidate",
+                                  "channel_dropoff",
+                                  "creek_mouth_candidate",
+                                  "oyster_bar_candidate",
+                                  "mapped_structure",
+                                  "sheltered_rest",
+                                  "open_water",
+                                  "sand_hole",
+                                  "rock_pile"};
+    for (int i = 0; i < 13; ++i)
+        if (tag == names[i])
+            return uint32_t(1) << i;
+    return 0;
+}
 class BaySimulation : public RefCounted {
     GDCLASS(BaySimulation, RefCounted)
     std::unique_ptr<bay::Engine> engine;
@@ -98,6 +118,30 @@ class BaySimulation : public RefCounted {
             PackedInt32Array neighbors = d["neighbors"];
             n.neighbors.assign(neighbors.ptr(), neighbors.ptr() + neighbors.size());
         }
+        Array areas = world.get("habitats", Array());
+        e.habitats.resize(areas.size());
+        for (int i = 0; i < areas.size(); ++i) {
+            Dictionary d = areas[i];
+            auto &h = e.habitats[i];
+            h.kind = habitat_bit(d.get("kind", "open_water"));
+            PackedInt32Array anchors = d["nodes"];
+            for (int j = 0; j < anchors.size(); ++j) {
+                int n = anchors[j];
+                if (n >= 0 && n < int(e.nodes.size()))
+                    e.nodes[n].areas.push_back(i);
+            }
+            Array samples = d.get("patrol_samples", Array());
+            Array radii = d.get("patrol_radii", Array());
+            for (int j = 0; j < samples.size(); ++j) {
+                Array xy = samples[j];
+                h.samples.push_back({double(xy[0]), double(xy[1])});
+                h.radii.push_back(j < radii.size() ? double(radii[j]) : 0);
+            }
+            if (h.samples.empty() && !anchors.is_empty()) {
+                h.samples.push_back(e.nodes[anchors[0]].at);
+                h.radii.push_back(0);
+            }
+        }
         Array records = world["animals"];
         e.animals.reserve(records.size());
         for (int i = 0; i < records.size(); i++) {
@@ -112,6 +156,9 @@ class BaySimulation : public RefCounted {
             a.size = number(d, "size", 30);
             a.hunger = number(d, "hunger", .4);
             a.energy = number(d, "energy", 1);
+            Array preferences = d.get("habitats", Array());
+            for (int j = 0; j < preferences.size(); ++j)
+                a.habitat_mask |= habitat_bit(preferences[j]);
             a.home = int(d.get("home", -1));
             a.feeding = int(d.get("feeding", a.home));
             a.zone = int(d.get("zone", 0));
@@ -226,13 +273,18 @@ class BaySimulation : public RefCounted {
             if (r.kind != 0 || !r.alive)
                 continue;
             double relative = r.size / (std::max(1.0, trophies[r.species]) * 2.54);
-            if(r.code==excluded) {if(relative>=.95) current=&r;continue;}
+            if (r.code == excluded) {
+                if (relative >= .95)
+                    current = &r;
+                continue;
+            }
             if (relative >= .95 && relative > best) {
                 best = relative;
                 chosen = &r;
             }
         }
-        if(!chosen) chosen=current;
+        if (!chosen)
+            chosen = current;
         if (chosen) {
             result["code"] = chosen->code;
             result["position"] = Vector2(chosen->at.x, chosen->at.y);

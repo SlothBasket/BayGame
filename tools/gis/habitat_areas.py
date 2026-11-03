@@ -1,43 +1,138 @@
-"""Habitat polygons from existing navigation evidence; no geographic acquisition/rebuild."""
-import json,hashlib
+"""Compact, water-clipped habitat areas using existing navigation/depth evidence only."""
+import json
 import numpy as np
-from shapely.geometry import Point,LineString,shape,mapping
+from shapely.geometry import Point, shape, box
 from shapely.ops import unary_union
 from rasterio.features import shapes
 from affine import Affine
-from tools.gis.build import ROOT,write_json
+from scipy.spatial import cKDTree
+from scipy.ndimage import distance_transform_edt
+from tools.gis.build import ROOT, write_json
+
 
 def build():
- out=ROOT/'godot/assets/generated';data=json.loads((out/'fish-navigation.json').read_text());nodes={n['id']:n for n in data['nodes']}
- mask=np.fromfile(out/data['mask'],dtype='uint8').reshape(data['height'],data['width'])
- water=unary_union([shape(g) for g,v in shapes(mask,mask=mask.astype(bool),transform=Affine(32,0,data['origin'][0],0,32,data['origin'][1])) if v])
- specs={'shoreline_edge':(55,['shelter','travel','hunting']),'mangrove_edge_candidate':(50,['shelter','resting','hunting']),'shoreline_point_candidate':(70,['hunting','travel']),'grass_flat_candidate':(100,['feeding','shelter','hunting']),'pothole_candidate':(65,['resting','hunting']),'channel_dropoff':(45,['travel','hunting']),'creek_mouth_candidate':(90,['feeding','hunting','travel']),'oyster_bar_candidate':(55,['feeding','shelter']),'mapped_structure':(40,['feeding','shelter','hunting']),'sheltered_rest':(85,['resting','shelter'])}
- areas=[];feature_areas={str(i):[] for i in nodes};zone_areas=[[] for _ in data['zone_nodes']]
- for z,ids in enumerate(data['zone_nodes']):
-  for tag,(radius,roles) in specs.items():
-   members=[nodes[i] for i in ids if tag in nodes[i]['tags']]
-   if not members:continue
-   member_ids={n['id'] for n in members};pieces=[Point(n['x'],n['y']).buffer(radius,quad_segs=5) for n in members]
-   if tag in ['shoreline_edge','mangrove_edge_candidate','channel_dropoff']:
-    for n in members:
-     for j in n['neighbors']:
-      if j in member_ids and j>n['id']:pieces.append(LineString([(n['x'],n['y']),(nodes[j]['x'],nodes[j]['y'])]).buffer(radius*.65,quad_segs=4))
-   g=unary_union(pieces).intersection(water).simplify(1,preserve_topology=True).intersection(water)
-   polygons=[g] if g.geom_type=='Polygon' else [p for p in getattr(g,'geoms',[]) if p.geom_type=='Polygon']
-   if not polygons:continue
-   rings=[{'outer':[[round(x,2),round(y,2)] for x,y in p.exterior.coords],'holes':[[[round(x,2),round(y,2)] for x,y in r.coords] for r in p.interiors]} for p in polygons]
-   index=len(areas);key=f'habitat:{z}:{tag}';capacity=min(250,max(8,g.area*.003)) if tag in ['oyster_bar_candidate','mapped_structure'] else 0
-   areas.append({'id':key,'zone':z,'kind':tag,'roles':roles,'polygons':rings,'bounds':list(g.bounds),'area_m2':round(g.area,1),'nodes':sorted(member_ids),'evidence':sorted({e for n in members for e in n['evidence']}),'inferred':tag!='mapped_structure' and tag!='shoreline_edge' and tag!='channel_dropoff','boundary_note':'Water-clipped opportunity envelope; extent inferred from existing mapped evidence, not a surveyed substrate polygon.','bottom_capacity':capacity})
-   zone_areas[z].append(index)
-   for i in member_ids:feature_areas[str(i)].append(index)
- # Every open-water preference still has an area, independent of the old population cell boundary.
- for z,ids in enumerate(data['zone_nodes']):
-  if zone_areas[z]:continue
-  members=[nodes[i] for i in ids];g=unary_union([Point(n['x'],n['y']).buffer(90,quad_segs=4) for n in members]).intersection(water)
-  parts=[g] if g.geom_type=='Polygon' else [a for a in getattr(g,'geoms',[]) if a.geom_type=='Polygon']
-  index=len(areas);areas.append({'id':f'habitat:{z}:open_water','zone':z,'kind':'open_water','roles':['travel','hunting','resting'],'polygons':[{'outer':list(p.exterior.coords),'holes':[list(r.coords) for r in p.interiors]} for p in parts],'bounds':list(g.bounds),'area_m2':g.area,'nodes':ids,'evidence':['existing water/depth mask'],'inferred':True,'bottom_capacity':0})
-  zone_areas[z].append(index)
-  for i in ids:feature_areas[str(i)].append(index)
- write_json(out/'habitat-areas.json',{'version':1,'navigation_fingerprint':data['fingerprint'],'areas':areas,'feature_areas':feature_areas,'zone_areas':zone_areas})
- print(len(areas),'overlapping habitat areas;',sum(a['bottom_capacity']>0 for a in areas),'bottom-forage habitats',flush=True)
-if __name__=='__main__':build()
+    out = ROOT / 'godot/assets/generated'
+    data = json.loads((out / 'fish-navigation.json').read_text())
+    nodes = data['nodes']; lookup = {n['id']: n for n in nodes}
+    cell = data['cell_m']; ox, oy = data['origin']
+    wet = np.fromfile(out / data['mask'], dtype='uint8').reshape(data['height'], data['width']).astype(bool)
+    transform = Affine(cell, 0, ox, 0, cell, oy)
+    water = unary_union([shape(g) for g, v in shapes(wet.astype('uint8'), mask=wet, transform=transform) if v])
+    # Nearest evidence fills cells instead of joining graph edges with tubes. Shore distance
+    # independently bounds coastal bands, so a navigation link cannot bridge two shores.
+    yy, xx = np.nonzero(wet)
+    distance, nearest = cKDTree([(n['x'], n['y']) for n in nodes]).query(np.column_stack((ox+(xx+.5)*cell, oy+(yy+.5)*cell)))
+    shore = distance_transform_edt(wet)*cell
+    specs = {
+        'shoreline_edge':['shelter','travel','hunting'],
+        'mangrove_edge_candidate':['shelter','resting','hunting'],
+        'shoreline_point_candidate':['hunting','travel'],
+        'grass_flat_candidate':['feeding','shelter','hunting'],
+        'channel_dropoff':['travel','hunting'],
+        'creek_mouth_candidate':['feeding','hunting','travel'],
+        'oyster_bar_candidate':['feeding','shelter'],
+        'mapped_structure':['feeding','shelter','hunting'],
+        'sheltered_rest':['resting','shelter'], 'open_water':['travel','hunting','resting']}
+    areas=[]; feature_areas={str(n['id']):[] for n in nodes}; zone_areas=[[] for _ in data['zone_nodes']]
+    tree=cKDTree([(n['x'],n['y']) for n in nodes])
+
+    def add(g, zone, tag, roles, members, extra=None):
+        if g.is_empty or g.area<180: return
+        # Keep each disconnected patch separate; never assign one area across a channel.
+        parts=[g] if g.geom_type=='Polygon' else [p for p in getattr(g,'geoms',[]) if p.geom_type=='Polygon']
+        for poly in parts:
+            if poly.area<180: continue
+            ids=[i for i in members if poly.covers(Point(lookup[i]['x'],lookup[i]['y']))]
+            if not ids:
+                q=poly.representative_point(); _, k=tree.query([q.x,q.y]); ids=[nodes[int(k)]['id']]
+            samples=[]
+            # Stable interior samples shared with the native patrol planner.
+            minx,miny,maxx,maxy=poly.bounds
+            for fy in [.15,.38,.62,.85]:
+                for fx in [.15,.38,.62,.85]:
+                    q=Point(minx+(maxx-minx)*fx,miny+(maxy-miny)*fy)
+                    if poly.covers(q): samples.append([round(q.x,2),round(q.y,2)])
+            q=poly.representative_point(); samples.append([round(q.x,2),round(q.y,2)])
+            index=len(areas)
+            a={'id':f'habitat:{zone}:{tag}:{len(zone_areas[zone])}', 'zone':zone,'kind':tag,'roles':roles,
+               'polygons':[{'outer':list(poly.exterior.coords),'holes':[list(r.coords) for r in poly.interiors]}],
+               'bounds':list(poly.bounds),'area_m2':round(poly.area,1),'nodes':ids,'patrol_samples':samples,
+               'evidence':sorted({e for i in ids for e in lookup[i]['evidence']}),
+               'inferred':True,'boundary_note':'Inferred water-clipped habitat extent. Vegetation and substrate are candidates, not surveyed coverage.',
+               'bottom_capacity':min(250,max(8,poly.area*.003)) if tag in ['oyster_bar_candidate','mapped_structure'] else 0}
+            if extra: a.update(extra)
+            areas.append(a);zone_areas[zone].append(index)
+            for i in ids: feature_areas[str(i)].append(index)
+
+    for tag,roles in specs.items():
+        eligible=np.array([tag in n['tags'] for n in nodes])[nearest] & (distance<230)
+        if tag in ['shoreline_edge','mangrove_edge_candidate','shoreline_point_candidate','oyster_bar_candidate']:
+            eligible &= shore[yy,xx]<=128
+        labels=np.zeros(wet.shape,dtype='int32')
+        zones=np.array([n['zone']+1 for n in nodes],dtype='int32')[nearest]
+        labels[yy[eligible],xx[eligible]]=zones[eligible]
+        for raw,z in shapes(labels,mask=labels>0,transform=transform):
+            g=shape(raw)
+            if g.area<1800: continue
+            # Rounded filled patches, with small protrusions removed, then clipped to water.
+            g=g.buffer(-12).buffer(24,quad_segs=3).buffer(-12,quad_segs=3).simplify(8).intersection(water)
+            zone=int(z)-1
+            add(g,zone,tag,roles,data['zone_nodes'][zone])
+
+    # Potholes are grass-free openings, NOT depth anomalies. Keep them small and inside
+    # inferred grass; subtract their footprint from the containing grass polygon.
+    for a in list(areas):
+        if a['kind']!='grass_flat_candidate' or a['area_m2']<15000: continue
+        poly=shape({'type':'Polygon','coordinates':[a['polygons'][0]['outer']]+a['polygons'][0]['holes']})
+        inner=poly.buffer(-24)
+        if inner.is_empty: continue
+        center=inner.representative_point(); radius=12+(int(a['nodes'][0])*17%13)
+        hole=center.buffer(radius,quad_segs=12).intersection(poly)
+        add(hole,a['zone'],'pothole_candidate',['hunting','resting'],a['nodes'],{'evidence':['inferred grass-free patch in inferred grass flat'],'boundary_note':'Grass-free opening; no added bathymetric depression.'})
+        remaining=poly.difference(hole)
+        if remaining.geom_type=='Polygon':
+            a['polygons']=[{'outer':list(remaining.exterior.coords),'holes':[list(r.coords) for r in remaining.interiors]}]
+            a['area_m2']=round(remaining.area,1)
+            a['patrol_samples']=[q for q in a['patrol_samples'] if remaining.covers(Point(*q))]
+            if not a['patrol_samples']:
+                q=remaining.representative_point();a['patrol_samples']=[[q.x,q.y]]
+
+    # Sand holes require existing bathymetric evidence of 1–3 ft relief. Do not deepen
+    # the world or call ordinary bare patches depressions. Sparse node evidence means
+    # these are explicitly inferred candidates, not measured hole boundaries.
+    for n in nodes:
+        if 'grass_flat_candidate' in n['tags'] or 'pothole_candidate' not in n['tags']: continue
+        nearby=[lookup[j]['depth_m'] for j in n['neighbors'] if j in lookup]
+        if not nearby: continue
+        relief=n['depth_m']-float(np.median(nearby))
+        if not .3048<=relief<=.9144: continue
+        g=Point(n['x'],n['y']).buffer(18,quad_segs=12)
+        if not water.covers(g): continue
+        add(g,n['zone'],'sand_hole',['hunting','resting'],[n['id']],{'relief_m':round(relief,3),'evidence':['existing depth relative to neighboring navigation samples; sandy substrate inferred']})
+    # Guarantee usable habitat in otherwise unclassified management regions.
+    for z,ids in enumerate(data['zone_nodes']):
+        if zone_areas[z] or not ids: continue
+        for i in ids:
+            n=lookup[i];g=box(n['x']-65,n['y']-65,n['x']+65,n['y']+65).intersection(water)
+            add(g,z,'open_water',specs['open_water'],[i])
+    result={'version':2,'navigation_fingerprint':data['fingerprint'],'areas':areas,'feature_areas':feature_areas,'zone_areas':zone_areas}
+    finish(result)
+    write_json(out/'habitat-areas.json',result)
+    print(f'{len(areas)} compact habitat areas generated from existing assets',flush=True)
+
+def finish(data):
+    # Interior discs allow continuous patrol destinations without runtime polygon searches.
+    import math
+    for a in data['areas']:
+        rings=a['polygons'][0]
+        poly=shape({'type':'Polygon','coordinates':[rings['outer']]+rings['holes']})
+        if a['kind']=='pothole_candidate':
+            c=poly.centroid; r=min(poly.bounds[2]-poly.bounds[0],poly.bounds[3]-poly.bounds[1])*.4
+            a['patrol_samples']=[[c.x+r*math.cos(i*math.tau/8),c.y+r*math.sin(i*math.tau/8)] for i in range(8)]+[[c.x,c.y]]
+        a['patrol_radii']=[round(max(0,min(24,poly.boundary.distance(Point(*q))*.8)),2) for q in a['patrol_samples']]
+        a['patrol_samples']=[[round(x,2),round(y,2)] for x,y in a['patrol_samples']]
+        for polygon in a['polygons']:
+            polygon['outer']=[[round(x,2),round(y,2)] for x,y in polygon['outer']]
+            polygon['holes']=[[[round(x,2),round(y,2)] for x,y in ring] for ring in polygon['holes']]
+
+if __name__=='__main__': build()
