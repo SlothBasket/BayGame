@@ -212,10 +212,10 @@ class BaySimulation : public RefCounted {
         e.pursuit_hunger_factor = std::max(1.0, number(feeding, "pursuit_hunger_multiplier", 1.25));
         e.hunt_start = bay::clamp(number(feeding, "hunt_start_hunger", .25), .02, 1);
         e.hunt_stop = bay::clamp(number(feeding, "hunt_stop_hunger", .12), 0, e.hunt_start - .01);
-        e.meal_base = number(feeding, "meal_base", .02);
-        e.meal_ratio = number(feeding, "meal_size_ratio", .9);
-        e.meal_min = bay::clamp(number(feeding, "meal_minimum", .025), 0, 1);
-        e.meal_max = bay::clamp(number(feeding, "meal_maximum", .6), e.meal_min, 1);
+        e.meal_base = number(feeding, "meal_base", .01);
+        e.meal_ratio = number(feeding, "meal_size_ratio", .45);
+        e.meal_min = bay::clamp(number(feeding, "meal_minimum", .0125), 0, 1);
+        e.meal_max = bay::clamp(number(feeding, "meal_maximum", .3), e.meal_min, 1);
         e.post_meal_seconds = std::max(0.0, number(feeding, "post_meal_seconds", 2));
         e.bait_limit = int(number(ecology, "bait_record_limit", 48000));
         e.escape_cap = int(number(ecology, "escapees_per_school", 6));

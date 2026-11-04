@@ -528,10 +528,10 @@
     "pursuit_hunger_multiplier": 1.25,
     "hunt_start_hunger": 0.25,
     "hunt_stop_hunger": 0.12,
-    "meal_base": 0.02,
-    "meal_size_ratio": 0.9,
-    "meal_minimum": 0.025,
-    "meal_maximum": 0.6,
+    "meal_base": 0.01,
+    "meal_size_ratio": 0.45,
+    "meal_minimum": 0.0125,
+    "meal_maximum": 0.3,
     "post_meal_seconds": 2
   },
   "native_cues": {

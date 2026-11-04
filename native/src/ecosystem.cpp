@@ -129,7 +129,7 @@ void Engine::advance(Animal &a, double time) {
         // Charge actual route distance, including bends, even across coarse simulation ticks.
         double cruise = std::max(.1, a.profile.cruise), ratio = effort_speed / cruise;
         double moving = std::min(dt, moved / std::max(.05, effort_speed));
-        double cost = moved / cruise * (.0004 + .0005 * ratio);
+        double cost = moved / cruise * (.0001 + .000125 * ratio);
         double rest_rate = a.state == 4 ? .006 : .004;
         double recovery = rest_rate * (dt - moving) + moving * .004 * clamp(1 - ratio / .85, 0, 1);
         a.energy = clamp(a.energy + recovery - cost, 0, 1);
@@ -836,7 +836,7 @@ void Engine::attack(uint32_t slot) {
     }
     ++a.attempts;
     a.attack_at = sim + a.profile.cooldown;
-    a.energy = std::max(0.0, a.energy - .025);
+    a.energy = std::max(0.0, a.energy - .00625);
     bool ambush = a.profile.style == 1 || a.profile.style == 2;
     double chance = a.profile.chance + (ambush ? .22 : .06) * (1 - prey.fear) +
                     energy_weight * (a.energy - .5) + .12 * (.35 - prey.size / std::max(1.0, a.size)) -
@@ -868,7 +868,7 @@ void Engine::attack(uint32_t slot) {
         feeding_glide(a);
     } else {
         ++a.misses;
-        a.energy = std::max(0.0, a.energy - .035);
+        a.energy = std::max(0.0, a.energy - .00875);
         a.event = 3;
         scatter(a.target.slot, a.at);
     }
