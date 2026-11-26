@@ -35,6 +35,12 @@ var selected_zone := -1
 var mode := 0
 var show_paths := true
 var show_areas := false
+var player_view := false
+var player_exit: Button
+var water_signs: Array = []
+var sign_seen: Dictionary = {}
+var sign_clock := 0.0
+var sign_cursor := 0
 var show_grid := false
 var show_detail := false
 var detail_controls: Array[Control] = []
@@ -154,6 +160,9 @@ func setup(game):
 	var row := HBoxContainer.new();row.add_theme_constant_override("separation",10);controls.add_child(row)
 	var title := Label.new();title.text="FISH LAB";title.add_theme_font_size_override("font_size",20);row.add_child(title)
 	button(row,"Hide UI",func(): set_ui_hidden(true))
+	button(row,"Player view",func(): set_player_view(true))
+	player_exit=Button.new();player_exit.text="Return to Fish Lab";player_exit.position=Vector2(16,110)
+	player_exit.pressed.connect(func(): set_player_view(false));canvas.add_child(player_exit);player_exit.hide()
 	show_ui_button=Button.new();show_ui_button.text="Show Fish Lab UI";show_ui_button.position=Vector2(16,110)
 	show_ui_button.pressed.connect(func(): set_ui_hidden(false));canvas.add_child(show_ui_button);show_ui_button.hide()
 	var modes := OptionButton.new()
@@ -173,7 +182,7 @@ func setup(game):
 	detail_controls.append(distance_toggle)
 	detail_controls.append(toggle_button(row,"Ranges",false,func(v): show_detail=v;queue_redraw()))
 	for control in detail_controls: control.hide()
-	button(row,"Inspector",func(): inspector_open=not inspector_open;panel.visible=enabled and inspector_open)
+	button(row,"Inspector",func(): inspector_open=not inspector_open;panel.visible=enabled and inspector_open and not player_view)
 	performance_box=VBoxContainer.new();controls.add_child(performance_box)
 	var diagnostic_row := HBoxContainer.new();performance_box.add_child(diagnostic_row)
 	diagnostic_mode=OptionButton.new()
@@ -203,9 +212,51 @@ func setup(game):
 	button(find_buttons,"Find trophy",find_trophy)
 	toolbar.hide();panel.hide();refresh()
 func apply_ui_visibility():
-	toolbar.visible=enabled and not ui_hidden
-	panel.visible=enabled and inspector_open
-	show_ui_button.visible=enabled and ui_hidden
+	toolbar.visible=enabled and not ui_hidden and not player_view
+	panel.visible=enabled and inspector_open and not player_view
+	show_ui_button.visible=enabled and ui_hidden and not player_view
+	player_exit.visible=enabled and player_view
+func set_player_view(value: bool):
+	select_entity(Entity.NONE,-1)
+	player_view=value;following=false;bait_menu.hide();apply_ui_visibility();queue_redraw()
+func update_water_signs():
+	var p=main.fish
+	water_signs=water_signs.filter(func(sign): return real_time-float(sign.time)<10)
+	for key in sign_seen.keys():
+		if real_time-float(sign_seen[key])>30: sign_seen.erase(key)
+	for step in range(mini(256,candidates.size())):
+		var code: int=candidates[sign_cursor%candidates.size()];sign_cursor+=1
+		var kind: int=code/FishSpatialIndex.STRIDE;var index: int=code%FishSpatialIndex.STRIDE
+		var at := Vector2.ZERO;var activity := false;var feeding := false
+		if kind==1:
+			var h: Dictionary=p.hunting.states[index]
+			at=observed_position(0,index)
+			feeding=float(h.get("capture_age",-1))>=0 and float(h.get("capture_age",100))<3
+			activity=feeding and p.water_column.current[index]<2.0
+		elif kind==0:
+			var bait: Dictionary=p.ecology.forage[index]
+			at=observed_position(1,index)
+			var pulse: int=int(p.elapsed/5)+int(bait.id)*17
+			activity=bait.get("active",false) and float(bait.quantity)>3 and float(bait.get("swim_depth",9))<1.2 and (float(bait.get("fear",0))>.25 or posmod(pulse,7)==0)
+		if not activity or at.distance_to(p.simulation_detail.boat)>350: continue
+		if real_time-float(sign_seen.get(code,-100))<10: continue
+		if sign_seen.size()>=512: continue
+		sign_seen[code]=real_time
+		# Store the disturbance location, never a live fish position or a target identifier.
+		var offset := Vector2.from_angle(float(code%360)*PI/180)*3
+		water_signs.append({"at":at+offset,"time":real_time,"feeding":feeding})
+		if water_signs.size()>64: water_signs.pop_front()
+func draw_water_signs(origin: Vector2,mpp: float):
+	for sign in water_signs:
+		var age: float=real_time-float(sign.time)
+		var alpha: float=clampf(1-age/10,0,1)*.65
+		var at: Vector2=sign.at-origin
+		var radius: float=(3+age*.9) if sign.feeding else (2+age*.5)
+		var color := Color(.83,.94,.94,alpha)
+		draw_arc(at,radius,0,TAU*.85,20,color,maxf(.15,mpp),true)
+		if sign.feeding: draw_arc(at,radius*.6,PI*.3,PI*1.6,16,color,maxf(.15,mpp),true)
+		else:
+			for n in range(3): draw_line(at+Vector2(n*2-2,-1),at+Vector2(n*2,-.4),color,maxf(.15,mpp),true)
 func set_ui_hidden(hidden: bool):
 	ui_hidden=hidden; bait_menu.hide();apply_ui_visibility()
 func toggle():
@@ -216,6 +267,7 @@ func toggle():
 	if enabled and available(): prior_sim=main.fish.completed_time();rate_clock=0;actual_rate=0;cache_view();refresh()
 	queue_redraw()
 func select_entity(kind: int,index: int):
+	if player_view and kind!=Entity.NONE: return
 	hunt_selection_reason="";hunt_notice=""
 	if not available(): return
 	if not valid_entity(kind,index): kind=Entity.NONE;index=-1
@@ -282,6 +334,9 @@ func _measured_tick(dt: float):
 	var center := Vector2(main.camera.geo.east,main.camera.geo.south)
 	if cached_span<=0 or main.camera.span<cached_span*.8 or main.camera.span>cached_span*1.25 or center.distance_squared_to(cached_center)>pow(main.camera.span*.1,2):
 		cache_view()
+	sign_clock+=dt
+	if player_view and sign_clock>=.5:
+		sign_clock=0;update_water_signs()
 	refresh_clock+=dt;rate_clock+=dt
 	if rate_clock>=1:
 		actual_rate=maxf(0,(main.fish.completed_time()-prior_sim)/rate_clock);prior_sim=main.fish.completed_time();rate_clock=0
@@ -457,6 +512,7 @@ func find_hunt():
 	if found<0: hunt_notice="No active hunt found. Keep simulating.";status.text=hunt_notice
 	else: select_entity(Entity.FISH,found);center_selected();main.camera.target_span=180;following=true
 func select_at(geo: GeoPosition,mpp: float):
+	if player_view: return
 	if not available(): return
 	var p=main.fish;var at := Vector2(geo.east,geo.south);var best := pow(maxf(12*mpp,3),2);var kind := Entity.NONE;var found := -1
 	for code in candidates:
@@ -517,6 +573,8 @@ func _draw():
 func _measured_draw():
 	if not enabled or not available(): return
 	var p=main.fish;var eco=p.ecology;var mpp: float=main.camera.span/get_viewport_rect().size.y;var origin := Vector2(main.origin.east,main.origin.south)
+	if player_view:
+		draw_water_signs(origin,mpp);return
 	if show_detail and p.simulation_detail!=null:
 		for focus in [p.simulation_detail.boat,p.simulation_detail.camera]:
 			draw_circle(focus-origin,p.simulation_detail.detailed_m,Color(.4,1,.5,.4),false,mpp)
@@ -702,6 +760,7 @@ func build_overview():
 	p.diagnostics.add("Overview buffer",Time.get_ticks_usec()-begin)
 
 func open_bait_menu(screen: Vector2) -> bool:
+	if player_view: return false
 	if not enabled or entity!=Entity.NONE or not available(): return false
 	var geo: GeoPosition=main.camera.world_at(screen);bait_spawn_at=Vector2(geo.east,geo.south)
 	var window := get_window()
