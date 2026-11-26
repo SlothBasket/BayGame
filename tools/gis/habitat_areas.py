@@ -14,6 +14,21 @@ def build():
     out = ROOT / 'godot/assets/generated'
     data = json.loads((out / 'fish-navigation.json').read_text())
     nodes = data['nodes']; lookup = {n['id']: n for n in nodes}
+    # Local connected neighbors provide relief and channel context without crossing land.
+    for n in nodes:
+        neighbors=[lookup[i] for i in n['neighbors'] if i in lookup]
+        depths=[v['depth_m'] for v in neighbors] or [n['depth_m']]
+        n['local_relief']=max(depths)-min(depths)
+        n['edge_depth']=min(depths)<2.5 and max(depths)>3.5
+        if .5<n['depth_m']<3.5 and n['local_relief']<.7 and 'grass_flat_candidate' not in n['tags']:
+            n['tags'].append('sand_flat_candidate')
+        if 'grass_flat_candidate' in n['tags'] and any('grass_flat_candidate' not in v['tags'] for v in neighbors):
+            n['tags'].append('grass_edge_candidate')
+        deep=[v for v in neighbors if v['depth_m']>=n['depth_m']-.5]
+        if n['depth_m']>2 and n['shore_m']<160 and len(deep)>=2 and n['local_relief']>.6:
+            n['tags'].append('tidal_cut_candidate')
+        if n['edge_depth'] and n['local_relief']>1:
+            n['tags'].append('channel_margin_candidate')
     cell = data['cell_m']; ox, oy = data['origin']
     wet = np.fromfile(out / data['mask'], dtype='uint8').reshape(data['height'], data['width']).astype(bool)
     transform = Affine(cell, 0, ox, 0, cell, oy)
@@ -24,6 +39,10 @@ def build():
     distance, nearest = cKDTree([(n['x'], n['y']) for n in nodes]).query(np.column_stack((ox+(xx+.5)*cell, oy+(yy+.5)*cell)))
     shore = distance_transform_edt(wet)*cell
     specs = {
+        'sand_flat_candidate':['feeding','hunting','resting'],
+        'grass_edge_candidate':['feeding','hunting','travel'],
+        'tidal_cut_candidate':['travel','hunting'],
+        'channel_margin_candidate':['travel','hunting','resting'],
         'shoreline_edge':['shelter','travel','hunting'],
         'mangrove_edge_candidate':['shelter','resting','hunting'],
         'shoreline_point_candidate':['hunting','travel'],
@@ -60,6 +79,11 @@ def build():
                'evidence':sorted({e for i in ids for e in lookup[i]['evidence']}),
                'inferred':True,'boundary_note':'Inferred water-clipped habitat extent. Vegetation and substrate are candidates, not surveyed coverage.',
                'bottom_capacity':min(250,max(8,poly.area*.003)) if tag in ['oyster_bar_candidate','mapped_structure'] else 0}
+            measured=[lookup[i]['depth_m'] for i in ids]
+            a['depth_min_m']=round(min(measured),2);a['depth_max_m']=round(max(measured),2)
+            a['relief_m']=round(max(lookup[i]['local_relief'] for i in ids),2)
+            a['shore_distance_m']=round(sum(lookup[i]['shore_m'] for i in ids)/len(ids),1)
+            a['evidence'].append('Connected-water neighborhood depth and shoreline-distance classification')
             if extra: a.update(extra)
             areas.append(a);zone_areas[zone].append(index)
             for i in ids: feature_areas[str(i)].append(index)
@@ -68,6 +92,13 @@ def build():
         eligible=np.array([tag in n['tags'] for n in nodes])[nearest] & (distance<230)
         if tag in ['shoreline_edge','mangrove_edge_candidate','shoreline_point_candidate','oyster_bar_candidate']:
             eligible &= shore[yy,xx]<=128
+        depth=np.array([n['depth_m'] for n in nodes])[nearest]
+        relief=np.array([n['local_relief'] for n in nodes])[nearest]
+        if tag=='grass_flat_candidate': eligible &= (depth<2.5)&(relief<.8)
+        if tag=='oyster_bar_candidate': eligible &= (depth>.4)&(depth<2)&(relief<1.2)
+        if tag=='mangrove_edge_candidate': eligible &= (depth<2.5)&(shore[yy,xx]<96)
+        if tag=='sheltered_rest': eligible &= (relief<.8)&(shore[yy,xx]<160)
+        if tag=='tidal_cut_candidate': eligible &= shore[yy,xx]<192
         labels=np.zeros(wet.shape,dtype='int32')
         zones=np.array([n['zone']+1 for n in nodes],dtype='int32')[nearest]
         labels[yy[eligible],xx[eligible]]=zones[eligible]
