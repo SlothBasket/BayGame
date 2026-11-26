@@ -65,6 +65,10 @@ struct Node {
     int zone = 0, component = 0;
     std::vector<int> neighbors, areas;
 };
+struct PlaceMemory {
+    int area = -1;
+    double reward = 0, danger = 0, time = -10000;
+};
 struct Animal {
     uint64_t id = 0, parent_id = 0;
     uint32_t generation = 1, token = 0;
@@ -87,6 +91,8 @@ struct Animal {
     uint32_t habitat_mask = 0;
     double area_until = 0;
     std::vector<int> preferred_areas;
+    PlaceMemory places[4];
+    double memory_update = -10000;
     int circuit[4] = {-1, -1, -1, -1}, circuit_count = 0, circuit_cursor = 0;
     V food_seen_at, food_seen_heading, learned_food;
     double last_attack_noise = -10000, stealth_until = -1, social_at = 0;
@@ -232,6 +238,7 @@ class Engine {
     void query(V at, double radius, std::vector<uint32_t> &result);
     void plan(Animal &a);
     void habitat_circuit(Animal &a);
+    void remember_place(Animal &a, double reward, double danger);
     void shelter(Animal &a);
     bool breakaway(Animal const &a) const;
     V axes(Animal const &a) const;

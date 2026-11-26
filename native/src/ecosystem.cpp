@@ -526,6 +526,27 @@ void Engine::shelter(Animal &a) {
     a.state = a.individual ? 14 : 13;
     a.decision = sim + std::max(2.0, a.route_length / std::max(.05, a.route_speed));
 }
+void Engine::remember_place(Animal &a, double reward, double danger) {
+    if (a.kind != 0 || a.patrol_area < 0 || habitats[a.patrol_area].samples.empty() ||
+        (a.at - habitats[a.patrol_area].samples.front()).len() > 180)
+        return;
+    auto *memory = &a.places[0];
+    for (auto &place : a.places) {
+        if (place.area == a.patrol_area) {
+            memory = &place;
+            break;
+        }
+        if (place.time < memory->time)
+            memory = &place;
+    }
+    if (memory->area != a.patrol_area)
+        *memory = PlaceMemory{};
+    double decay = std::exp(-std::max(0.0, sim - memory->time) / 1800);
+    memory->area = a.patrol_area;
+    memory->reward = clamp(memory->reward * decay + reward, -1, 2);
+    memory->danger = clamp(memory->danger * decay + danger, 0, 2);
+    memory->time = sim;
+}
 void Engine::habitat_circuit(Animal &a) {
     if (a.kind != 0 || a.node < 0 || !a.habitat_mask)
         return;
@@ -621,19 +642,28 @@ void Engine::plan(Animal &a) {
     if (a.kind == 0 && !rock && a.state != 9 && !a.preferred_areas.empty()) {
         if (a.patrol_area < 0 || sim >= a.area_until) {
             double best = -1e9;
+            int previous_area = a.patrol_area, next_area = a.patrol_area;
             for (int candidate : a.preferred_areas) {
                 auto const &h = habitats[candidate];
                 int n = nearest(h.samples.front());
                 if (n < 0 || nodes[n].component != nodes[a.node].component)
                     continue;
-                double score = random() * 1.4 + nodes[n].food * .5;
-                if (candidate == a.patrol_area)
+                double phase = double((a.id * 37 + uint64_t(candidate) * 13) % 1000) / 1000 * 6.28318530718;
+                double score = random() * .65 + nodes[n].food * .4 + .35 * std::cos(sim / 900 + phase);
+                for (auto const &place : a.places)
+                    if (place.area == candidate) {
+                        double age = std::max(0.0, sim - place.time);
+                        score += place.reward * std::exp(-age / 3600) * (.3 + a.hunger);
+                        score -= place.danger * std::exp(-age / 600) * 1.5;
+                    }
+                if (candidate == previous_area)
                     score -= 1;
                 if (score > best) {
                     best = score;
-                    a.patrol_area = candidate;
+                    next_area = candidate;
                 }
             }
+            a.patrol_area = next_area;
             a.area_until = sim + 120 + random() * 240;
             if (a.patrol_area >= 0)
                 a.area_until +=
@@ -854,6 +884,7 @@ void Engine::attack(uint32_t slot) {
         if (a.hunger <= hunt_stop)
             a.motivated = false;
         a.last_capture = sim;
+        remember_place(a, .5, 0);
         a.learned_food = a.at;
         a.memory_until = sim + food_memory_seconds;
         a.recover_until = a.until + post_meal_seconds;
@@ -1007,6 +1038,7 @@ bool Engine::investigate(Animal &a, bool fresh_only) {
         return false;
     if (ambush && a.ambush_wait_until >= 0 && sim >= a.ambush_wait_until) {
         a.memory_until = sim;
+        remember_place(a, -.3, 0);
         a.area_until = sim;
         a.ambush_wait_until = -1;
         a.path.clear();
@@ -1152,6 +1184,10 @@ void Engine::hunt(uint32_t slot, double dt) {
     auto &a = animals[slot];
     bool ambush = a.profile.style == 1 || a.profile.style == 2;
     if (a.threat_until > sim) {
+        if (sim - a.memory_update > 10) {
+            remember_place(a, 0, .7);
+            a.memory_update = sim;
+        }
         a.state = 10;
         V goal = a.at + (a.at - a.threat).unit() * 12;
         if (a.tier == 0)
