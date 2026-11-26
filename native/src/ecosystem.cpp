@@ -393,6 +393,8 @@ Handle Engine::acquire(uint32_t slot, bool edible_only, bool curious) {
         if (!clear(a.at, point))
             continue;
         int rank = breakaway(prey) ? 2 : (prey.kind == 1 && !prey.individual ? 1 : (prey.kind == 1 ? 3 : 2));
+        if (a.kind == 0 && a.species == 3 && (prey.kind == 3 || (prey.kind == 1 && prey.species == 5)))
+            rank = 4;
         double score = rank * 10000 - (point - a.at).len() + std::min(5.0, prey.size * .1) + prey.fear;
         if (score > best) {
             best = score;
@@ -554,7 +556,7 @@ void Engine::habitat_circuit(Animal &a) {
     std::vector<int> queue{a.node};
     uint32_t stamp = ++search_stamp;
     visited[a.node] = stamp;
-    int counts[13] = {};
+    int counts[17] = {};
     double radius = (a.species == 4 || a.species == 5) ? 2200 : 1000;
     bool coastal = a.species == 2 || a.species == 3 || a.species == 7;
     for (size_t head = 0; head < queue.size() && head < 200; ++head) {
@@ -567,9 +569,9 @@ void Engine::habitat_circuit(Animal &a) {
                 a.preferred_areas.end())
                 continue;
             int type = 0;
-            while (type < 13 && !(h.kind & (uint32_t(1) << type)))
+            while (type < 17 && !(h.kind & (uint32_t(1) << type)))
                 ++type;
-            if (type < 13 && counts[type] < 3) {
+            if (type < 17 && counts[type] < 3) {
                 a.preferred_areas.push_back(area);
                 ++counts[type];
             }
@@ -656,6 +658,21 @@ void Engine::plan(Animal &a) {
                         score += place.reward * std::exp(-age / 3600) * (.3 + a.hunger);
                         score -= place.danger * std::exp(-age / 600) * 1.5;
                     }
+                // Species select different uses of overlapping geographic opportunities.
+                if (a.species == 3 && (h.kind & ((1u << 7) | (1u << 8))))
+                    score += .8;
+                if (a.species == 0 && (h.kind & ((1u << 7) | (1u << 14))))
+                    score += .5;
+                if (a.species == 6 && (h.kind & ((1u << 4) | (1u << 11) | (1u << 13) | (1u << 15))))
+                    score += .55;
+                if (a.species == 2 && (h.kind & ((1u << 1) | (1u << 15))))
+                    score += .5;
+                if (a.species == 1)
+                    score += (a.size > 50 && (h.kind & ((1u << 4) | (1u << 16))))
+                                 ? .65
+                                 : ((h.kind & (1u << 3)) ? .3 : 0);
+                if (a.species == 4 || a.species == 5)
+                    score += std::min(.6, h.relief * .15);
                 if (candidate == previous_area)
                     score -= 1;
                 if (score > best) {
@@ -705,6 +722,8 @@ void Engine::plan(Animal &a) {
     double velocity = a.kind == 1 ? (a.species == 4 || a.species == 5 ? .05 : .4) : a.profile.cruise;
     if (a.kind != 1 && a.state != 9)
         velocity = search_speed(a);
+    if (a.kind == 0 && a.species == 6)
+        velocity *= .45;
     if (a.state == 9)
         velocity *= .35;
     route(a, goal, destination, velocity);
@@ -889,7 +908,7 @@ void Engine::attack(uint32_t slot) {
         a.memory_until = sim + food_memory_seconds;
         a.recover_until = a.until + post_meal_seconds;
         a.event = 1;
-        if (a.kind == 0 && a.species == 7 && a.size >= 43.18)
+        if (a.kind == 0 && ((a.species == 7 && a.size >= 43.18) || (a.species == 6 && a.has_ambush_anchor)))
             a.return_home = true;
         if (a.kind == 0)
             a.size += std::min(.02, prey.size * .002);
@@ -970,6 +989,10 @@ bool Engine::investigate(Animal &a, bool fresh_only) {
                         (1 - age / trail_lifetime) * 2 + (ambush ? n.cover : 0) - distance / trail_radius;
                     // Extrapolate only a short, water-valid portion of a recent bait lane.
                     double lead = ambush ? std::min(25.0, n.trail_speed * (std::min(age, 12.0) + 12)) : 5;
+                    if (a.kind == 0 && a.species == 6) {
+                        score += std::min(1.0, n.traffic * std::exp(-age / 90)) * .8;
+                        score -= std::abs(n.depth - a.bottom) * .2;
+                    }
                     V mark = n.trail_at + n.trail_heading * lead;
                     if (!clear(n.trail_at, mark))
                         continue;
@@ -1149,7 +1172,7 @@ bool Engine::social(Animal &a) {
             goal = group.contact;
             found = true;
             excited = true;
-        } else if (group.members.size() > 1 && (group.center - a.at).len() > 18) {
+        } else if (group.members.size() > 1 && (group.center - a.at).len() > (a.species == 6 ? 50 : 18)) {
             goal = group.center;
             found = true;
         }
@@ -1203,9 +1226,10 @@ void Engine::hunt(uint32_t slot, double dt) {
         return; // The meal route keeps advancing analytically; no new attacks.
     }
     if (a.return_home) {
-        if ((a.at - a.home_at).len() > 2) {
+        V resting = a.kind == 0 && a.species == 6 && a.has_ambush_anchor ? a.ambush_anchor : a.home_at;
+        if ((a.at - resting).len() > 2) {
             if (a.path.empty() || sim >= a.decision) {
-                route(a, a.home_at, a.home, a.profile.cruise);
+                route(a, resting, -1, a.profile.cruise * .6);
                 a.decision = sim + 5;
             }
             a.state = 9;
@@ -1329,6 +1353,10 @@ void Engine::hunt(uint32_t slot, double dt) {
                                (delta + prey.velocity * arrival).len() < a.profile.lunge;
             a.state = 4;
             if (approaching) {
+                if (a.kind == 0 && a.species == 6) {
+                    a.ambush_anchor = a.at;
+                    a.has_ambush_anchor = true;
+                }
                 a.path.clear();
                 a.velocity = {};
                 a.heading = delta.unit();
@@ -1340,21 +1368,36 @@ void Engine::hunt(uint32_t slot, double dt) {
             }
             return;
         }
-        if (ambush && !a.ambush_committed)
+        if (ambush && !a.ambush_committed) {
             a.stealth_until = sim + 1.5;
+            if (a.kind == 0 && a.species == 6) {
+                a.ambush_anchor = a.at;
+                a.has_ambush_anchor = true;
+            }
+        }
+        if (a.kind == 0 && a.species == 6 && a.has_ambush_anchor &&
+            (a.at - a.ambush_anchor).len() > std::max(12.0, a.profile.lunge * 2)) {
+            a.target = {};
+            a.return_home = true;
+            a.decision = sim;
+            return;
+        }
         a.ambush_committed = true;
         a.state = 3;
         if (sim >= a.stealth_until && distance <= pressure_range && std::abs(a.depth - prey.depth) < 2)
             scatter(a.target.slot, a.at);
+        double approach_speed = a.profile.burst;
+        if (a.kind == 0 && a.species == 3 && (prey.kind == 3 || (prey.kind == 1 && prey.species == 5)))
+            approach_speed = a.profile.cruise * .65;
         if (a.tier == 0) {
             V intercept =
                 target + prey.velocity * std::min(2.0, distance / std::max(.1, a.profile.burst) * .4);
             if (!clear(target, intercept))
                 intercept = target;
-            steer(a, intercept, dt, a.profile.burst);
+            steer(a, intercept, dt, approach_speed);
         } else if (sim >= a.decision) {
             route(a, target + prey.velocity * std::min(3.0, distance / std::max(.1, a.profile.burst)), -1,
-                  a.profile.burst);
+                  approach_speed);
             a.decision = sim + 2;
         }
         if (pressure)
@@ -1430,6 +1473,9 @@ void Engine::bait(uint32_t slot, double dt) {
     }
     if (a.node >= 0 && sim >= a.trail_due) {
         auto &n = nodes[a.node];
+        double moving = swimming_speed(a, sim);
+        n.traffic = std::min(3.0, n.traffic * std::exp(-std::max(0.0, sim - n.trail_time) / 90) +
+                                      (moving > .08 ? .25 : 0));
         n.trail_at = a.at;
         n.trail_heading = a.heading;
         n.trail_time = sim;
@@ -1579,6 +1625,8 @@ void Engine::update(uint32_t slot) {
                     : (a.kind == 2 ? (a.species == 2 ? .9 : (a.species == 3 ? .35 : .6))
                                    : (a.species == 3 || a.species == 6 ? .94 : (a.species == 0 ? .8 : .5)));
     a.holding = clamp(a.bottom * ratio + std::sin(sim * .015 + double(a.id % 1000)) * .15, 0, a.bottom - .02);
+    if (a.kind == 0 && a.species == 6)
+        a.holding = std::max(0.0, a.bottom - (.06 + .04 * std::sin(sim * .01 + double(a.id % 100))));
     if (!valid(a.target))
         a.target_depth = a.holding;
     if (a.kind == 3) {

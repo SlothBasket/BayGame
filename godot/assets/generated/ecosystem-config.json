@@ -18,7 +18,9 @@
         "grass_flat_candidate",
         "oyster_bar_candidate",
         "shoreline_edge",
-        "sand_hole"
+        "sand_hole",
+        "grass_edge_candidate",
+        "sand_flat_candidate"
       ],
       "style": "patrol",
       "max_prey_ratio": 0.32,
@@ -67,7 +69,9 @@
         "grass_flat_candidate",
         "pothole_candidate",
         "channel_dropoff",
-        "sand_hole"
+        "sand_hole",
+        "grass_edge_candidate",
+        "channel_margin_candidate"
       ],
       "style": "hunt",
       "max_prey_ratio": 0.3,
@@ -122,7 +126,8 @@
       "habitats": [
         "mangrove_edge_candidate",
         "creek_mouth_candidate",
-        "mapped_structure"
+        "mapped_structure",
+        "tidal_cut_candidate"
       ],
       "style": "ambush",
       "max_prey_ratio": 0.38,
@@ -218,7 +223,8 @@
       "habitats": [
         "channel_dropoff",
         "creek_mouth_candidate",
-        "open_water"
+        "open_water",
+        "channel_margin_candidate"
       ],
       "style": "travel",
       "max_prey_ratio": 0.22,
@@ -258,7 +264,8 @@
       "school_probability": 0.95,
       "habitats": [
         "channel_dropoff",
-        "open_water"
+        "open_water",
+        "channel_margin_candidate"
       ],
       "style": "chase",
       "max_prey_ratio": 0.4,
@@ -300,7 +307,10 @@
         "pothole_candidate",
         "grass_flat_candidate",
         "channel_dropoff",
-        "sand_hole"
+        "sand_hole",
+        "sand_flat_candidate",
+        "tidal_cut_candidate",
+        "grass_edge_candidate"
       ],
       "style": "bottom_ambush",
       "max_prey_ratio": 0.35,
@@ -349,7 +359,8 @@
         "mapped_structure",
         "mangrove_edge_candidate",
         "oyster_bar_candidate",
-        "rock_pile"
+        "rock_pile",
+        "tidal_cut_candidate"
       ],
       "style": "ambush",
       "max_prey_ratio": 0.38,

@@ -28,8 +28,12 @@ static uint32_t habitat_bit(String const &tag) {
                                   "sheltered_rest",
                                   "open_water",
                                   "sand_hole",
-                                  "rock_pile"};
-    for (int i = 0; i < 13; ++i)
+                                  "rock_pile",
+                                  "sand_flat_candidate",
+                                  "grass_edge_candidate",
+                                  "tidal_cut_candidate",
+                                  "channel_margin_candidate"};
+    for (int i = 0; i < 17; ++i)
         if (tag == names[i])
             return uint32_t(1) << i;
     return 0;
@@ -124,6 +128,7 @@ class BaySimulation : public RefCounted {
             Dictionary d = areas[i];
             auto &h = e.habitats[i];
             h.kind = habitat_bit(d.get("kind", "open_water"));
+            h.relief = number(d, "relief_m", 0);
             PackedInt32Array anchors = d["nodes"];
             for (int j = 0; j < anchors.size(); ++j) {
                 int n = anchors[j];
