@@ -24,15 +24,25 @@ func run():
   var at:Vector2=game.fish.movement.nav.point(int(nodes[0]))
   game.camera.geo.east=at.x;game.camera.geo.south=at.y;game.fish_overlay.cache_view()
  await create_timer(3).timeout
- for speed in [20,40,60,80]:
+ var sustain:bool=OS.get_cmdline_user_args().has("--sustain")
+ var busy_zones:Array=game.fish.ecology.forage_zones.keys()
+ busy_zones.sort_custom(func(a,b): return game.fish.ecology.forage_zones[a].size()>game.fish.ecology.forage_zones[b].size())
+ for speed in ([40] if sustain else [20,40,60,80]):
   game.fish.time_scale=speed
   await create_timer(2).timeout
   var start:=Time.get_ticks_usec();var last:=start;var frame_times:Array[float]=[];var initial:float=game.fish.completed_time();var debt:float=game.fish.time_debt
   var max_debt:float=debt
   var hunting_start: float=game.fish.native.stats.get("hunting_ms",0) if game.fish.native!=null else 0
   game.fish.diagnostics.begin_session()
-  while Time.get_ticks_usec()-start<20000000:
+  var move_at:=20.0;var move_index:=1
+  while Time.get_ticks_usec()-start<(60000000 if sustain else 20000000):
    await process_frame
+   if sustain and (Time.get_ticks_usec()-start)/1000000.0>=move_at and move_index<busy_zones.size():
+    var anchors:Array=game.fish.movement.nav.zone_nodes[int(busy_zones[move_index])]
+    if not anchors.is_empty():
+     var point:Vector2=game.fish.movement.nav.point(int(anchors[0]))
+     game.camera.geo.east=point.x;game.camera.geo.south=point.y;game.fish_overlay.cache_view()
+    move_at+=20;move_index+=1
    max_debt=maxf(max_debt,game.fish.time_debt)
    var now:=Time.get_ticks_usec();frame_times.append((now-last)/1000.0);last=now
   var wall:float=(Time.get_ticks_usec()-start)/1000000.0;frame_times.sort()

@@ -1,0 +1,712 @@
+{
+  "date": "2026-11-27",
+  "seed": 18472,
+  "scope": "Full bay with existing distance-based simulation detail; rendered Godot 4.5.2, dense habitat camera, 8000 initial game fish, 34973 bait records, 80 large predators, 1641 bottom resources. Not all records use detailed steering simultaneously.",
+  "runs": {
+    "baseline": [
+      {
+        "achieved": 1.00256975946934,
+        "debt_delta": 0.0,
+        "fps": 60.0296318251964,
+        "hunting_ms_per_wall_second": 8.2540244206535,
+        "max": 17.848,
+        "memory": {
+          "private_bytes": 1251295232,
+          "working_set": 1144971264
+        },
+        "native": true,
+        "p50": 16.675,
+        "p95": 16.922,
+        "speed": 1,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            19883,
+            13669,
+            606
+          ],
+          "conservation_error": 0,
+          "consumed": 330,
+          "cpu_ms": 473.827599999999,
+          "created": 289,
+          "detached": 610,
+          "events": 80052,
+          "hunting_ms": 167.713499999998,
+          "initial_units": 2117040,
+          "levels": [
+            24,
+            292,
+            41912
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 43.5115000000027,
+          "population": [
+            7990,
+            34158,
+            80,
+            1641
+          ],
+          "prey_units": 2003951,
+          "queries": 58103,
+          "records": 44694,
+          "rejoined": 828,
+          "requested": 18.235772,
+          "routes": 27059,
+          "time": 18.235772,
+          "units": 2116999,
+          "wall": 18.235772
+        }
+      },
+      {
+        "achieved": 10.053738674729,
+        "debt_delta": 0.0,
+        "fps": 60.0312112341793,
+        "hunting_ms_per_wall_second": 43.9250370865913,
+        "max": 17.213,
+        "memory": {
+          "private_bytes": 1256009728,
+          "working_set": 1149648896
+        },
+        "native": true,
+        "p50": 16.66,
+        "p95": 16.846,
+        "speed": 10,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            19609,
+            10322,
+            1629
+          ],
+          "conservation_error": 0,
+          "consumed": 5899,
+          "cpu_ms": 2833.3127,
+          "created": 21775,
+          "detached": 3918,
+          "events": 831662,
+          "hunting_ms": 783.260300000469,
+          "initial_units": 2117040,
+          "levels": [
+            25,
+            288,
+            39237
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 180.963800000881,
+          "population": [
+            7910,
+            31560,
+            80,
+            1641
+          ],
+          "prey_units": 2002739,
+          "queries": 309890,
+          "records": 44694,
+          "rejoined": 5412,
+          "requested": 158.1166209,
+          "routes": 266600,
+          "time": 158.1166209,
+          "units": 2132916,
+          "wall": 32.3075541
+        }
+      },
+      {
+        "achieved": 19.8875162859023,
+        "debt_delta": 0.0,
+        "fps": 60.0428794433084,
+        "hunting_ms_per_wall_second": 76.0461722253697,
+        "max": 17.044,
+        "memory": {
+          "private_bytes": 1272303616,
+          "working_set": 1154654208
+        },
+        "native": true,
+        "p50": 16.66,
+        "p95": 16.814,
+        "speed": 20,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            19278,
+            8968,
+            2114
+          ],
+          "conservation_error": 0,
+          "consumed": 15932,
+          "cpu_ms": 6820.3916,
+          "created": 29213,
+          "detached": 8896,
+          "events": 2377907,
+          "hunting_ms": 1847.63730000756,
+          "initial_units": 2117040,
+          "levels": [
+            23,
+            281,
+            37976
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 319.200899998938,
+          "population": [
+            7840,
+            30360,
+            80,
+            1641
+          ],
+          "prey_units": 2001531,
+          "queries": 771362,
+          "records": 44694,
+          "rejoined": 9651,
+          "requested": 436.133909899999,
+          "routes": 738103,
+          "time": 436.133909899999,
+          "units": 2130321,
+          "wall": 46.2252547
+        }
+      },
+      {
+        "achieved": 40.103022893782,
+        "debt_delta": 0.0,
+        "fps": 60.031411165293,
+        "hunting_ms_per_wall_second": 132.919344176464,
+        "max": 17.352,
+        "memory": {
+          "private_bytes": 1273614336,
+          "working_set": 1157648384
+        },
+        "native": true,
+        "p50": 16.671,
+        "p95": 16.789,
+        "speed": 40,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            18829,
+            7603,
+            2363
+          ],
+          "conservation_error": 0,
+          "consumed": 30767,
+          "cpu_ms": 13742.2204,
+          "created": 39884,
+          "detached": 17719,
+          "events": 5432480,
+          "hunting_ms": 3715.37820000002,
+          "initial_units": 2117040,
+          "levels": [
+            28,
+            306,
+            36289
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 622.453999980142,
+          "population": [
+            7748,
+            28795,
+            80,
+            1641
+          ],
+          "prey_units": 2000265,
+          "queries": 1614266,
+          "records": 44694,
+          "rejoined": 17023,
+          "requested": 996.404119899998,
+          "routes": 1731475,
+          "time": 996.404119899998,
+          "units": 2126157,
+          "wall": 60.2956499999998
+        }
+      },
+      {
+        "achieved": 45.3852731526654,
+        "debt_delta": 417.8842654916,
+        "fps": 60.0313861738309,
+        "hunting_ms_per_wall_second": 155.892809088094,
+        "max": 18.635,
+        "memory": {
+          "private_bytes": 1274798080,
+          "working_set": 1153851392
+        },
+        "native": true,
+        "p50": 16.662,
+        "p95": 16.828,
+        "speed": 80,
+        "worker": {
+          "backlog": 477.891298053414,
+          "bait_counts": [
+            18477,
+            6488,
+            2531
+          ],
+          "conservation_error": 0,
+          "consumed": 46353,
+          "cpu_ms": 21553.8488999999,
+          "created": 54257,
+          "detached": 28503,
+          "events": 8861547,
+          "hunting_ms": 5889.66609998475,
+          "initial_units": 2117040,
+          "levels": [
+            26,
+            315,
+            34899
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 1027.57579995005,
+          "population": [
+            7664,
+            27496,
+            80,
+            1641
+          ],
+          "prey_units": 1998960,
+          "queries": 2506735,
+          "records": 44694,
+          "rejoined": 26215,
+          "requested": 2115.1713319,
+          "routes": 2883440,
+          "time": 1637.28003384659,
+          "units": 2124944,
+          "wall": 74.3141858999999
+        }
+      }
+    ],
+    "grass": [
+      {
+        "achieved": 0.996752795107393,
+        "debt_delta": 0.0,
+        "fps": 60.0359699560355,
+        "hunting_ms_per_wall_second": 6.49464293461152,
+        "max": 33.372,
+        "memory": {
+          "private_bytes": 1298911232,
+          "working_set": 1155891200
+        },
+        "native": true,
+        "p50": 16.682,
+        "p95": 18.337,
+        "speed": 1,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            19886,
+            13557,
+            790
+          ],
+          "conservation_error": 0,
+          "consumed": 478,
+          "cpu_ms": 530.3642,
+          "created": 296,
+          "detached": 809,
+          "events": 106816,
+          "hunting_ms": 183.792100000001,
+          "initial_units": 2117040,
+          "levels": [
+            117,
+            910,
+            41273
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 48.8212000000094,
+          "population": [
+            7987,
+            34233,
+            80,
+            1641
+          ],
+          "prey_units": 2003849,
+          "queries": 62383,
+          "records": 44694,
+          "rejoined": 940,
+          "requested": 21.1923765,
+          "routes": 32016,
+          "time": 21.1923765,
+          "units": 2116858,
+          "wall": 21.1923765
+        }
+      },
+      {
+        "achieved": 19.9922965060854,
+        "debt_delta": 0.0,
+        "fps": 60.0300366657802,
+        "hunting_ms_per_wall_second": 83.2348013691153,
+        "max": 29.817,
+        "memory": {
+          "private_bytes": 1303478272,
+          "working_set": 1160470528
+        },
+        "native": true,
+        "p50": 16.668,
+        "p95": 17.227,
+        "speed": 20,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            19392,
+            9485,
+            1683
+          ],
+          "conservation_error": 0,
+          "consumed": 11329,
+          "cpu_ms": 4927.0525,
+          "created": 27125,
+          "detached": 8216,
+          "events": 1806561,
+          "hunting_ms": 1352.7708000032,
+          "initial_units": 2117040,
+          "levels": [
+            118,
+            785,
+            37607
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 243.019900001866,
+          "population": [
+            7870,
+            30560,
+            80,
+            1641
+          ],
+          "prey_units": 2001778,
+          "queries": 552083,
+          "records": 44694,
+          "rejoined": 9607,
+          "requested": 300.5404797,
+          "routes": 506831,
+          "time": 300.5404797,
+          "units": 2132836,
+          "wall": 35.2734921
+        }
+      },
+      {
+        "achieved": 40.6745982954251,
+        "debt_delta": -8.373538128642,
+        "fps": 59.7299705498756,
+        "hunting_ms_per_wall_second": 147.756369030819,
+        "max": 33.309,
+        "memory": {
+          "private_bytes": 1304711168,
+          "working_set": 1161748480
+        },
+        "native": true,
+        "p50": 16.668,
+        "p95": 18.154,
+        "speed": 40,
+        "worker": {
+          "backlog": 7.25951343990562,
+          "bait_counts": [
+            18831,
+            7909,
+            2179
+          ],
+          "conservation_error": 0,
+          "consumed": 26087,
+          "cpu_ms": 12667.2739,
+          "created": 36543,
+          "detached": 18805,
+          "events": 5169674,
+          "hunting_ms": 3403.37350000313,
+          "initial_units": 2117040,
+          "levels": [
+            115,
+            797,
+            35866
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 533.624699987268,
+          "population": [
+            7779,
+            28919,
+            80,
+            1641
+          ],
+          "prey_units": 2000101,
+          "queries": 1420803,
+          "records": 44694,
+          "rejoined": 18684,
+          "requested": 856.897503700001,
+          "routes": 1491420,
+          "time": 849.637990260095,
+          "units": 2127496,
+          "wall": 49.2111881
+        }
+      },
+      {
+        "achieved": 38.7278346295235,
+        "debt_delta": 496.4971107546,
+        "fps": 58.873326086446,
+        "hunting_ms_per_wall_second": 150.706538203005,
+        "max": 33.662,
+        "memory": {
+          "private_bytes": 1317355520,
+          "working_set": 1176621056
+        },
+        "native": true,
+        "p50": 16.673,
+        "p95": 22.837,
+        "speed": 80,
+        "worker": {
+          "backlog": 578.674374851985,
+          "bait_counts": [
+            18511,
+            6887,
+            2270
+          ],
+          "conservation_error": 0,
+          "consumed": 38683,
+          "cpu_ms": 20410.1486999999,
+          "created": 47614,
+          "detached": 29740,
+          "events": 8483316,
+          "hunting_ms": 5529.11669999689,
+          "initial_units": 2117040,
+          "levels": [
+            128,
+            773,
+            34573
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 877.921499961048,
+          "population": [
+            7726,
+            27668,
+            80,
+            1641
+          ],
+          "prey_units": 1998934,
+          "queries": 2218923,
+          "records": 44694,
+          "rejoined": 28356,
+          "requested": 1978.0275797,
+          "routes": 2504515,
+          "time": 1399.35320484801,
+          "units": 2125971,
+          "wall": 63.2886107999999
+        }
+      }
+    ],
+    "final": [
+      {
+        "achieved": 20.0003458133219,
+        "debt_delta": 0.0,
+        "fps": 59.9849647685808,
+        "hunting_ms_per_wall_second": 78.7589490697861,
+        "max": 33.411,
+        "max_backlog_seconds": 0.0,
+        "max_lag_wall_seconds": 0.0,
+        "memory": {
+          "private_bytes": 1322360832,
+          "working_set": 1188188160
+        },
+        "native": true,
+        "p50": 16.667,
+        "p95": 16.857,
+        "speed": 20,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            19250,
+            8955,
+            1901
+          ],
+          "conservation_error": 0,
+          "consumed": 16189,
+          "cpu_ms": 6709.12999999999,
+          "created": 29303,
+          "detached": 11180,
+          "events": 2693598,
+          "hunting_ms": 1827.77710000737,
+          "initial_units": 2117040,
+          "levels": [
+            114,
+            791,
+            37114
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 301.852099999664,
+          "population": [
+            7833,
+            30106,
+            80,
+            1641
+          ],
+          "prey_units": 2001246,
+          "queries": 799320,
+          "records": 44694,
+          "rejoined": 12199,
+          "requested": 445.7147868,
+          "routes": 753048,
+          "time": 445.7147868,
+          "units": 2130154,
+          "wall": 29.2135524
+        }
+      },
+      {
+        "achieved": 39.8223987686705,
+        "debt_delta": 0.0,
+        "fps": 59.9712407914784,
+        "hunting_ms_per_wall_second": 140.555366673241,
+        "max": 33.328,
+        "max_backlog_seconds": 0.0408075466841638,
+        "max_lag_wall_seconds": 0.00102018866710409,
+        "memory": {
+          "private_bytes": 1324048384,
+          "working_set": 1186164736
+        },
+        "native": true,
+        "p50": 16.671,
+        "p95": 18.755,
+        "speed": 40,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            18554,
+            7043,
+            2237
+          ],
+          "conservation_error": 0,
+          "consumed": 39157,
+          "cpu_ms": 18095.4885,
+          "created": 47421,
+          "detached": 28994,
+          "events": 8034110,
+          "hunting_ms": 4914.87689999609,
+          "initial_units": 2117040,
+          "levels": [
+            128,
+            771,
+            34697
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 820.983899964514,
+          "population": [
+            7682,
+            27834,
+            80,
+            1641
+          ],
+          "prey_units": 1998938,
+          "queries": 2105058,
+          "records": 44694,
+          "rejoined": 27591,
+          "requested": 1322.1561428,
+          "routes": 2354248,
+          "time": 1322.1561428,
+          "units": 2125304,
+          "wall": 51.1592721000001
+        }
+      },
+      {
+        "achieved": 58.893081318486,
+        "debt_delta": 23.0807184246116,
+        "fps": 60.0372030701656,
+        "hunting_ms_per_wall_second": 203.603426925513,
+        "max": 33.42,
+        "max_backlog_seconds": 39.9536042296468,
+        "max_lag_wall_seconds": 0.665893403827446,
+        "memory": {
+          "private_bytes": 1310437376,
+          "working_set": 1180803072
+        },
+        "native": true,
+        "p50": 16.669,
+        "p95": 16.923,
+        "speed": 60,
+        "worker": {
+          "backlog": 39.9536042296468,
+          "bait_counts": [
+            18039,
+            5668,
+            2450
+          ],
+          "conservation_error": 0,
+          "consumed": 71135,
+          "cpu_ms": 34017.1372999998,
+          "created": 75757,
+          "detached": 57418,
+          "events": 15595596,
+          "hunting_ms": 9380.71579991437,
+          "initial_units": 2117040,
+          "levels": [
+            110,
+            749,
+            32919
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 1616.11859989818,
+          "population": [
+            7541,
+            26157,
+            80,
+            1641
+          ],
+          "prey_units": 1996564,
+          "queries": 3805341,
+          "records": 44694,
+          "rejoined": 52160,
+          "requested": 2642.16573879999,
+          "routes": 4695078,
+          "time": 2602.21213457035,
+          "units": 2121662,
+          "wall": 73.2046354
+        }
+      }
+    ],
+    "sustain": [
+      {
+        "achieved": 39.9705451662915,
+        "debt_delta": 0.0,
+        "fps": 59.8923417658995,
+        "hunting_ms_per_wall_second": 132.938218298912,
+        "max": 58.742,
+        "max_backlog_seconds": 0.597060111745236,
+        "max_lag_wall_seconds": 0.0149265027936309,
+        "memory": {
+          "private_bytes": 1405882368,
+          "working_set": 1219657728
+        },
+        "native": true,
+        "p50": 16.668,
+        "p95": 16.823,
+        "speed": 40,
+        "worker": {
+          "backlog": 0.0,
+          "bait_counts": [
+            18047,
+            5818,
+            2408
+          ],
+          "conservation_error": 0,
+          "consumed": 65972,
+          "cpu_ms": 30249.9811,
+          "created": 72014,
+          "detached": 54220,
+          "events": 14430868,
+          "hunting_ms": 8377.60769994558,
+          "initial_units": 2117040,
+          "levels": [
+            107,
+            592,
+            33187
+          ],
+          "memory_bytes": 101565472,
+          "navigation_ms": 1469.58119990836,
+          "population": [
+            7533,
+            26273,
+            80,
+            1641
+          ],
+          "prey_units": 1996623,
+          "queries": 3638705,
+          "records": 44694,
+          "rejoined": 49355,
+          "requested": 2482.2669007,
+          "routes": 4476237,
+          "time": 2482.2669007,
+          "units": 2123082,
+          "wall": 69.2212657000002
+        }
+      }
+    ]
+  }
+}
