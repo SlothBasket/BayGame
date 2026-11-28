@@ -147,9 +147,49 @@ def build():
             n=lookup[i];g=box(n['x']-65,n['y']-65,n['x']+65,n['y']+65).intersection(water)
             add(g,z,'open_water',specs['open_water'],[i])
     result={'version':2,'navigation_fingerprint':data['fingerprint'],'areas':areas,'feature_areas':feature_areas,'zone_areas':zone_areas}
+    grass_detail(result, data)
     finish(result)
     write_json(out/'habitat-areas.json',result)
     print(f'{len(areas)} compact habitat areas generated from existing assets',flush=True)
+
+def grass_detail(data, navigation):
+    """Embedded microhabitats: no additional population zones or runtime nodes."""
+    import random, math, zlib
+    old={}
+    for a in data['areas']:
+        if a['kind']=='pothole_candidate': old.setdefault(a['zone'],[]).extend(shape({'type':'Polygon','coordinates':[p['outer']]+p['holes']}) for p in a['polygons'])
+    data['areas']=[a for a in data['areas'] if a['kind']!='pothole_candidate']
+    tree=cKDTree([(n['x'],n['y']) for n in navigation['nodes']])
+    for a in data['areas']:
+        if a['kind']!='grass_flat_candidate': continue
+        ring=a['polygons'][0];poly=shape({'type':'Polygon','coordinates':[ring['outer']]+ring['holes']})
+        for hole in old.get(a['zone'],[]):
+            if poly.distance(hole)<.05: poly=poly.union(hole)
+        if poly.geom_type!='Polygon': continue
+        a['polygons']=[{'outer':list(poly.exterior.coords),'holes':[list(r.coords) for r in poly.interiors]}]
+        rng=random.Random(zlib.crc32(a['id'].encode()))
+        depth=max(.3,(a.get('depth_min_m',1)+a.get('depth_max_m',2))*.5)
+        height=min(depth*.85,rng.uniform(.12,.85));density=rng.uniform(.35,.95)
+        a.update(grass_height_m=round(height,3),grass_density=round(density,3),grass_clearance_m=round(max(0,depth-height),3))
+        a['grass_environment']='tall dense canopy' if height/depth>.45 and density>.65 else ('short sparse grass' if density<.55 else 'submerged meadow')
+        a['potholes']=[];x0,y0,x1,y1=poly.bounds
+        count=min(96,max(4,int(poly.area/800)))
+        for attempt in range(count*12):
+            if len(a['potholes'])>=count: break
+            center=Point(rng.uniform(x0,x1),rng.uniform(y0,y1));diameter=rng.uniform(.3048,1.524)
+            if not poly.contains(center) or poly.boundary.distance(center)<diameter: continue
+            if any(math.hypot(center.x-h['center'][0],center.y-h['center'][1])<3 for h in a['potholes']): continue
+            offsets=[(math.cos(i*math.tau/8)*rng.uniform(.7,1),math.sin(i*math.tau/8)*rng.uniform(.7,1)) for i in range(8)]
+            scale=diameter/max(max(x for x,y in offsets)-min(x for x,y in offsets),max(y for x,y in offsets)-min(y for x,y in offsets))
+            points=[[round(center.x+x*scale,3),round(center.y+y*scale,3)] for x,y in offsets]
+            _,n=tree.query([center.x,center.y])
+            a['potholes'].append({'center':[round(center.x,3),round(center.y,3)],'width_m':round(diameter,3),'node':navigation['nodes'][int(n)]['id'],'boundary':points})
+        a['boundary_note']='Inferred grass canopy and 1–5 ft grass-free micro-openings; no bathymetric depression.'
+    data['feature_areas']={str(n['id']):[] for n in navigation['nodes']}
+    data['zone_areas']=[[] for _ in navigation['zone_nodes']]
+    for i,a in enumerate(data['areas']):
+        data['zone_areas'][a['zone']].append(i)
+        for n in a['nodes']: data['feature_areas'][str(n)].append(i)
 
 def finish(data):
     # Interior discs allow continuous patrol destinations without runtime polygon searches.

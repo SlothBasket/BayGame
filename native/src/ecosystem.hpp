@@ -51,15 +51,21 @@ struct Profile {
     int feeding_mode = 0; // forward, cover/home, school, bottom
     int style = 0;
 };
+struct GrassOpening {
+    V at;
+    std::vector<V> boundary;
+};
 struct Habitat {
     uint32_t kind = 0;
     double relief = 0;
-    std::vector<V> samples;
+    std::vector<V> samples, ambush_points;
     std::vector<double> radii;
 };
 struct Node {
     V at;
     double depth = 2, cover = .1, shore = 100, food = 1, food_time = 0;
+    double grass_height = 0, grass_density = 0;
+    std::vector<GrassOpening> openings;
     V trail_at, trail_heading, noise_at;
     double trail_time = -10000, trail_size = 0, trail_speed = 0, noise_time = -10000;
     int trail_species = 0;
@@ -253,6 +259,7 @@ class Engine {
     bool investigate(Animal &a, bool fresh_only = false);
     bool social(Animal &a);
     double detection(Animal const &a) const;
+    double vegetation_cover(V at, double depth, int node) const;
     double search_speed(Animal const &a) const;
     double sustainable_speed(Animal const &a) const;
     void bait(uint32_t slot, double dt);

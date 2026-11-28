@@ -132,8 +132,31 @@ class BaySimulation : public RefCounted {
             PackedInt32Array anchors = d["nodes"];
             for (int j = 0; j < anchors.size(); ++j) {
                 int n = anchors[j];
-                if (n >= 0 && n < int(e.nodes.size()))
+                if (n >= 0 && n < int(e.nodes.size())) {
                     e.nodes[n].areas.push_back(i);
+                    e.nodes[n].grass_height =
+                        std::max(e.nodes[n].grass_height, number(d, "grass_height_m", 0));
+                    e.nodes[n].grass_density =
+                        std::max(e.nodes[n].grass_density, number(d, "grass_density", 0));
+                }
+            }
+            Array holes = d.get("potholes", Array());
+            if (!holes.is_empty())
+                h.kind |= 1u << 4;
+            for (int j = 0; j < holes.size(); ++j) {
+                Dictionary hole = holes[j];
+                Array xy = hole["center"];
+                int node = int(hole["node"]);
+                bay::GrassOpening opening;
+                opening.at = {double(xy[0]), double(xy[1])};
+                Array boundary = hole["boundary"];
+                for (int k = 0; k < boundary.size(); ++k) {
+                    Array q = boundary[k];
+                    opening.boundary.push_back({double(q[0]), double(q[1])});
+                }
+                if (node >= 0 && node < int(e.nodes.size()))
+                    e.nodes[node].openings.push_back(opening);
+                h.ambush_points.push_back(opening.at);
             }
             Array samples = d.get("patrol_samples", Array());
             Array radii = d.get("patrol_radii", Array());

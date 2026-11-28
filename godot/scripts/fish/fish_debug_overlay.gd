@@ -218,7 +218,7 @@ func apply_ui_visibility():
 	player_exit.visible=enabled and player_view
 func set_player_view(value: bool):
 	select_entity(Entity.NONE,-1)
-	player_view=value;following=false;bait_menu.hide();apply_ui_visibility();queue_redraw()
+	player_view=value;following=false;bait_menu.hide();apply_ui_visibility();cache_view();queue_redraw()
 func update_water_signs():
 	var p=main.fish
 	water_signs=water_signs.filter(func(sign): return real_time-float(sign.time)<10)
@@ -247,6 +247,15 @@ func update_water_signs():
 		water_signs.append({"at":at+offset,"time":real_time,"feeding":feeding})
 		if water_signs.size()>64: water_signs.pop_front()
 func draw_water_signs(origin: Vector2,mpp: float):
+	if main.camera.span<150:
+		for index in visible_areas:
+			var area: Dictionary=main.fish.food_web.areas[index]
+			for hole in area.get("potholes",[]):
+				var at := Vector2(float(hole.center[0]),float(hole.center[1]))
+				if not view_bounds.has_point(at) or at.distance_to(main.fish.simulation_detail.boat)>100: continue
+				var patch := PackedVector2Array()
+				for xy in hole.boundary: patch.append(Vector2(float(xy[0]),float(xy[1]))-origin)
+				draw_colored_polygon(patch,Color(.52,.53,.36,.32))
 	for sign in water_signs:
 		var age: float=real_time-float(sign.time)
 		var alpha: float=clampf(1-age/10,0,1)*.65
@@ -367,7 +376,7 @@ func cache_view():
 	main.fish.presentation.view_bounds=view_bounds
 	visible_areas.clear()
 	for site in main.fish.food_web.site_areas: visible_areas.append(site)
-	if show_areas or mode==4 or entity==Entity.AREA:
+	if show_areas or mode==4 or entity==Entity.AREA or player_view:
 		for index in range(main.fish.food_web.areas.size()):
 			var b: Array=main.fish.food_web.areas[index].bounds
 			if view_bounds.intersects(Rect2(b[0],b[1],b[2]-b[0],b[3]-b[1])): visible_areas.append(index)
@@ -416,6 +425,7 @@ func refresh():
 		for b in web.bottom:
 			if b.area==a.id: stock+=b.quantity
 		text="%s\n\nFunctions: %s\nExtent %.0f × %.0f ft\nBottom prey %.0f / %.0f capacity\nNutrients %.0f%%; replenishes gradually\n" % ["Authored gameplay site (not a surveyed feature)" if a.get("authored",false) else ("Inferred habitat" if a.inferred else "Mapped evidence; inferred opportunity boundary"),", ".join(a.roles),(a.bounds[2]-a.bounds[0])/.3048,(a.bounds[3]-a.bounds[1])/.3048,stock,a.bottom_capacity,web.nutrients[entity_index]*100]
+		if a.has("grass_height_m"): text+="%s; grass %.1f ft tall, %.0f%% cover\n%d small grass openings (1–5 ft)\n" % [a.grass_environment,float(a.grass_height_m)/.3048,float(a.grass_density)*100,a.get("potholes",[]).size()]
 		if a.has("depth_min_m"): text+="Depth envelope %.1f–%.1f ft; nearby relief %.1f ft\n" % [float(a.depth_min_m)/.3048,float(a.depth_max_m)/.3048,float(a.get("relief_m",0))/.3048]
 		if a.kind=="pothole_candidate": text+="Grass-free opening in an inferred grass flat; fish can hold at its edge or inside.\n"
 		elif a.kind=="sand_hole": text+="Inferred sandy depression; existing depth relief %.1f ft. Substrate and exact boundary are inferred.\n" % (float(a.get("relief_m",0))/.3048)
@@ -639,6 +649,13 @@ func _measured_draw():
 	for index in visible_areas:
 		if not (show_areas or mode==4 or (entity==Entity.AREA and entity_index==index)): continue
 		var a: Dictionary=p.food_web.areas[index];var color := Color(.95,.65,.2,.55) if a.inferred else Color(.3,1,.7,.7)
+		if main.camera.span<250:
+			for hole in a.get("potholes",[]):
+				var center := Vector2(float(hole.center[0]),float(hole.center[1]))
+				if not view_bounds.has_point(center): continue
+				var outline := PackedVector2Array()
+				for xy in hole.boundary: outline.append(Vector2(float(xy[0]),float(xy[1]))-origin)
+				if outline.size()>2: outline.append(outline[0]);draw_polyline(outline,Color(.8,.83,.55,.8),maxf(.03,mpp*.6),true)
 		if entity==Entity.AREA and entity_index==index: color=Color.WHITE
 		for polygon in a.polygons:
 			for ring in [polygon.outer]+polygon.holes:

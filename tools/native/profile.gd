@@ -15,19 +15,31 @@ func run():
  var meter=ClassDB.instantiate("BaySimulation")
  game.fish.diagnostics.detailed=true
  await create_timer(4).timeout
- for speed in [1,5,10]:
+ var dense_zone:=0;var dense_count:=0
+ for zone in game.fish.ecology.forage_zones:
+  var count:int=game.fish.ecology.forage_zones[zone].size()
+  if count>dense_count: dense_count=count;dense_zone=int(zone)
+ var nodes:Array=game.fish.movement.nav.zone_nodes[dense_zone]
+ if not nodes.is_empty():
+  var at:Vector2=game.fish.movement.nav.point(int(nodes[0]))
+  game.camera.geo.east=at.x;game.camera.geo.south=at.y;game.fish_overlay.cache_view()
+ await create_timer(3).timeout
+ for speed in [20,40,60,80]:
   game.fish.time_scale=speed
   await create_timer(2).timeout
   var start:=Time.get_ticks_usec();var last:=start;var frame_times:Array[float]=[];var initial:float=game.fish.completed_time();var debt:float=game.fish.time_debt
+  var max_debt:float=debt
   var hunting_start: float=game.fish.native.stats.get("hunting_ms",0) if game.fish.native!=null else 0
   game.fish.diagnostics.begin_session()
-  while Time.get_ticks_usec()-start<12000000:
+  while Time.get_ticks_usec()-start<20000000:
    await process_frame
+   max_debt=maxf(max_debt,game.fish.time_debt)
    var now:=Time.get_ticks_usec();frame_times.append((now-last)/1000.0);last=now
   var wall:float=(Time.get_ticks_usec()-start)/1000000.0;frame_times.sort()
-  var result:Dictionary={"native":game.fish.native!=null,"speed":speed,"fps":frame_times.size()/wall,"p50":frame_times[frame_times.size()/2],"p95":frame_times[int(frame_times.size()*.95)],"max":frame_times[-1],"achieved":(game.fish.completed_time()-initial)/wall,"debt_delta":game.fish.time_debt-debt,"memory":meter.process_memory()}
+  var result:Dictionary={"native":game.fish.native!=null,"speed":speed,"fps":frame_times.size()/wall,"p50":frame_times[frame_times.size()/2],"p95":frame_times[int(frame_times.size()*.95)],"max":frame_times[-1],"achieved":(game.fish.completed_time()-initial)/wall,"debt_delta":game.fish.time_debt-debt,"max_backlog_seconds":max_debt,"max_lag_wall_seconds":max_debt/speed,"memory":meter.process_memory()}
   if game.fish.native!=null:
    result.worker=game.fish.native.stats
    result.hunting_ms_per_wall_second=(float(result.worker.get("hunting_ms",0))-hunting_start)/wall
   print("PROFILE ",JSON.stringify(result));print(game.fish.diagnostics.report(game.fish))
+  if result.achieved<speed*.95 or result.debt_delta>2: break
  game.set_process(false);game.fish_overlay.enabled=false;game.fish.dispose();quit()

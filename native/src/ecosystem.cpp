@@ -346,6 +346,35 @@ double Engine::search_speed(Animal const &a) const {
     double willingness = a.energy * a.hunger;
     return std::min(a.profile.burst * .75, a.profile.cruise * (.8 + 1.2 * willingness));
 }
+double Engine::vegetation_cover(V at, double depth, int node) const {
+    if (node < 0)
+        return 0;
+    auto const &n = nodes[node];
+    if (n.grass_height <= 0 || depth < n.depth + controls.tide - n.grass_height)
+        return 0;
+    auto in_opening = [&](int id) {
+        for (auto const &hole : nodes[id].openings) {
+            if ((hole.at - at).len2() > 4)
+                continue;
+            bool inside = false;
+            size_t count = hole.boundary.size();
+            for (size_t i = 0, j = count - 1; i < count; j = i++) {
+                V a = hole.boundary[i], b = hole.boundary[j];
+                if ((a.y > at.y) != (b.y > at.y) && at.x < (b.x - a.x) * (at.y - a.y) / (b.y - a.y) + a.x)
+                    inside = !inside;
+            }
+            if (inside)
+                return true;
+        }
+        return false;
+    };
+    if (in_opening(node))
+        return 0;
+    for (int j : n.neighbors)
+        if (in_opening(j))
+            return 0;
+    return n.grass_density;
+}
 double Engine::detection(Animal const &a) const {
     bool concealed = (a.profile.style == 1 || a.profile.style == 2) && !a.ambush_committed;
     return a.profile.detect * (concealed ? 2.0 : 1.0);
@@ -356,6 +385,8 @@ bool Engine::senses(Animal const &a, Animal const &prey) const {
     double range = detection(a);
     if (prey.kind == 1 && prey.individual)
         range = std::min(range, clamp(a.profile.detect * .4, 6.0, 18.0));
+    if (prey.kind == 1 && prey.individual)
+        range *= 1 - .45 * vegetation_cover(prey_point(prey, a.at), prey.depth, prey.node);
     if (d * d + vertical * vertical > range * range)
         return false;
     if ((a.profile.style == 1 || a.profile.style == 2) && !a.ambush_committed)
@@ -471,7 +502,7 @@ void Engine::shelter(Animal &a) {
         return;
     }
     if (a.shelter_hold == 0) {
-        a.shelter_hold = sim + 6 + random() * 20;
+        a.shelter_hold = sim + 6 + random() * 20 + nodes[a.node].grass_density * 20;
         a.decision = a.shelter_hold;
         a.state = a.individual ? 14 : 15;
         return;
@@ -502,8 +533,10 @@ void Engine::shelter(Animal &a) {
             }
             if (n.depth < low[a.species] || n.depth > high[a.species])
                 continue;
-            double value = n.cover * 3 - std::min(3.0, n.shore / 200) -
-                           std::abs(n.depth - nodes[a.node].depth) * .25 + random() * .25;
+            double value =
+                n.cover * 3 +
+                n.grass_density * (a.species == 2 || a.species == 3 || a.species == 4 ? 2.5 : 1.0) -
+                std::min(3.0, n.shore / 200) - std::abs(n.depth - nodes[a.node].depth) * .25 + random() * .25;
             if (cursor == a.node || cursor == a.feeding)
                 value -= .6;
             if (value > score) {
@@ -695,6 +728,11 @@ void Engine::plan(Animal &a) {
         size_t pick = size_t(random() * samples.size()) % samples.size();
         double angle = random() * 6.28318530718, radius = std::sqrt(random()) * habitats[area].radii[pick];
         V candidate = samples[pick] + V{std::cos(angle), std::sin(angle)} * radius;
+        if ((a.species == 6 || (a.species == 1 && a.size > 40) || a.profile.style == 1) &&
+            !habitats[area].ambush_points.empty()) {
+            auto const &holes = habitats[area].ambush_points;
+            candidate = holes[size_t(random() * holes.size()) % holes.size()];
+        }
         int n = nearest(candidate);
         if (n >= 0 && nodes[n].component == nodes[a.node].component && clear(nodes[n].at, candidate)) {
             goal = candidate;
@@ -717,6 +755,21 @@ void Engine::plan(Animal &a) {
                 goal = member;
                 destination = shared.node;
             }
+        }
+    }
+    if (area >= 0 && (a.species == 6 || (a.species == 1 && a.size > 40)) &&
+        !habitats[area].ambush_points.empty()) {
+        V hole = habitats[area].ambush_points.front();
+        double best = (hole - goal).len2();
+        for (V point : habitats[area].ambush_points)
+            if ((point - goal).len2() < best) {
+                hole = point;
+                best = (point - goal).len2();
+            }
+        int n = nearest(hole);
+        if (n >= 0 && nodes[n].component == nodes[a.node].component && clear(nodes[n].at, hole)) {
+            goal = hole;
+            destination = n;
         }
     }
     double velocity = a.kind == 1 ? (a.species == 4 || a.species == 5 ? .05 : .4) : a.profile.cruise;
@@ -889,8 +942,9 @@ void Engine::attack(uint32_t slot) {
     bool ambush = a.profile.style == 1 || a.profile.style == 2;
     double chance = a.profile.chance + (ambush ? .22 : .06) * (1 - prey.fear) +
                     energy_weight * (a.energy - .5) + .12 * (.35 - prey.size / std::max(1.0, a.size)) -
-                    cover_weight * (prey.node >= 0 ? nodes[prey.node].cover : .1) - .10 * prey.fear -
-                    .06 * clamp(prey.velocity.len() / std::max(.1, a.profile.burst), 0, 1) +
+                    cover_weight * std::max((prey.node >= 0 ? nodes[prey.node].cover * .4 : .1),
+                                            vegetation_cover(prey_point(prey, a.at), prey.depth, prey.node)) -
+                    .10 * prey.fear - .06 * clamp(prey.velocity.len() / std::max(.1, a.profile.burst), 0, 1) +
                     std::min(.12, (sim - a.pursuit_started) * .003) -
                     .10 * vertical / std::max(.1, a.profile.reach);
     chance = clamp(chance, hit_min, hit_max);
@@ -1568,13 +1622,26 @@ void Engine::bait(uint32_t slot, double dt) {
         a.state = 10;
         if (sim >= a.decision) {
             V goal = a.at + a.escape_heading * 30;
+            double cover = nodes[a.node].grass_density;
+            for (int n : nodes[a.node].neighbors) {
+                V toward = nodes[n].at - a.at;
+                if (nodes[n].grass_density > cover &&
+                    toward.x * a.escape_heading.x + toward.y * a.escape_heading.y > 0) {
+                    V sheltered = a.at + toward.unit() * std::min(30.0, toward.len());
+                    if (clear(a.at, sheltered)) {
+                        goal = sheltered;
+                        cover = nodes[n].grass_density;
+                    }
+                }
+            }
             if (!clear(a.at, goal)) {
                 V side{-a.escape_heading.y, a.escape_heading.x};
                 goal = a.at + side * 12;
                 if (!clear(a.at, goal))
                     goal = a.at - side * 12;
             }
-            route(a, goal, -1, .7 + a.fear * .6);
+            // The pod relocates coherently; detached individuals provide the fast escape response.
+            route(a, goal, -1, .45 + a.fear * .35);
             a.decision = sim + 4;
         }
         return;
@@ -1629,6 +1696,12 @@ void Engine::update(uint32_t slot) {
         a.holding = std::max(0.0, a.bottom - (.06 + .04 * std::sin(sim * .01 + double(a.id % 100))));
     if (!valid(a.target))
         a.target_depth = a.holding;
+    if (a.kind == 1 && a.node >= 0 && nodes[a.node].grass_height > 0 &&
+        (a.species == 2 || a.species == 3 || a.species == 4)) {
+        a.holding = clamp(a.bottom - nodes[a.node].grass_height * .45, 0, a.bottom - .02);
+        if (a.threat_until <= sim)
+            a.target_depth = a.holding;
+    }
     if (a.kind == 3) {
         a.depth = a.holding = a.target_depth = std::max(0.0, a.bottom - .03);
         int births = std::min(a.capacity - a.quantity, int(dt * .1));
@@ -1926,7 +1999,10 @@ void Engine::loop() {
             events.swap(compact);
         }
         std::unique_lock<std::mutex> lock(mutex);
-        cv.wait_for(lock, std::chrono::milliseconds(5), [&] { return stopping.load() || !commands.empty(); });
+        // Keep the CPU slice bounded, but do not spend five milliseconds asleep while work is queued.
+        int idle_ms = (controls.speed > 0 && requested - sim > .02) ? 1 : 5;
+        cv.wait_for(lock, std::chrono::milliseconds(idle_ms),
+                    [&] { return stopping.load() || !commands.empty(); });
     }
     publish();
 }
